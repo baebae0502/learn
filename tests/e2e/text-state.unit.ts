@@ -20,7 +20,8 @@ describe('describeTextState', () => {
   const snapshot: TextStateSnapshot = {
     scheduler: {
       live: false, paused: false, looping: false, disposed: false, sawFirstIdle: true, sawChecked: false, skipDelay: true,
-      delayStarted: false, delayDone: false, dirty: true, current: null, unavailable: 0, laneBusy: false, idleWaiters: 1, lastError: null,
+      delayStarted: false, delayDone: false, dirty: true, current: null, unavailable: 0, laneBusy: false, idleWaiters: 1, held: 0, holdAfter: null,
+      lastError: null,
       events: [
         { at, what: 'control', detail: 'now' },
         { at, what: 'start-waits', detail: 'startupChecked' },
@@ -34,7 +35,8 @@ describe('describeTextState', () => {
     const lines = describeTextState(snapshot).split('\n');
     expect(lines[0]).toBe(
       'scheduler: {"live":false,"paused":false,"looping":false,"disposed":false,"sawFirstIdle":true,"sawChecked":false,"skipDelay":true,'
-        + '"delayStarted":false,"delayDone":false,"dirty":true,"current":null,"unavailable":0,"laneBusy":false,"idleWaiters":1,"lastError":null}',
+        + '"delayStarted":false,"delayDone":false,"dirty":true,"current":null,"unavailable":0,"laneBusy":false,"idleWaiters":1,"held":0,"holdAfter":null,'
+        + '"lastError":null}',
     );
     expect(JSON.parse(lines[1]!.slice('main: '.length))).toEqual({
       firstIdle: { at: '2026-11-09T23:17:42.870Z', screen: 'ok', text: 'ok', settings: 'ok', sheets: 'ok' },

@@ -1,5 +1,6 @@
 import type { TextRepository } from '@learn/db';
-import { TEXT_LIMITS, nowIso, toLearnError, type LibraryChangeReason } from '@learn/domain';
+import { TEXT_LIMITS, nowIso, type LibraryChangeReason } from '@learn/domain';
+import { errorCode } from '../error-code';
 import type { ExtractOutcome, TextExtractor } from './extractor';
 import { guardStoredText } from './page-text';
 
@@ -78,6 +79,9 @@ export interface TextSchedulerState {
   laneBusy: boolean;
   /** idle() calls not answered yet. */
   idleWaiters: number;
+  /** E2E's hold: batches held back now, and the page count it holds after (null: no hold). A held job is not a stuck worker. */
+  held: number;
+  holdAfter: number | null;
   /** The code of the last error that stopped the loop. */
   lastError: string | null;
   events: TextSchedulerEvent[];
@@ -85,17 +89,6 @@ export interface TextSchedulerState {
 
 /** A job id as the trail shows it: enough to tell two jobs apart. */
 const short = (jobId: string): string => jobId.slice(0, 8);
-/**
- * What stopped the loop, as codes only (the logging rule): toLearnError's code, with the thrown value's own code (an errno or
- * SQLite's result code) or, for an INTERNAL, its class (TypeError) — those tell apart what INTERNAL alone does not.
- */
-export function errorCode(e: unknown): string {
-  const code = toLearnError(e).code;
-  const own = (e as { code?: unknown } | null)?.code;
-  if (typeof own === 'string' && /^[A-Z][A-Z0-9_]*$/.test(own) && own !== code) return `${code}/${own}`;
-  if (code === 'INTERNAL' && e instanceof Error && /^[A-Za-z]+$/.test(e.name)) return `${code}/${e.name}`;
-  return code;
-}
 
 export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
   const now = d.now ?? nowIso;
@@ -275,9 +268,9 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
 
   async function runLoop(): Promise<void> {
     looping = true;
-    note('loop-start');
     let ended = 'error';
     try {
+      note('loop-start');
       for (;;) {
         const repo = d.repo();
         if (disposed || paused || repo === null) {
@@ -321,8 +314,8 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
       note('loop-error', lastError);
       console.warn(`[text] the body text loop stopped: ${lastError}`); // codes only: no names in a log
     } finally {
-      note('loop-end', ended);
       looping = false;
+      note('loop-end', ended);
       releaseHolders(false);
       settleIdle();
     }
@@ -398,6 +391,8 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
       unavailable: unavailable.size,
       laneBusy: d.laneBusy(),
       idleWaiters: idleWaiters.length,
+      held: holders.length,
+      holdAfter,
       lastError,
       events: events.map((e) => ({ ...e })),
     }),

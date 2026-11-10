@@ -1,6 +1,6 @@
-import { toLearnError } from '@learn/domain';
+import { errorCode } from './error-code';
 
-/** What one step of the first idle came to: 'ok', or the code it threw. */
+/** What one step of the first idle came to: 'ok', or the code it threw (errorCode). */
 export type FirstIdleStep = 'ok' | string;
 
 /** The main window's first idle as main handled it (E2E's textState shows it). */
@@ -36,7 +36,7 @@ export function runFirstIdle(steps: FirstIdleSteps, log: (line: string) => void 
       step();
       return 'ok';
     } catch (e) {
-      const code = toLearnError(e).code;
+      const code = errorCode(e);
       log(`[window] first idle: ${what} failed: ${code}`);
       return code;
     }

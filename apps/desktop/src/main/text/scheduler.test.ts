@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LibraryRepository, TextRepository, migrate, openDatabase, type Db } from '@learn/db';
-import { LearnError, TEXT_LIMITS, newId } from '@learn/domain';
+import { TEXT_LIMITS, newId } from '@learn/domain';
 import type { ExtractEvents, ExtractOutcome, TextExtractor } from './extractor';
 import type { ExtractRequest } from './messages';
 import { createThrottle } from '../jobs/throttle';
-import { EVENTS_KEPT, createTextScheduler, errorCode, type TextScheduler } from './scheduler';
+import { EVENTS_KEPT, createTextScheduler, type TextScheduler } from './scheduler';
 
 let db: Db;
 let repo: TextRepository;
@@ -702,6 +702,20 @@ describe('state (E2E textState)', () => {
     expect(job(gone.sha)).toMatchObject({ state: 'queued', attempts: 0 });
   });
 
+  it('a held batch is told apart from a stuck worker: what is held and after how many pages', async () => {
+    addPdf(1);
+    const r = rig([reads(100)]);
+    r.s.hold(20);
+    r.s.firstIdle();
+    r.s.startupChecked();
+    r.s.control('now');
+    await until(() => r.s.held());
+    expect(r.s.state()).toMatchObject({ looping: true, held: 1, holdAfter: 20 });
+    r.s.hold(null);
+    await r.s.idle();
+    expect(r.s.state()).toMatchObject({ looping: false, held: 0, holdAfter: null });
+  });
+
   it(`keeps the newest ${EVENTS_KEPT} steps`, () => {
     const r = rig([], { paused: true });
     r.s.firstIdle();
@@ -709,17 +723,5 @@ describe('state (E2E textState)', () => {
     const { events } = r.s.state();
     expect(events).toHaveLength(EVENTS_KEPT);
     expect(events.every((e) => e.what === 'libraryChanged' && e.detail === 'collections')).toBe(true); // the oldest went first
-  });
-});
-
-describe('errorCode', () => {
-  it('codes only: the LearnError code, with the thrown value\'s own code or class when it says more', () => {
-    expect(errorCode(new LearnError('DISK_FULL', 'x'))).toBe('DISK_FULL');
-    expect(errorCode(Object.assign(new Error('/a/b.pdf'), { code: 'ENOENT' }))).toBe('NOT_FOUND/ENOENT');
-    expect(errorCode(Object.assign(new Error('x'), { code: 'SQLITE_BUSY' }))).toBe('INTERNAL/SQLITE_BUSY');
-    expect(errorCode(Object.assign(new Error('x'), { code: 'SQLITE_FULL' }))).toBe('DISK_FULL/SQLITE_FULL');
-    expect(errorCode(new TypeError('cannot read x of undefined'))).toBe('INTERNAL/TypeError');
-    expect(errorCode('a string')).toBe('INTERNAL');
-    expect(errorCode(Object.assign(new Error('x'), { code: 'not a code /path' }))).toBe('INTERNAL/Error');
   });
 });

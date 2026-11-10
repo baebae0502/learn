@@ -38,16 +38,16 @@ describe('the main window\'s first idle', () => {
     const lines: string[] = [];
     const report = runFirstIdle(s.steps, (l) => void lines.push(l));
     expect(s.ran).toEqual(['screen', 'text', 'settings', 'sheets']);
-    expect(report).toMatchObject({ text: 'ok', settings: 'ok', sheets: 'PERMISSION_DENIED' });
-    expect(lines).toEqual(['[window] first idle: sheets failed: PERMISSION_DENIED']);
+    expect(report).toMatchObject({ text: 'ok', settings: 'ok', sheets: 'PERMISSION_DENIED/EACCES' });
+    expect(lines).toEqual(['[window] first idle: sheets failed: PERMISSION_DENIED/EACCES']);
   });
 
   it('every step runs even when each one throws', () => {
-    const s = steps({ screen: new Error('a'), text: new Error('b'), settings: new Error('c'), sheets: 'd' });
+    const s = steps({ screen: new Error('a'), text: new TypeError('b'), settings: new Error('c'), sheets: 'd' });
     const lines: string[] = [];
     const report = runFirstIdle(s.steps, (l) => void lines.push(l));
     expect(s.ran).toEqual(['screen', 'text', 'settings', 'sheets']);
-    expect(report).toMatchObject({ screen: 'INTERNAL', text: 'INTERNAL', settings: 'INTERNAL', sheets: 'INTERNAL' });
+    expect(report).toMatchObject({ screen: 'INTERNAL/Error', text: 'INTERNAL/TypeError', settings: 'INTERNAL/Error', sheets: 'INTERNAL' });
     expect(lines).toHaveLength(4);
   });
 });

@@ -11,6 +11,7 @@ import { TAG_COLORS, type TagColorId } from '../../packages/domain/src/tag-color
 import { settingsContentHeight } from '../../apps/desktop/src/main/settings-geometry';
 import type { FsyncProbeInput, FsyncProbeResult, SeedAssetsInput, SeedAssetsResult } from '../../apps/desktop/src/main/test-hooks';
 import type { SeedBodyTextInput } from '../../apps/desktop/src/main/text/seed-body-text';
+import { keepMainLog, nextLogFile } from './main-log';
 import { compareShots, isTranslucent, sidebarFallback, type Pixels } from './shot-compare';
 import { describeTextState, jobCounts, type TextStateSnapshot } from './text-state';
 
@@ -68,6 +69,19 @@ export interface LaunchOptions {
 const CLOSE_GRACE_MS = 10_000;
 
 /**
+ * Where a launch keeps main's log: the running test's own output folder (main.log, main-2.log… for its later launches),
+ * beside the library/ and userdata/ folders tests make there — not inside them, which the Mac upload leaves out. The same
+ * for launch(null, null). Outside a test there is no folder to keep it in, and nothing is kept.
+ */
+function mainLogFile(): string | null {
+  try {
+    return nextLogFile(test.info().outputDir);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Launch the built app. `null` for a directory leaves that variable unset so the app uses its
  * default location (only for disposable machines such as CI runners).
  */
@@ -87,6 +101,9 @@ export async function launch(libraryDir: string | null, userDataDir: string | nu
     ...(opts.recordVideo ? { recordVideo: opts.recordVideo } : {}),
     ...(opts.colorScheme !== undefined ? { colorScheme: opts.colorScheme } : {}),
   });
+  // A failed test carries main's console lines (error codes, the uncaught-exception line) beside its trace.
+  const logFile = mainLogFile();
+  if (logFile !== null) keepMainLog(app.process(), logFile);
   // The app refuses to quit while an edited field is invalid, so a test that failed in that state would wait on close()
   // until the worker's teardown timeout and take the rest of the run with it. A close that has not finished by then is
   // killed, so the test's own failure is what gets reported.

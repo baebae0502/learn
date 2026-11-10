@@ -8,7 +8,8 @@
   "scripts": { "typecheck": "tsc -p tsconfig.json" },
   "dependencies": {
     "@learn/domain": "workspace:*",
-    "better-sqlite3": "13.0.3"
+    "better-sqlite3": "13.0.3",
+    "zod": "4.6.7"
   },
   "devDependencies": { "@types/better-sqlite3": "9.6.0" }
 }

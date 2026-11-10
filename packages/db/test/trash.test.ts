@@ -102,6 +102,7 @@ describe('purge (spec 4.5, ADR-0006)', () => {
       itemIds: [first.itemId],
       collectionIds: [],
       assets: [{ id: first.asset.id, storageMode: 'managed', relativePath: first.asset.relativePath, size: 1234 }],
+      conversationIds: [],
     });
     expect(exists('items', first.itemId)).toBe(false);
     expect(exists('assets', first.asset.id)).toBe(false);
@@ -120,7 +121,7 @@ describe('purge (spec 4.5, ADR-0006)', () => {
     queueJob(first.asset.sha256);
     repo.trash([first.itemId, trashed.itemId]);
 
-    expect(repo.purge({ itemIds: [first.itemId], collectionIds: [] })).toEqual({ itemIds: [first.itemId], collectionIds: [], assets: [] });
+    expect(repo.purge({ itemIds: [first.itemId], collectionIds: [] })).toEqual({ itemIds: [first.itemId], collectionIds: [], assets: [], conversationIds: [] });
     expect(exists('assets', first.asset.id)).toBe(true);
     repo.trash([live.itemId]);
     expect(repo.purge({ itemIds: [live.itemId], collectionIds: [] }).assets).toEqual([]); // the trashed one still uses it
@@ -170,7 +171,7 @@ describe('purge (spec 4.5, ADR-0006)', () => {
   it('is a no-op for live and unknown ids: nothing is removed, nothing is reported', () => {
     const live = seedItem(db);
     const coll = collections.create({ name: '강의' }).id;
-    expect(repo.purge({ itemIds: [live.itemId, newId()], collectionIds: [coll, newId()] })).toEqual({ itemIds: [], collectionIds: [], assets: [] });
+    expect(repo.purge({ itemIds: [live.itemId, newId()], collectionIds: [coll, newId()] })).toEqual({ itemIds: [], collectionIds: [], assets: [], conversationIds: [] });
     expect(repo.getItem(live.itemId)).toMatchObject({ id: live.itemId });
     expect(collections.get(coll)).toMatchObject({ id: coll });
   });
@@ -183,7 +184,7 @@ describe('purge (spec 4.5, ADR-0006)', () => {
     collections.addItems(lab, [x]);
     collections.softDelete(bio);
     expect(repo.purge({ itemIds: [], collectionIds: [ch6] }).collectionIds).toEqual([]); // part of a row, not a row
-    expect(repo.purge({ itemIds: [], collectionIds: [bio] })).toEqual({ itemIds: [], collectionIds: [bio, ch6, lab], assets: [] });
+    expect(repo.purge({ itemIds: [], collectionIds: [bio] })).toEqual({ itemIds: [], collectionIds: [bio, ch6, lab], assets: [], conversationIds: [] });
     expect([bio, ch6, lab].some((id) => exists('collections', id))).toBe(false);
     expect(count('SELECT COUNT(*) AS n FROM collection_items')).toBe(0);
     expect(repo.getItem(x)).toMatchObject({ id: x });
@@ -238,7 +239,7 @@ describe('emptyTrash', () => {
     expect(repo.trashView()).toEqual({ collections: [], items: [], members: {}, tagged: {} });
     expect(repo.listItems().map((i) => i.id)).toEqual([live.itemId]);
     expect(collections.list().map((c) => c.id)).toEqual([keep]);
-    expect(repo.emptyTrash()).toEqual({ itemIds: [], collectionIds: [], assets: [] });
+    expect(repo.emptyTrash()).toEqual({ itemIds: [], collectionIds: [], assets: [], conversationIds: [] });
   });
 });
 

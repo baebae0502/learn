@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { newId, nowIso, type StorageMode } from '@learn/domain';
 import {
-  CollectionsRepository, LibraryRepository, ReadingRepository, TagsRepository, TextRepository, migrate, openDatabase,
+  CollectionsRepository, ConversationsRepository, LibraryRepository, ReadingRepository, TagsRepository, TextRepository, migrate, openDatabase,
   type AssetRow, type Db, type NewImportRecord,
 } from '../src/index';
 import { expectLearnError, seedItem } from './fixtures';
@@ -392,8 +392,18 @@ describe('LibraryRepository: organize fields, metadata, trash, duplicates', () =
     cols.addItems(cols.create({ name: 'c' }).id, [itemId]);
     new ReadingRepository(db).save({ itemId, revisionId, locator: { kind: 'pdf', pageIndex: 0 }, progress: null });
     expect(repo.counts()).toEqual({
-      items: 1, assets: 1, revisions: 1, collections: 1, collectionItems: 1, tags: 1, itemTags: 1, readingPositions: 1, trashedItems: 0, trashedCollections: 0,
+      items: 1, assets: 1, revisions: 1, collections: 1, collectionItems: 1, tags: 1, itemTags: 1, readingPositions: 1, trashedItems: 0, trashedCollections: 0, conversations: 0, messages: 0, messageSources: 0,
     });
+  });
+
+  it('counts the conversations that are not deleted, their messages and their sources', () => {
+    const s = seedItem(db);
+    const conv = new ConversationsRepository(db);
+    const turn = (text: string) => conv.beginTurn({ conversationId: null, itemId: s.itemId, revisionId: s.revisionId, agent: 'fake', openedAtPage: 0, user: { kind: 'question', text, sent: { selection: 0, replayedTurns: 0, preamble: true }, attached: null }, now: '2026-11-10T09:31:00.000Z' });
+    const kept = turn('kept');
+    conv.finishTurn(kept.tutorMessageId, { status: 'complete', text: 'A', stopReason: 'end_turn', errorCode: null, revisionId: s.revisionId, verified: [{ pageIndex: 1, label: '2쪽' }] }, '2026-11-10T09:31:00.000Z');
+    conv.remove(turn('gone').conversationId, '2026-11-10T09:31:00.000Z');
+    expect(repo.counts()).toMatchObject({ conversations: 1, messages: 2, messageSources: 1 });
   });
 
   it('counts the trash apart: the items and collections in it, which the live counts leave out (spec 8.3)', () => {

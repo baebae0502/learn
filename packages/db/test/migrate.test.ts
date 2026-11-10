@@ -24,6 +24,7 @@ afterEach(() => {
   for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 });
 
+const rows = (db: Db, ...names: string[]) => names.map((t) => db.prepare(`SELECT COUNT(*) FROM ${t}`).pluck().get() as number);
 const tables = (db: Db) =>
   (db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`).all() as { name: string }[]).map((r) => r.name);
 
@@ -169,7 +170,8 @@ describe('migration v2 (organize)', () => {
     db.prepare(`INSERT INTO tags (id, name) VALUES ('t1', 'old')`).run();
 
     expect(migrate(db, { dbFile: file, migrations: MIGRATIONS.filter((m) => m.version <= 2) })).toEqual({ from: 1, to: 2, backupFile: `${file}.pre-v2.bak` });
-    expect(repo.counts()).toMatchObject({ items: 2, assets: 2, revisions: 2, tags: 1, readingPositions: 0 });
+    // counts() also reads the tables of later versions, which this database does not have yet
+    expect(rows(db, 'items', 'assets', 'source_revisions', 'tags', 'reading_positions')).toEqual([2, 2, 2, 1, 0]);
     expect(db.prepare('SELECT position, color FROM tags WHERE id = ?').get('t1')).toEqual({ position: null, color: null });
     const snap = openDatabase(`${file}.pre-v2.bak`);
     dbs.push(snap);
@@ -211,7 +213,7 @@ describe('migration v2 (organize)', () => {
     const collections = new CollectionsRepository(db);
     expect(collections.list().map((c) => [c.id, c.parentId, c.itemCount])).toEqual([['c1', null, 1], ['c2', 'c1', 1]]);
     expect(collections.itemIds('c1', { includeSubcollections: true })).toEqual([i2, i1]);
-    expect(repo.counts()).toMatchObject({ tags: 2, itemTags: 3, collections: 2, collectionItems: 2 });
+    expect(rows(db, 'tags', 'item_tags', 'collections', 'collection_items')).toEqual([2, 3, 2, 2]);
 
     // The pre-v2 snapshot still has every v1 tag.
     const snap = openDatabase(`${file}.pre-v2.bak`);

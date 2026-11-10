@@ -1,0 +1,31 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`isolation > hands Claude Code an allow-listed environment: its Learn-only folder, its own temp folder, no API key, the proxy kept 1`] = `
+{
+  "meta": {
+    "claudeCode": {
+      "options": {
+        "allowDangerouslySkipPermissions": false,
+        "allowedTools": [
+          "mcp__learn__get_context",
+          "mcp__learn__get_outline",
+          "mcp__learn__read_pdf_pages",
+        ],
+        "promptSuggestions": false,
+        "settingSources": [],
+        "strictMcpConfig": true,
+        "tools": [],
+      },
+    },
+  },
+  "system": {
+    "content": [
+      {
+        "text": "I",
+        "type": "text",
+      },
+    ],
+    "mode": "append",
+  },
+}
+`;

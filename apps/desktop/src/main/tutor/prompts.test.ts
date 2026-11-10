@@ -21,6 +21,14 @@ describe('prompts', () => {
     const turns = Array.from({ length: 10 }, (_, i) => ({ question: `q${i}`, answer: 'a'.repeat(3000) }));
     expect(replayWindow(turns).map((t) => t.question)).toEqual(['q5', 'q6', 'q7', 'q8', 'q9']);
   });
+  it('keeps turns that total exactly 16,000 characters, and returns none when the newest alone is over (whole turns only)', () => {
+    expect(replayWindow([{ question: 'q', answer: 'a'.repeat(15_999) }])).toHaveLength(1);
+    expect(replayWindow([{ question: 'q', answer: 'a'.repeat(16_000) }])).toEqual([]);
+    expect(replayWindow([{ question: 'old', answer: 'a' }, { question: 'q', answer: 'a'.repeat(16_000) }])).toEqual([]);
+  });
+  it('pins the instruction text', () => {
+    expect(INSTRUCTIONS(N)).toMatchSnapshot();
+  });
   it('asks a reground in the spec\'s words', () => {
     expect(regroundInstruction([57, 61])).toBe('Your previous answer cited page(s) 57, 61 without reading them in that answer. Read those pages with read_pdf_pages first, then answer the previous question again, citing only pages you read. Answer in the language of the previous question.');
   });

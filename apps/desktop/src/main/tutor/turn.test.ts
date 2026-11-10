@@ -87,6 +87,7 @@ describe('classifyFailure and stripErrorTail', () => {
     expect(stripErrorTail('Part of the answer. API Error: Connection refused — a firewall or proxy may be blocking it (ECONNREFUSED)\n', msg)).toBe('Part of the answer.');
     expect(stripErrorTail(`Answer ${msg}`, msg)).toBe('Answer');
     expect(stripErrorTail('An answer that ends normally.', msg)).toBe('An answer that ends normally.');
+    expect(stripErrorTail('Answer. oops', 'oops \n')).toBe('Answer.');
   });
 });
 
@@ -193,7 +194,7 @@ describe('runTurn', () => {
     expect(r.events.at(-1)).toMatchObject({ kind: 'failed', phase: 'during', code: 'AGENT_EXITED' });
   });
 
-  describe('Claude\'s error text (R3, N7)', () => {
+  describe('Claude\'s error text (R3)', () => {
     const msg = 'Internal error: API Error: Connection refused (ECONNREFUSED)';
     const err = () => new RpcError(-32603, msg, { errorKind: 'server_error' });
     it('is not in the saved text of an answer that ends with an error reply', async () => {
@@ -265,7 +266,7 @@ describe('runTurn', () => {
     expect(r.events.at(-1)).toMatchObject({ kind: 'done', stopReason: null });
   });
 
-  it('writes and announces nothing while the app quits, and the row stays streaming (I2)', async () => {
+  it('writes and announces nothing while the app quits, and the row stays streaming', async () => {
     const t = begin();
     let quitting = false;
     const r = rig(async (on, tm) => { on(text('abc')); quitting = true; tm.advance(5000); return { ...OK, stopReason: 'cancelled' }; }, { shutting: () => quitting });
@@ -285,6 +286,63 @@ describe('runTurn', () => {
     await runTurn(r.d, t);
     expect(r.events.at(-1)).toMatchObject({ kind: 'done', sources: [{ pageIndex: 41, label: '42쪽' }] });
     expect(repo.thread(t.conversationId).messages[1]!.sources.map((s) => s.pageIndex)).toEqual([41]);
+  });
+
+  it('a stop pressed before a clock fires stays a stop, with the rows kept and no second interrupt', async () => {
+    const t = begin('drop-pair');
+    let stopped = false;
+    const r = rig(async (_on, tm) => { tm.advance(88_000); stopped = true; tm.advance(5_000); return { ...OK, stopReason: 'cancelled' }; }, { stop: () => stopped, timeouts: { firstUpdateMs: 90_000 } });
+    expect(await runTurn(r.d, t)).toEqual({ phase: 'end', status: 'stopped', code: null, answered: true });
+    expect(r.interrupts).toEqual([]);
+    expect(count('SELECT COUNT(*) FROM messages')).toBe(2);
+    expect(row(t.tutorMessageId)).toMatchObject({ status: 'stopped', text: '' });
+    expect(r.events.at(-1)).toMatchObject({ kind: 'done', status: 'stopped', stopReason: 'cancelled' });
+  });
+
+  it('a length cut stays too_long when the turn clock fires during its grace', async () => {
+    const t = begin();
+    const r = rig(async (on, tm) => { on(text('x'.repeat(TUTOR_LIMITS.answerChars + 1))); tm.advance(900_000); return { ...OK, stopReason: 'cancelled' }; });
+    expect(await runTurn(r.d, t)).toEqual({ phase: 'end', status: 'complete', code: null, answered: true });
+    expect(r.interrupts).toEqual(['if-not-ended']);
+    expect(r.events.at(-1)).toMatchObject({ kind: 'done', stopReason: 'too_long' });
+  });
+
+  it('never streams the error sentence out on an error end', async () => {
+    const msg = 'Internal error: API Error: Connection refused (ECONNREFUSED)';
+    const t = begin();
+    const r = rig(async (on) => { on(text('Some answer. ')); on(text('API Error: Connection refused (ECONNREFUSED)')); throw new RpcError(-32603, msg); });
+    await runTurn(r.d, t);
+    expect(appended(r.events).join('')).toBe('Some answer.');
+  });
+
+  it('ignores text after a lockdown', async () => {
+    const t = begin();
+    const r = rig(async (on, tm) => { on(text('a')); on(foreignTool); on(text('late')); tm.advance(5000); return OK; });
+    await runTurn(r.d, t);
+    expect(row(t.tutorMessageId)).toMatchObject({ text: 'a', status: 'failed' });
+    expect(appended(r.events).join('')).toBe('a');
+  });
+
+  it('after a failed save tries again only at the next tick', async () => {
+    const t = begin();
+    const g = gate<PromptOutcome>(); let on!: (u: SessionUpdate) => void;
+    const r = rig(async (o) => { on = o; return g.p; });
+    r.spies.saveText.mockImplementation(() => { throw new LearnError('NOT_FOUND', 'x'); });
+    const run = runTurn(r.d, t);
+    on(text('x'.repeat(2000)));
+    on(text('y')); on(text('z'));
+    expect(r.spies.saveText).toHaveBeenCalledTimes(1);
+    r.t.advance(TUTOR_LIMITS.saveEveryMs);
+    expect(r.spies.saveText).toHaveBeenCalledTimes(2);
+    r.spies.saveText.mockRestore();
+    g.resolve(OK); await run;
+  });
+
+  it('keeps the model and tokens on a failed resend that streamed nothing', async () => {
+    const t = begin('keep-failed');
+    const r = rig(async (_on, tm) => { tm.advance(90_000); return OK; }, { timeouts: { firstUpdateMs: 90_000 } });
+    await runTurn(r.d, t);
+    expect(db.prepare('SELECT model, input_tokens FROM messages WHERE id = ?').get(t.tutorMessageId)).toEqual({ model: 'm1', input_tokens: 5 });
   });
 
   it('clears every timer on every end path', async () => {

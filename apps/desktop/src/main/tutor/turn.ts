@@ -48,7 +48,7 @@ export function stripErrorTail(text: string, message: string): string {
   const trimmed = text.trimEnd();
   const bare = message.replace(/^Internal error: /, '');
   for (const m of [message, bare]) {
-    if (m.length > 0 && trimmed.endsWith(m)) return trimmed.slice(0, trimmed.length - m.length).trimEnd();
+    if (m.trimEnd().length > 0 && trimmed.endsWith(m.trimEnd())) return trimmed.slice(0, trimmed.length - m.trimEnd().length).trimEnd();
   }
   return text;
 }
@@ -73,6 +73,8 @@ export async function runTurn(d: TurnDeps, t: TurnInput): Promise<TurnEnd> {
   let toolSeen = false;
   let sawForeignTool = false;
   let timedOut = false;
+  let failed = false;
+  let saveFailed = false;
   let tooLong = false;
   let ended = false;
   let batchTimer: unknown = null;
@@ -93,13 +95,16 @@ export async function runTurn(d: TurnDeps, t: TurnInput): Promise<TurnEnd> {
     try {
       d.repo.saveText(t.tutorMessageId, text, d.now());
       savedLen = text.length;
+      saveFailed = false;
     } catch (e) {
-      // A partial save is only a safety net; the end writes the text again and throws if the row is truly gone.
-      tutorLog('save-failed', { code: e instanceof LearnError ? e.code : 'UNKNOWN' });
+      // A partial save is only a safety net; the end writes the text again and throws if the row is truly gone. One log line, then the next tick tries again.
+      if (!saveFailed) tutorLog('save-failed', { code: e instanceof LearnError ? e.code : 'UNKNOWN' });
+      saveFailed = true;
     }
   };
   const timeout = (): void => {
-    if (ended || timedOut) return;
+    // The first cause wins: a stop, a length cut or a lockdown already decided the end, and a clock in its grace must not change it.
+    if (ended || timedOut || tooLong || sawForeignTool || d.stopRequested()) return;
     timedOut = true;
     d.interrupt('if-not-ended');
   };
@@ -116,15 +121,15 @@ export async function runTurn(d: TurnDeps, t: TurnInput): Promise<TurnEnd> {
       if (!u.learn && !sawForeignTool) { sawForeignTool = true; d.interrupt('always'); }
       return;
     }
-    if (tooLong) return;
+    if (tooLong || sawForeignTool) return;
     const room = TUTOR_LIMITS.answerChars - text.length;
     const piece = u.text.length > room ? u.text.slice(0, room) : u.text;
     if (piece !== '') {
       text += piece;
       pending += piece;
-      batchTimer ??= arm(() => { batchTimer = null; flush(); }, TUTOR_LIMITS.textBatchMs);
-      if (text.length - savedLen >= TUTOR_LIMITS.saveEveryChars) save();
-      else saveTimer ??= arm(() => { saveTimer = null; save(); }, TUTOR_LIMITS.saveEveryMs);
+      batchTimer ??= arm(() => { disarm(batchTimer); batchTimer = null; flush(); }, TUTOR_LIMITS.textBatchMs);
+      if (text.length - savedLen >= TUTOR_LIMITS.saveEveryChars && !saveFailed) save();
+      else saveTimer ??= arm(() => { save(); }, TUTOR_LIMITS.saveEveryMs);
     }
     if (piece.length < u.text.length) { tooLong = true; d.interrupt('if-not-ended'); }
   };
@@ -134,7 +139,7 @@ export async function runTurn(d: TurnDeps, t: TurnInput): Promise<TurnEnd> {
   try {
     restartUpdateClock(d.timeouts.firstUpdateMs);
     turnTimer = arm(timeout, d.timeouts.turnMs);
-    try { outcome = await d.prompt(t.blocks, on); } catch (e) { failure = e; }
+    try { outcome = await d.prompt(t.blocks, on); } catch (e) { failure = e; failed = true; }
     ended = true;
     clearAll();
     batchTimer = saveTimer = updateTimer = turnTimer = null;
@@ -144,10 +149,15 @@ export async function runTurn(d: TurnDeps, t: TurnInput): Promise<TurnEnd> {
 
     const lockedDown = sawForeignTool || outcome?.lockdown === true;
     const reason: Reason = lockedDown ? 'lockdown' : timedOut ? 'timeout' : tooLong ? 'too-long'
-      : d.stopRequested() || outcome?.stopReason === 'cancelled' ? 'stopped' : failure !== null ? 'error' : 'ok';
+      : d.stopRequested() || outcome?.stopReason === 'cancelled' ? 'stopped' : failed ? 'error' : 'ok';
     const failedCode: ErrorCode | null = reason === 'lockdown' ? 'AGENT_LOCKDOWN' : reason === 'timeout' ? 'AGENT_TIMEOUT' : reason === 'error' ? classifyFailure(failure, false) : null;
 
-    if (failure instanceof RpcError && reason === 'error') text = stripErrorTail(text, failure.message);
+    if (failure instanceof RpcError && reason === 'error') {
+      const kept = stripErrorTail(text, failure.message);
+      // What was cut off the end is cut from the part not yet streamed too, so the error sentence is never sent out.
+      pending = pending.slice(0, Math.max(0, pending.length - (text.length - kept.length)));
+      text = kept;
+    }
 
     const status = failedCode !== null ? 'failed' : reason === 'stopped' ? 'stopped' : 'complete';
     const stopReason: StopReason | null = reason === 'too-long' ? 'too_long' : reason === 'stopped' ? 'cancelled' : status === 'failed' ? null : outcome?.stopReason ?? null;
@@ -160,7 +170,8 @@ export async function runTurn(d: TurnDeps, t: TurnInput): Promise<TurnEnd> {
         emit({ kind: 'failed', phase: 'before', code: failedCode! });
         return { phase: 'before', code: failedCode!, answered: false };
       }
-      d.repo.finishTurn(t.tutorMessageId, { status: 'failed', text: '', stopReason: null, errorCode: failedCode, revisionId: t.revisionId, verified: [] }, d.now());
+      d.repo.finishTurn(t.tutorMessageId, { status: 'failed', text: '', stopReason: null, errorCode: failedCode, revisionId: t.revisionId, verified: [],
+        model: outcome?.model ?? null, inputTokens: outcome?.inputTokens ?? null, outputTokens: outcome?.outputTokens ?? null }, d.now());
       emit({ kind: 'failed', phase: 'during', code: failedCode! });
       return { phase: 'during', status: 'failed', code: failedCode, answered: false };
     }

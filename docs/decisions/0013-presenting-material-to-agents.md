@@ -42,6 +42,7 @@
 ### 4. 그림은 에이전트 능력에 따라
 - 그림을 보낼 수 있는지는 ACP `initialize`의 `promptCapabilities.image`와 에이전트별 확인으로 정한다. 보낼 수 없으면 설명 글로 대신하고 "그림은 보내지 못함"을 "보낸 범위" 줄에 표시한다(가짜 금지).
 - MCP 도구 결과의 이미지가 실제로 모델까지 가는지는 어댑터(`claude-agent-acp`, `codex-acp`)마다 T1 스파이크로 확인한다. 안 가면 그림은 1절의 push(프롬프트의 이미지 블록)로만 보낸다.
+- **T1a 스파이크 결과(S13, 2026-11-10)**: `@agentclientprotocol/claude-agent-acp` 0.103.0(`claude` 2.1.318)과 `@agentclientprotocol/codex-acp` 2.6.0(Codex 0.166.0) 모두 `initialize`의 `promptCapabilities.image`가 `true`이고, **프롬프트의 이미지 블록**(`{ type: 'image', mimeType: 'image/png', data }`)과 **MCP 도구 결과의 이미지 블록**(`tools/call` 결과 `content`의 `{ type: 'image', data, mimeType }`) 둘 다 모델에 닿았다 — "LEARN"이라는 낱말을 그린 PNG의 낱말을 두 경로 모두에서 맞혔다(MCP 서버 이름과 모든 글에서 그 낱말을 빼 그림만이 단서였다). 그래서 T1b는 두 길(push·pull)을 모두 쓸 수 있다. Claude Code는 MCP 결과 이미지를 자기 대화 기록 폴더(`<설정 폴더>/projects/<작업 폴더>/<sessionId>/tool-results/`)에 파일로도 남긴다. T1a는 그림을 보내지 않는다.
 - 캡처한 그림은 쪽 앵커(PDF user space의 영역)로 저장한다. 그래서 그림도 인용 칩이 되고 원래 쪽으로 돌아간다.
 
 ### 5. 자료는 언제나 데이터다

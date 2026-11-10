@@ -76,4 +76,27 @@ describe('AnchorsRepository', () => {
     expect(repo.get('old')).toBeUndefined();
     warn.mockRestore();
   });
+
+  it('makes the page anchor once per revision and page, with no text and no quote', () => {
+    const db = freshDb();
+    const { revisionId } = seedItem(db);
+    const repo = new AnchorsRepository(db);
+    const a = repo.pageAnchor(revisionId, 41);
+    const b = repo.pageAnchor(revisionId, 41);
+    expect(b.id).toBe(a.id);
+    expect(repo.pageAnchor(revisionId, 42).id).not.toBe(a.id);
+    expect(db.prepare(`SELECT COUNT(*) FROM anchors WHERE precision = 'page' AND revision_id = ? AND json_extract(locator_json, '$.pageIndex') = 41`).pluck().get(revisionId)).toBe(1);
+    expect(db.prepare('SELECT precision, quote, text_json FROM anchors WHERE id = ?').get(a.id)).toEqual({ precision: 'page', quote: null, text_json: null });
+    expect(repo.get(a.id)?.anchor).toEqual({ kind: 'pdf', revisionId, precision: 'page', pageIndex: 41 });
+  });
+
+  it('refuses a page anchor of a revision that does not exist, and an unknown field on one', () => {
+    const db = freshDb();
+    const { revisionId } = seedItem(db);
+    const repo = new AnchorsRepository(db);
+    expect(() => repo.pageAnchor(newId(), 0)).toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
+    const page = { kind: 'pdf', revisionId, precision: 'page', pageIndex: 1 } as const;
+    expect(repo.create(page).anchor).toEqual(page);
+    expect(() => repo.create({ ...page, quads: [] } as unknown as SourceAnchor)).toThrow(expect.objectContaining({ code: 'VALIDATION_FAILED' }));
+  });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { newId, pdfAnchor, toWebAnnotation, type PdfAnchor } from '../src/index';
+import { newId, pdfAnchor, pdfPageAnchor, pdfSpanAnchor, toWebAnnotation, type PdfAnchor } from '../src/index';
 
 const base = { kind: 'pdf', revisionId: newId(), pageIndex: 41, quads: [[1, 2, 3, 4, 5, 6, 7, 8]], coordinateSpace: 'pdf-user-space' } as const satisfies Record<string, unknown>;
 
@@ -33,5 +33,25 @@ describe('toWebAnnotation', () => {
   it('leaves the position out without page text, and the quote out without text', () => {
     expect(toWebAnnotation(anchor, { source: 's' }).selector).toHaveLength(2);
     expect(toWebAnnotation({ ...base, quads: [[1, 2, 3, 4, 5, 6, 7, 8]], precision: 'region' }, { source: 's' }).selector).toHaveLength(1);
+  });
+});
+
+describe('pdfPageAnchor and pdfSpanAnchor', () => {
+  const page = { kind: 'pdf', revisionId: newId(), precision: 'page', pageIndex: 41 };
+  const text = { quote: { exact: 'x', prefix: '', suffix: '' } };
+  it('accepts a page without coordinates and refuses a negative page or any text', () => {
+    expect(pdfPageAnchor.safeParse(page).success).toBe(true);
+    expect(pdfPageAnchor.safeParse({ ...page, pageIndex: -1 }).success).toBe(false);
+    expect(pdfPageAnchor.safeParse({ ...page, text }).success).toBe(false);
+  });
+  it('a span anchor needs span precision and its text', () => {
+    expect(pdfSpanAnchor.safeParse({ ...base, precision: 'span', text }).success).toBe(true);
+    expect(pdfSpanAnchor.safeParse({ ...base, precision: 'region', text }).success).toBe(false);
+    expect(pdfSpanAnchor.safeParse({ ...base, precision: 'span' }).success).toBe(false);
+  });
+  it('a page anchor becomes one page fragment', () => {
+    expect(toWebAnnotation(page as never, { source: 'file:///x.pdf' }).selector).toEqual([
+      { type: 'FragmentSelector', conformsTo: 'http://tools.ietf.org/rfc/rfc3778', value: 'page=42' },
+    ]);
   });
 });

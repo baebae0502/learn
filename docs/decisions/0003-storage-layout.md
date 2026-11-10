@@ -51,5 +51,19 @@ SQLite는 CHECK를 고칠 수 없어 `items`와 `anchors`를 다시 만든다. `
 
 백업은 그대로다(대기 중인 첫 마이그레이션 앞에서 `library.sqlite.pre-v4.bak`).
 
+## 스키마 v5 (T1a, `packages/db/src/migrations/005-tutor.ts`)
+`anchors`를 다시 만든다(실행기의 `foreignKeysOff` 길, 순서 규칙은 v4와 같다). `precision`의 CHECK에 `'page'`를 더하는 것은 표를 다시 만들어야만 되고, `annotations.anchor_id`(RESTRICT)가 이 표를 가리키므로 외래 키를 끄고 커밋 전 `foreign_key_check`를 한다. 열 순서와 rowid는 그대로 옮기고 `CHECK (precision <> 'page' OR kind = 'pdf')`를 더한다. 색인 `anchors_revision`은 다시 만든다.
+
+새 표 다섯(비어 있다):
+- `conversations(id, item_id, parent_id, title, agent, agent_session_id, created_at, updated_at, deleted_at)`: `item_id`는 `items`에 `CASCADE`(자료를 영구 삭제하면 세션도 지워진다), `parent_id`는 자기 자신에 `SET NULL`.
+- `messages`: `conversation_id`에 `CASCADE`, `UNIQUE (conversation_id, seq)`. 사용자 행과 튜터 행의 열 조합은 표 CHECK가 지킨다.
+- `message_sources`: `message_id`에 `CASCADE`, `anchor_id`는 `anchors`에 `SET NULL`(앵커가 사라져도 `label`·`quote_snapshot` 표기는 남는다). 한 메시지의 `cited` 쪽은 부분 고유 색인으로 하나씩이다.
+- `conversation_context`: 대화와 앵커 둘 다 `CASCADE`. 대화마다 `opened_from`은 하나(부분 고유 색인).
+- `tool_reads`: `message_id`에 `CASCADE`, `revision_id`는 `source_revisions`에 `CASCADE`. 질문·답·쪽 글은 담지 않는다.
+
+에이전트·도구 이름 열은 목록 CHECK가 아니라 형식 CHECK(`GLOB`)와 도메인 zod다. 에이전트가 늘 때마다 표를 다시 만들지 않기 위해서다. 상태처럼 안정된 집합은 CHECK다.
+
+백업은 대기 중인 첫 마이그레이션 앞에서 `library.sqlite.pre-v5.bak`. 1만 앵커를 다시 만드는 시간은 단위 시험이 1초 미만으로 지킨다.
+
 ## 근거
 원본 불변·재시작 복구·빈 프로필 복원(AC01·AC06·AC15)을 파일 시스템과 DB 양쪽에서 단순하게 보장하기 위해서다.

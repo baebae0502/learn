@@ -159,3 +159,13 @@ ADR-0002는 그대로 유효하다: 불변 revision 귀속, `schema_version`, `o
 | 새 kind | `image` 하나만 더했다. `slides`는 004가 `'slide'`를 바꾼 이름이다 | 예상대로(위 판정 표의 "M7b가 …"는 M7c로 정정) |
 | `image` 좌표 | `rect` = `[x, y, w, h]`, 회전 전 이미지(EXIF 방향을 적용해 그린 0° 그림)의 0–1 좌표, 왼쪽 위 원점. 보기 회전은 좌표에 영향이 없다 | 새로 정함 |
 | `precision` | `region`만(이미지 전체는 `[0,0,1,1]`). `text`는 없고 `anchors.quote` 열은 `NULL` | 판정 표의 region 규칙 그대로 |
+
+## T1a 결과 (2026-11)
+
+| 항목 | 결정 |
+|---|---|
+| 쪽 앵커 | `pdf`의 `precision: 'page'`: `{ kind, revisionId, precision, pageIndex }`, 좌표·글 없음. main은 PDF를 열지 않아 쪽 상자 좌표를 모르기 때문이다. `anchors.quote`는 `NULL`, `ANCHOR_SCHEMA_VERSION`은 2 그대로(좌표 규칙이 바뀌지 않는다). 판본·쪽마다 하나이며 처음 물을 때 만든다(`pageAnchor`). W3C 대상은 `page=N` 조각 하나 |
+| 대화와 자료 | `conversations.item_id`(CASCADE). 사본·중복 자료가 판본을 나눠 가져 판본으로는 자료가 정해지지 않고, 영구 삭제가 필기처럼 세션도 지운다 |
+| 인용 이력 | `message_sources.anchor_id`는 `SET NULL`이고 `label`·`quote_snapshot`이 남는다. 앵커 삭제를 막지 않는다 |
+| 재앵커(M9 이후) | `page` 앵커는 쪽 번호로만 옮긴다. 글 증거가 없으므로 인용문 일치는 쓰지 않는다 |
+

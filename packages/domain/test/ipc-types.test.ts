@@ -63,7 +63,7 @@ describe('LearnApi inputs are the schema input types', () => {
   });
   it('togglePosition reports which tag was toggled and how (null when nothing to toggle)', () => {
     expectTypeOf<ReturnType<LearnApi['tags']['togglePosition']>>()
-      .toEqualTypeOf<Promise<Result<{ tagId: string; assigned: boolean } | null>>>();
+      .toEqualTypeOf<Promise<Result<{ tagId: string; assigned: boolean; itemIds: string[] } | null>>>();
   });
   it('the import channels answer at once with the run\'s total and the outcome is pushed; no duplicate channel (spec 3.7, P-1)', () => {
     expectTypeOf<ReturnType<LearnApi['library']['pickAndImport']>>().toEqualTypeOf<Promise<Result<{ queued: number }>>>();

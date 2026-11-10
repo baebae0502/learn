@@ -1,7 +1,7 @@
 // Opening the ⌘/ sheet and the settings window, timed in main (perf.evidence.ts; T13M-n4, critique mac2 m3).
 import path from 'node:path';
 import { expect, type ElectronApplication } from '@playwright/test';
-import { expectWindow, launch, type LaunchOptions } from '../e2e/helpers';
+import { expectWindow, launch, menuItemEnabled, type LaunchOptions } from '../e2e/helpers';
 
 /**
  * Times menu command → window shown in a session (both main-process clocks: t0 when the menu item is clicked in main,
@@ -19,11 +19,15 @@ export async function openTimer(app: ElectronApplication) {
     for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed() && !win.isVisible()) watch(win);
     app.on('browser-window-created', (_event, win) => watch(win));
   });
-  const click = (id: string) =>
-    app.evaluate(({ BrowserWindow, Menu }, id) => {
+  const click = async (id: string) => {
+    // A window still held by the sheet that just closed refuses the command without a trace (helpers sheetReleased): its menu
+    // item is off until the page takes commands again. The clock starts at the click, after this.
+    await expect.poll(() => menuItemEnabled(app, id), { message: `menu item ${id} never became clickable` }).toBe(true);
+    await app.evaluate(({ BrowserWindow, Menu }, id) => {
       (globalThis as { __learnOpen?: { t0: number } }).__learnOpen = { t0: Date.now() };
       Menu.getApplicationMenu()!.getMenuItemById(id)!.click(undefined, BrowserWindow.getFocusedWindow() ?? undefined);
     }, id);
+  };
   const elapsed = async () => {
     await expect.poll(() => app.evaluate(() => (globalThis as { __learnOpen?: { shown?: number } }).__learnOpen?.shown ?? 0)).toBeGreaterThan(0);
     return app.evaluate(() => {

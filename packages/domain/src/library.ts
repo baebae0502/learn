@@ -1,8 +1,9 @@
+import type { BodyTextState } from './body-search';
 import type { ErrorCode } from './errors';
 import type { ItemMetadata } from './metadata';
 import type { TagColorId } from './tag-colors';
 
-export type ItemType = 'pdf' | 'video';
+export type ItemType = 'pdf' | 'video' | 'image';
 export type StorageMode = 'managed' | 'linked';
 export type Availability = 'available' | 'missing';
 
@@ -25,6 +26,8 @@ export interface LibraryItem {
   publisher: string | null;
   progress: number | null;
   openedAt: string | null;
+  /** The pixel size of an image item (EXIF orientation applied); null when it could not be read, and for other types. */
+  imageSize?: { width: number; height: number } | null;
 }
 
 export interface Collection {
@@ -79,6 +82,8 @@ export interface ItemDetail {
   };
   tags: Tag[];
   collections: Collection[];
+  /** Where the body text of a PDF stands; null for anything else. */
+  text: BodyTextState | null;
 }
 
 export interface DuplicateGroup {
@@ -245,6 +250,7 @@ export const assetUrl = (assetId: string): string => `${APP_ORIGIN}/asset/${enco
  * the import's "not supported" advice say the same list the same way, spaced middots as in every other list. The
  * spaces are U+00A0, so the list never breaks inside, nor starts a line with "·" ("(MP4 · MOV · WebM)").
  */
+export const IMAGE_FORMATS = 'PNG\u00a0·\u00a0JPEG\u00a0·\u00a0WebP\u00a0·\u00a0GIF\u00a0·\u00a0AVIF';
 export const VIDEO_FORMATS = 'MP4\u00a0·\u00a0MOV\u00a0·\u00a0WebM';
 
 /**

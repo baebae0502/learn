@@ -28,11 +28,12 @@ function setup(over: Partial<TagActionDeps> = {}, items = ITEMS, start: Organize
       remove: vi.fn(async () => {}),
       assign: vi.fn(async ({ itemIds }) => itemIds.length),
       unassign: vi.fn(async ({ itemIds }) => itemIds.length),
-      togglePosition: vi.fn(async ({ position }) => ({ tagId: snapshot.tags.find((x) => x.position === position)!.id, assigned: true })),
+      togglePosition: vi.fn(async ({ position, itemIds }) => ({ tagId: snapshot.tags.find((x) => x.position === position)!.id, assigned: true, itemIds })),
     },
     confirm: vi.fn(async () => true),
     model: () => buildOrganizeModel(snapshot, items),
     patch: vi.fn((update: (s: OrganizeSnapshot) => OrganizeSnapshot) => void (snapshot = update(snapshot))),
+    expectEcho: vi.fn(() => vi.fn()),
     leaveFilter: vi.fn(),
     opener: () => null,
     failed: vi.fn(),
@@ -233,9 +234,37 @@ describe('1–8 (spec 4.2)', () => {
     await actions.togglePosition(3, ['i3', 'i4']);
     expect(deps.tags.togglePosition).toHaveBeenCalledExactlyOnceWith({ position: 3, itemIds: ['i3', 'i4'] });
     expect(snapshot().tagged['imp']).toEqual(['i1', 'i2', 'i3', 'i4']);
-    deps.tags.togglePosition = vi.fn(async () => ({ tagId: 'imp', assigned: false }));
+    deps.tags.togglePosition = vi.fn(async () => ({ tagId: 'imp', assigned: false, itemIds: ['i1', 'i2'] }));
     await actions.togglePosition(3, ['i1', 'i2']);
     expect(snapshot().tagged['imp']).toEqual(['i3', 'i4']);
+  });
+  it('patches with the items the database says changed, and waits for its notice instead of reading the snapshot again', async () => {
+    const { actions, deps, snapshot } = setup();
+    deps.tags.togglePosition = vi.fn(async () => ({ tagId: 'imp', assigned: true, itemIds: ['i3'] }));
+    await actions.togglePosition(3, ['i1', 'i3']); // i1 had it already
+    expect(deps.expectEcho).toHaveBeenCalledExactlyOnceWith(['i1', 'i3']);
+    expect(snapshot().tagged['imp']).toEqual(['i1', 'i2', 'i3']);
+  });
+  it('withdraws the expectation when no notice will come: a null reply, a refused call, or no item changed', async () => {
+    const cancels: Array<ReturnType<typeof vi.fn>> = [];
+    const expectEcho = vi.fn(() => {
+      const c = vi.fn();
+      cancels.push(c);
+      return c;
+    });
+    const { actions, deps } = setup({ expectEcho });
+    deps.tags.togglePosition = vi.fn(async () => ({ tagId: 'imp', assigned: true, itemIds: ['i3'] }));
+    await actions.togglePosition(3, ['i3']);
+    expect(cancels[0]).not.toHaveBeenCalled(); // positive control: a change keeps it
+    deps.tags.togglePosition = vi.fn(async () => null);
+    await actions.togglePosition(3, ['i1']);
+    expect(cancels[1]).toHaveBeenCalledTimes(1);
+    deps.tags.togglePosition = vi.fn(async () => Promise.reject(new Error('x')));
+    await actions.togglePosition(3, ['i1']);
+    expect(cancels[2]).toHaveBeenCalledTimes(1);
+    deps.tags.togglePosition = vi.fn(async () => ({ tagId: 'imp', assigned: true, itemIds: [] }));
+    await actions.togglePosition(3, ['i1']);
+    expect(cancels[3]).toHaveBeenCalledTimes(1);
   });
   it('an empty selection is nothing, and a database that finds no target says the slot is empty', async () => {
     const { actions, deps } = setup();

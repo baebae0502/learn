@@ -6,17 +6,32 @@ import { COMMANDS, menuItemId, type CommandArgs, type CommandId } from '../../pa
 import type { LearnApi, UpdateMetadataInput } from '../../packages/domain/src/ipc';
 import type { JobProgress } from '../../packages/domain/src/backup';
 import type { ImportQueueState, ImportReport, LibraryCheck, LibraryItem, StorageMode } from '../../packages/domain/src/library';
-import type { OrganizeSnapshot } from '../../packages/domain/src/organize';
+import { unpackOrganize, type OrganizeSnapshot } from '../../packages/domain/src/organize';
 import { TAG_COLORS, type TagColorId } from '../../packages/domain/src/tag-colors';
 import { settingsContentHeight } from '../../apps/desktop/src/main/settings-geometry';
 import type { FsyncProbeInput, FsyncProbeResult, SeedAssetsInput, SeedAssetsResult } from '../../apps/desktop/src/main/test-hooks';
+import type { SeedBodyTextInput } from '../../apps/desktop/src/main/text/seed-body-text';
 import { compareShots, isTranslucent, sidebarFallback, type Pixels } from './shot-compare';
+
+/** What the image reader shows (viewers/readerScope.tsx learnImageHook): its state, whose it is, and the picture point at the stage's centre. */
+export interface ImageReaderState {
+  status: 'loading' | 'shown' | 'error';
+  zoom: 'fit' | 'width' | number;
+  scale: number;
+  rotation: 0 | 90 | 180 | 270;
+  natural: { width: number; height: number } | null;
+  itemId: string;
+  cx: number;
+  cy: number;
+}
 
 declare global {
   interface Window {
     learn: LearnApi;
     /** The renderer's E2E switch (library/useImportQueue.ts): importPaths' runs show no busy screen and no toast. */
     __learnQuietImports?: number;
+    /** E2E only: the image reader of the shown tab, or of the tab of `itemId` (a hidden one too). */
+    __learnImage?: { getState(itemId?: string): ImageReaderState | null };
   }
 }
 
@@ -125,12 +140,15 @@ export function mainWindow(app: ElectronApplication) {
 
 /**
  * Every window by its `?window=` kind, sorted, with " (hidden)" after one not on screen — e.g. ['main', 'settings (hidden)']:
- * the settings window main prepares ahead of ⌘, is there from launch on.
+ * the settings window main prepares ahead of ⌘, is there from launch on. The ⌘/ sheet window main keeps prepared, hidden,
+ * is left out: it comes and goes a second after each ⌘/ sheet closes and is made again at a main window's first idle, so no
+ * count of windows could rely on it. While it loads it has no URL yet, so a hidden window with no kind is left out too.
  */
 export const windowKinds = (app: ElectronApplication): Promise<string[]> =>
   app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()
       .filter((w) => !w.isDestroyed() && !w.webContents.isDestroyed())
+      .filter((w) => w.isVisible() || /[?&]window=(?!sheet\b)\w+/.test(w.webContents.getURL()))
       .map((w) => `${/[?&]window=(\w+)/.exec(w.webContents.getURL())?.[1] ?? ''}${w.isVisible() ? '' : ' (hidden)'}`)
       .sort(),
   );
@@ -146,6 +164,13 @@ export async function settingsPreparedState(app: ElectronApplication): Promise<'
     if (w.webContents.isLoading()) return 'loading';
     return (await w.webContents.executeJavaScript("document.documentElement.dataset.sized === '1'", false)) === true ? 'ready' : 'unsized';
   });
+}
+
+/** Whether the ⌘/ sheet window main prepares ahead (hidden) has loaded its page and waits for its payload. */
+export async function sheetPrepared(app: ElectronApplication): Promise<boolean> {
+  return app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows().some((x) => !x.isDestroyed() && !x.webContents.isDestroyed() && !x.isVisible() && x.webContents.getURL().includes('window=sheet') && !x.webContents.isLoading()),
+  );
 }
 
 /** Whether the settings window main prepares once the main window is idle exists, loaded and measured (data-sized). */
@@ -546,14 +571,28 @@ async function sheetShownAtSize(app: ElectronApplication, page: Page): Promise<v
     .poll(
       async () => {
         const shown = await app.evaluate(({ BrowserWindow }, url) => {
-          const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL() === url);
-          return w?.isVisible() ? w.getContentSize().join('x') : null;
+          // The ⌘/ sheet window made ahead has the same address, hidden: the one on screen is meant.
+          const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed() && x.isVisible() && x.webContents.getURL() === url);
+          return w ? w.getContentSize().join('x') : null;
         }, page.url());
         return shown !== null && shown === (await page.evaluate(() => `${innerWidth}x${innerHeight}`));
       },
       { message: 'the sheet is shown at its measured size' },
     )
     .toBe(true);
+}
+
+/**
+ * The sheet pages that have a sheet in them (their root rendered): the ⌘/ sheet window main keeps prepared has the same
+ * address and an empty page until a sheet opens in it.
+ */
+export async function openSheetPages(app: ElectronApplication): Promise<Page[]> {
+  const out: Page[] = [];
+  for (const p of app.windows()) {
+    if (p.isClosed() || !p.url().includes('window=sheet')) continue;
+    if ((await p.locator('[data-sheet-root]').count().catch(() => 0)) > 0) out.push(p);
+  }
+  return out;
 }
 
 /**
@@ -567,11 +606,22 @@ async function sheetShownAtSize(app: ElectronApplication, page: Page): Promise<v
  * ours has the focus (the app itself is not the active one, which macOS 14+ may refuse to change), shown is enough.
  */
 export async function expectWindow(app: ElectronApplication, kind: 'settings' | 'sheet', trigger: () => Promise<unknown>): Promise<Page> {
-  // ⌘, shows the settings window main prepared when there is one; every sheet is a new window.
-  const prepared = kind === 'settings' ? app.windows().find((p) => !p.isClosed() && p.url().includes('window=settings')) : undefined;
-  const opened = prepared ? null : app.waitForEvent('window', { timeout: 15_000 });
+  // ⌘, shows the settings window main prepared when there is one. A sheet is a page whose root has rendered: the ⌘/ sheet
+  // is the window main prepared (its page holds the payload until the sheet opens), any other a new window.
+  // The settings window is found by its address, not as the next new window: main may make the next ⌘/ sheet window
+  // ahead at the same moment, and that one would come first.
+  const settingsPage = () => app.windows().find((p) => !p.isClosed() && p.url().includes('window=settings'));
+  const sheetsBefore = kind === 'sheet' ? await openSheetPages(app) : [];
   await trigger();
-  const page = prepared ?? (await opened!);
+  let page: Page | undefined;
+  if (kind === 'sheet') {
+    await expect.poll(async () => (await openSheetPages(app)).some((p) => !sheetsBefore.includes(p)), { message: 'a new sheet window', timeout: 15_000 }).toBe(true);
+    page = (await openSheetPages(app)).find((p) => !sheetsBefore.includes(p))!;
+  } else {
+    await expect.poll(() => settingsPage() !== undefined, { message: 'a settings window', timeout: 15_000 }).toBe(true);
+    page = settingsPage();
+  }
+  if (page === undefined) throw new Error('no window');
   await expect.poll(() => page.url(), { message: `a ${kind} window` }).toContain(`window=${kind}`);
   await page.locator(kind === 'sheet' ? '[data-sheet-root]' : '[data-settings-root]').waitFor();
   if (kind === 'sheet') await sheetShownAtSize(app, page);
@@ -760,7 +810,8 @@ export function seedRows(count: number, seed = 1, base = Date.parse('2026-10-01T
 
 /**
  * Adds `count` items that share `from`'s file — one managed copy, one transaction — through main's E2E hook.
- * Resolves once main has written them; the list follows its one libraryChanged.
+ * Resolves once main has written them. The list follows its one libraryChanged through the throttled import read (up to
+ * IMPORT_READ_GAP_MS after the last one, at an idle moment), so a caller that uses the table waits for `toolbar-count`.
  */
 export async function seedLibrary(app: ElectronApplication, opts: { count: number; from: LibraryItem; seed?: number }): Promise<void> {
   const input = { fromItemId: opts.from.id, rows: seedRows(opts.count, opts.seed) };
@@ -1052,6 +1103,49 @@ export async function sheetReleased(page: Page): Promise<void> {
   await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => done())));
 }
 
+/**
+ * What the page and main have already been told has been applied: one round trip to main (what was sent before it is answered
+ * before it) and `frames` paint frames. For the check that something did NOT happen, after the same path was seen to make it
+ * happen: it replaces a guessed pause with the point after which a late effect would already have shown.
+ */
+export async function settled(page: Page, frames = 3): Promise<void> {
+  await page.evaluate(async (n) => {
+    await window.learn.ui.windowState();
+    for (let i = 0; i < n; i++) await new Promise<void>((done) => requestAnimationFrame(() => done()));
+  }, frames);
+}
+
+/**
+ * Resolves once `frames` paint frames in a row passed with no scroll event on `selector` (default the PDF stage) and no DOM change
+ * under it: what the stage did late (pdf.js focusing a page, a place applied) has been done. The check that something did NOT
+ * happen goes after this, and after the same event was seen to happen once.
+ */
+export async function quiet(page: Page, selector = '[data-testid="pdf-scroll"]', frames = 12): Promise<void> {
+  await page.evaluate(
+    ({ selector, frames }) =>
+      new Promise<void>((done) => {
+        const el = document.querySelector(selector);
+        let idle = 0;
+        let total = 0;
+        const reset = () => {
+          idle = 0;
+        };
+        el?.addEventListener('scroll', reset, { passive: true });
+        const observer = new MutationObserver(reset);
+        if (el) observer.observe(el, { subtree: true, childList: true, attributes: true });
+        const tick = () => {
+          if (++idle >= frames || ++total > 180) {
+            el?.removeEventListener('scroll', reset);
+            observer.disconnect();
+            done();
+          } else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+    { selector, frames },
+  );
+}
+
 /** 목록으로 돌아가기 from the reader, once a sheet closed before it has let go of the window. */
 export async function backFromReader(page: Page): Promise<void> {
   await sheetReleased(page);
@@ -1063,6 +1157,9 @@ export async function closeReaderTab(page: Page): Promise<void> {
   await sheetReleased(page);
   await page.locator('.tab-item.is-active [data-testid="tab-close"]').click();
 }
+
+/** The image reader's state: the shown tab's, or the tab of `itemId` (hidden or not); null where no picture is open. */
+export const imageState = (page: Page, itemId?: string): Promise<ImageReaderState | null> => page.evaluate((id) => window.__learnImage!.getState(id ?? undefined), itemId ?? null);
 
 /** The tab strip's first tab: the library (a window with no reader tab has no strip, so none). */
 export const libraryTab = (page: Page): Locator => page.locator('[data-testid="tab"][data-item-id="library"]');
@@ -1317,7 +1414,7 @@ export async function setTagColor(page: Page, tagId: string, color: TagColorId |
 export async function organizeSnapshot(page: Page): Promise<OrganizeSnapshot> {
   const r = await page.evaluate(() => window.learn.library.organize());
   if (!r.ok) throw new Error(`library.organize failed: ${r.code}`);
-  return r.data;
+  return unpackOrganize(r.data);
 }
 
 /** Moves items to the trash through the page's API (library.trash), as ⌘⌫ does; the number that moved. */
@@ -1471,9 +1568,9 @@ export async function makeTags<const S extends ReadonlyArray<{ name: string; slo
  * `count` PDFs that differ by one trailing comment: each imports as an item of its own, with its own file and revision
  * (items the E2E hook seeds share one revision, so a page-count probe would be answered from the cache).
  */
-export function distinctPdfs(dir: string, count: number): string[] {
+export function distinctPdfs(dir: string, count: number, source = 'sample.pdf'): string[] {
   fs.mkdirSync(dir, { recursive: true });
-  const bytes = fs.readFileSync(path.join(FIXTURES, 'sample.pdf'));
+  const bytes = fs.readFileSync(path.join(FIXTURES, source));
   return Array.from({ length: count }, (_, i) => {
     const file = path.join(dir, `distinct-${String(i + 1).padStart(2, '0')}.pdf`);
     fs.writeFileSync(file, Buffer.concat([bytes, Buffer.from(`\n% copy ${i + 1}\n`)]));
@@ -1494,10 +1591,8 @@ export async function removeChip(chip: Locator): Promise<void> {
  * measured size. A sheet a test asks for is expectWindow's.
  */
 export async function waitForSheet(app: ElectronApplication): Promise<Page> {
-  const isSheet = (p: Page) => !p.isClosed() && p.url().includes('window=sheet');
-  await expect.poll(() => app.windows().some(isSheet), { message: 'a sheet window', timeout: 20_000 }).toBe(true);
-  const page = app.windows().find(isSheet)!;
-  await page.locator('[data-sheet-root]').waitFor();
+  await expect.poll(async () => (await openSheetPages(app)).length > 0, { message: 'a sheet window', timeout: 20_000 }).toBe(true);
+  const page = (await openSheetPages(app))[0]!;
   await sheetShownAtSize(app, page);
   return page;
 }
@@ -1725,3 +1820,46 @@ export async function selectInPage(page: Page, sentence: string, pageNumber = 1)
  */
 export const CLOSE_NOISE = /^Unable to get page .*Transport destroyed/s;
 export const isCloseNoise = (text: string): boolean => CLOSE_NOISE.test(text);
+
+// ---- M7c body text (main/text, the utility-process worker) --------------------------------------------------------------
+
+export interface ExtractFileResult {
+  outcome: { kind: 'done'; pages: number; truncated: boolean } | { kind: 'failed'; reason: 'locked' | 'damaged' | 'too-large' } | { kind: 'crashed' | 'timeout' | 'bad-message' | 'stopped' };
+  opened: number | null;
+  batches: Array<{ from: number; texts: string[] }>;
+}
+type WithTextHooks = {
+  __learnTest: { extractFile(input: { file: string; startPage?: number; limits?: Partial<{ maxPages: number; maxPageChars: number; maxDocChars: number; maxFileBytes: number }> }): Promise<ExtractFileResult> };
+};
+/** Reads a PDF's body text through the app's worker, without writing to the library. */
+export const extractFile = (
+  app: ElectronApplication,
+  input: Parameters<WithTextHooks['__learnTest']['extractFile']>[0],
+): Promise<ExtractFileResult> => app.evaluate((_e, arg) => (globalThis as unknown as WithTextHooks).__learnTest.extractFile(arg), input);
+
+// ---- M7c body text scheduling (main/text/scheduler.ts, main/test-hooks.ts) -----------------------------------------------
+
+type TextJobRow = { sha256: string; state: string; attempts: number; nextPage: number; error: string | null };
+type WithTextSchedulerHooks = {
+  __learnTest: {
+    seedBodyText(input: SeedBodyTextInput): { itemIds: string[]; sha256: string[] };
+    textExtraction(mode: 'pause' | 'resume' | 'now'): void;
+    textIdle(): Promise<void>;
+    pageTextCount(input: { itemId: string } | { sha256: string }): number;
+    textJobs(): TextJobRow[];
+    textHold(input: { afterPages: number | null }): void;
+    textHeld(): boolean;
+    textStats(): { batchMs: number[]; pagesWritten: number; activeMs: number };
+  };
+};
+/** PDF items with their body text already stored, without waiting for the worker; announces one import. */
+export const seedBodyText = (app: ElectronApplication, input: SeedBodyTextInput) => app.evaluate((_e, arg) => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.seedBodyText(arg), input);
+/** Under E2E the body-text scheduler starts paused: 'now' runs it without the five-second delay (the startup check is still waited for). */
+export const textExtraction = (app: ElectronApplication, mode: 'pause' | 'resume' | 'now') => app.evaluate((_e, arg) => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textExtraction(arg), mode);
+/** Resolves when no PDF outside the trash has a queued job and nothing runs. */
+export const textIdle = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textIdle());
+export const pageTextCount = (app: ElectronApplication, input: { itemId: string } | { sha256: string }) => app.evaluate((_e, arg) => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.pageTextCount(arg), input);
+export const textJobs = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textJobs());
+export const textHold = (app: ElectronApplication, afterPages: number | null) => app.evaluate((_e, arg) => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textHold({ afterPages: arg }), afterPages);
+export const textHeld = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textHeld());
+export const textStats = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textStats());

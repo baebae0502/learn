@@ -16,7 +16,7 @@ kind별 타입 유니언이 정본이고, 좌표는 ADR-0002 그대로다. 그 �
 
 ```ts
 {
-  kind,          // 'pdf' | 'video' | 'epub' | 'web' | 'slide'            (ADR-0002)
+  kind,          // 'pdf' | 'video' | 'epub' | 'web' | 'slides'           (ADR-0002)
                  // | 'image' | 'audio' | 'markdown' | 'link' | 'code'    (새로)
   revisionId,    // 불변 revision (ADR-0002)
   precision,     // 'item' | 'span' | 'region'
@@ -91,7 +91,7 @@ kind별 타입 유니언이 정본이고, 좌표는 ADR-0002 그대로다. 그 �
 | M10 | 기억·복습: `study_events`·`concepts`·`memory_claims`·`memory_evidence`·`reviews`·`review_attempts` |
 
 - 새 kind 값을 `anchors.kind` CHECK에 M7에서 한 번에 넣을지, kind를 처음 쓰는 마일스톤마다 넣을지는 M7 스파이크에서 정한다.
-- `extracted_chunks`(인용 가능한 최소 단위, FTS 연동)의 시점은 검색 ADR(ADR-0008, 예약)과 함께 정한다.
+- `extracted_chunks`(인용 가능한 최소 단위, FTS 연동)의 시점은 검색 ADR(ADR-0008, 예약)과 함께 정한다. → M7c의 [ADR-0008](0008-body-search.md)(본문 검색, 2026-11-10)이 쪽 글 표와 FTS를 정하고 `extracted_chunks`는 T1로 미뤘다(그 ADR 8절).
 
 ### 7. 채택 조건 — M7 첫 작업의 스파이크
 - (1) PDF 선택 → 앵커 → 확대·회전 뒤 다시 표시(AC03, 허용 오차 2pt). (2) Claude의 쪽 단위 인용 → 앵커. T1의 인용은 Citations API가 아니라, 프롬프트로 받은 인용을 그 턴의 도구 기록으로 검증한 것이다(ADR-0010 3절).
@@ -121,11 +121,11 @@ ADR-0002는 그대로 유효하다: 불변 revision 귀속, `schema_version`, `o
 | 열린 질문 | 판정 | 근거 |
 |---|---|---|
 | `text.position` 단위 | **UTF-16 코드 단위, 쪽 글 안 오프셋**(항목을 이은 문자열 기준, 줄 끝은 `\n`). W3C 변환기가 code point로 바꾼다 | 두 시험 모두 이 단위로 통과: 선택의 오프셋이 DOM Range의 `(span, offset)`와 그대로 오가고, 인용 → 앵커의 `position`이 기대 오프셋과 같다 |
-| `pdf`의 `precision` | `span`(글 선택), `region`(영역; M9 펜, M7b 이미지 영역). `item`은 쓰지 않는다 | 예상대로 |
+| `pdf`의 `precision` | `span`(글 선택), `region`(영역; M9 펜, M7c 이미지 영역). `item`은 쓰지 않는다 | 예상대로 |
 | `text` 필수 여부 | `span`은 `text.quote` 필수, `region`은 없음. `text.position`은 선택 | 예상대로(`pdfAnchor`가 검증) |
 | locator의 `quote` 와 `anchors.quote` 열 | locator의 `quote`는 `text.quote`로 옮긴다. `anchors.quote` 열은 표시·검색용 `exact`의 사본이다 | 예상대로 |
-| `'slides'`/`'slide'` | 한 이름 `'slides'`로 맞추되 **M7b가 첫 새 kind(`image`)와 함께 `kind` CHECK를 한 번에 바꾼다.** 도메인의 `slideAnchor`는 그때까지 `'slide'`다 | 예상과 다름(P-11): 마이그레이션 안의 `anchors` 재작성은 `annotations.anchor_id … ON DELETE RESTRICT`가 행이 있는 서재에서 막는다(앱의 마이그레이션은 외래 키를 켠 트랜잭션 안에서 돈다). M7b 때도 `annotations`는 비어 있다(필기는 M9) |
-| 새 kind의 CHECK 시점 | kind를 처음 쓰는 마일스톤이 좌표 zod와 함께 더한다(M7b `image`). M7a는 kind 목록을 바꾸지 않는다 | 예상대로. 그래서 **마이그레이션 003은 열만 더한다**: `ALTER TABLE anchors ADD COLUMN precision TEXT NOT NULL DEFAULT 'span' CHECK (precision IN ('item','span','region'))`와 `ADD COLUMN text_json TEXT` |
+| `'slides'`/`'slide'` | 한 이름 `'slides'`로 맞추되 **M7c가 첫 새 kind(`image`)와 함께 `kind` CHECK를 한 번에 바꿨다**(마이그레이션 004). 도메인의 `slideAnchor`도 그때 `'slides'`가 됐다 | 예상과 다름(P-11): 마이그레이션 안의 `anchors` 재작성은 `annotations.anchor_id … ON DELETE RESTRICT`가 행이 있는 서재에서 막는다(앱의 마이그레이션은 외래 키를 켠 트랜잭션 안에서 돈다). M7c 때도 `annotations`는 비어 있다(필기는 M9) |
+| 새 kind의 CHECK 시점 | kind를 처음 쓰는 마일스톤이 좌표 zod와 함께 더한다(M7c `image`). M7a는 kind 목록을 바꾸지 않는다 | 예상대로. 그래서 **마이그레이션 003은 열만 더한다**: `ALTER TABLE anchors ADD COLUMN precision TEXT NOT NULL DEFAULT 'span' CHECK (precision IN ('item','span','region'))`와 `ADD COLUMN text_json TEXT` |
 
 **quad 점 순서(P-2)**: `[x1,y1,…,x4,y4]`는 **왼쪽 위 · 오른쪽 위 · 왼쪽 아래 · 오른쪽 아래**, 회전 전 쪽 공간(PDF 주석 QuadPoints의 실무 순서). 선택 사각형은 쪽 뷰포트의 `convertToPdfPoint`로 바꿔 축에 맞춘 상자로 만들고, 한 줄의 조각은 한 quad로 잇는다. 회전된 뷰어에서도 이 순서가 그대로여서 회전은 거리에 영향을 주지 않았다.
 
@@ -151,3 +151,11 @@ ADR-0002는 그대로 유효하다: 불변 revision 귀속, `schema_version`, `o
 ### Mac 러너 값 (중간 `e2e`, run 41740397794, a2e2969)
 - 같은 스파이크(64칸)를 macOS 러너에서 돌렸다. 최대 **0.78 pt**(50% 확대, `korean.pdf` 1쪽), 100%에서는 0이다. 허용 2 pt 안이다.
 - **러너 화면은 1024×768 @1x(DPR 1)다**(`docs/mac-verification.md` 러너 사양). 그래서 Retina(DPR 2)의 여유는 이 러너에서 잴 수 없다. 스파이크의 오차는 CSS 픽셀 하나가 몇 pt인지에 비례한다 — 1/DPR로 줄어든다. 따라서 DPR 2는 오차를 줄이기만 할 수 있다(Linux @1x 최대 1.51 pt가 위쪽 경계다). 실제 Retina 값은 실기에서 확인한다(`docs/next-session.md` "M7a 리더 결과"의 실기 목록).
+
+## M7c 결과 (2026-11)
+
+| 항목 | 결정 | 예상과 비교 |
+|---|---|---|
+| 새 kind | `image` 하나만 더했다. `slides`는 004가 `'slide'`를 바꾼 이름이다 | 예상대로(위 판정 표의 "M7b가 …"는 M7c로 정정) |
+| `image` 좌표 | `rect` = `[x, y, w, h]`, 회전 전 이미지(EXIF 방향을 적용해 그린 0° 그림)의 0–1 좌표, 왼쪽 위 원점. 보기 회전은 좌표에 영향이 없다 | 새로 정함 |
+| `precision` | `region`만(이미지 전체는 `[0,0,1,1]`). `text`는 없고 `anchors.quote` 열은 `NULL` | 판정 표의 region 규칙 그대로 |

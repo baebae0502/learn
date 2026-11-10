@@ -22,7 +22,7 @@ export interface WindowState {
 
 /** Why `libraryChanged` was sent; the renderer decides from it what to read again. */
 export type LibraryChangeReason =
-  | 'import' | 'relink' | 'metadata' | 'trash' | 'restore' | 'purge' | 'collections' | 'tags' | 'availability' | 'opened' | 'position';
+  | 'import' | 'relink' | 'metadata' | 'trash' | 'restore' | 'purge' | 'collections' | 'tags' | 'availability' | 'opened' | 'position' | 'text';
 
 export interface LearnEventMap {
   /** A menu-bar click or accelerator; `args` is the value of a submenu row (정렬 기준 › 연도). */
@@ -34,6 +34,7 @@ export interface LearnEventMap {
    * `collections` / `tags`: the collection tree or memberships / the tag list or assignments changed.
    * `availability`: a file was found missing (or back) when an item was opened or right-clicked.
    * `opened`: the reader opened the item, so its `openedAt` changed.
+   * `text`: the body text of these items' PDFs moved on (read, failed, given up); their detail and the body search read again.
    * `purge`: items (`itemIds`) or collections left the trash for good (영구 삭제, 휴지통 비우기); no ids when only collections did.
    */
   libraryChanged: {
@@ -63,4 +64,6 @@ export interface LearnEventMap {
   'recovery:show': Record<string, never>;
   /** A backup (or a restore, Task 10) on main's work line: its state at most ten times a second, and its end (P-20). */
   'job:progress': JobProgress;
+  /** How many of the PDFs outside the trash have an answer for their body text (spec 5.8); at most once a second while it works, and once more at the end. */
+  'search:progress': { done: number; total: number };
 }

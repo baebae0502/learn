@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Record the M7b demo on Linux at @2x, as a supplement to the macOS recording (a script, not a CI step):
+# Record the M7c demo on Linux at @2x, as a supplement to the macOS recording (a script, not a CI step):
 # Xvfb, the @demo test at full pace (LEARN_DEMO_PACE=1) with --force-device-scale-factor=2, and ffmpeg x11grab of
 # exactly the window, started and stopped by the test (capture.ts startX11Recording); then scripts/finish-demo.sh embeds
 # the chapters and burns in the corner tag "Linux 보조 녹화 · 창 테두리 없음 (창 관리자 없음)".
@@ -10,9 +10,9 @@
 # while evidence-results/ holds anything, unless --force.
 #
 # Output (gitignored): evidence/demo-linux/<UTC timestamp>/
-#   m7b-demo-linux.mp4          the video (H.264 yuv420p CRF 18, 30 fps), chapters embedded, the corner tag burned in
-#   m7b-demo.chapters.raw.txt/.json the chapter list on the raw recording's timeline, input, screen and window bounds, notes
-#   m7b-demo-linux.chapters.txt/.json the chapters on the finished video's own timeline (finish-demo.sh)
+#   m7c-demo-linux.mp4          the video (H.264 yuv420p CRF 18, 30 fps), chapters embedded, the corner tag burned in
+#   m7c-demo.chapters.raw.txt/.json the chapter list on the raw recording's timeline, input, screen and window bounds, notes
+#   m7c-demo-linux.chapters.txt/.json the chapters on the finished video's own timeline (finish-demo.sh)
 #   frames/ch-NN.png           one frame per chapter: 3 s in, or halfway through a shorter chapter
 #   run.log, build.log         the Playwright run and the build
 # Needs Xvfb, xdpyinfo, ffmpeg (with x11grab and libx264), ffprobe, node, pnpm and python3. Builds the app first.
@@ -98,30 +98,42 @@ STATUS=${PIPESTATUS[0]}
 set -e
 
 SRC="evidence-results/$LABEL"
-for f in m7b-demo.chapters.raw.txt m7b-demo.chapters.json; do [[ -f $SRC/$f ]] && cp "$SRC/$f" "$OUT/"; done
-if [[ ! -s $SRC/m7b-demo.mp4 ]]; then
+for f in m7c-demo.chapters.raw.txt m7c-demo.chapters.json; do [[ -f $SRC/$f ]] && cp "$SRC/$f" "$OUT/"; done
+if [[ ! -s $SRC/m7c-demo.mp4 ]]; then
   echo "no recording in $SRC (test exit $STATUS)" >&2
   exit 1
 fi
-VIDEO="$OUT/m7b-demo-linux.mp4"
-scripts/finish-demo.sh "$SRC/m7b-demo.mp4" "$OUT/m7b-demo.chapters.json" "$VIDEO" "Linux 보조 녹화 · 창 테두리 없음 (창 관리자 없음)"
-rm -f "$SRC/m7b-demo.mp4"
+VIDEO="$OUT/m7c-demo-linux.mp4"
+scripts/finish-demo.sh "$SRC/m7c-demo.mp4" "$OUT/m7c-demo.chapters.json" "$VIDEO" "Linux 보조 녹화 · 창 테두리 없음 (창 관리자 없음)"
+rm -f "$SRC/m7c-demo.mp4"
 
 ffprobe -v error -select_streams v:0 -show_entries stream=width,height,pix_fmt,r_frame_rate,codec_name -show_entries format=duration -of default=nw=1 "$VIDEO" | tee "$OUT/ffprobe.txt"
 ffprobe -v error -show_chapters -of csv=p=0 "$VIDEO" | wc -l | xargs -I{} echo "embedded chapters: {}" | tee -a "$OUT/ffprobe.txt"
 
 # One frame per chapter: 3 s in, or halfway to the next chapter when it is shorter (n3).
 DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$VIDEO")
-SELECT=$(python3 -I - "${VIDEO%.*}.chapters.json" "$DURATION" <<'PY'
+PICKS=$(python3 -I - "${VIDEO%.*}.chapters.json" "$DURATION" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1], encoding='utf-8'))
 end = float(sys.argv[2])
 starts = [c['start'] for c in d['chapters']]  # on the finished video's timeline
 picks = [min(s + 3, (s + (starts[i + 1] if i + 1 < len(starts) else end)) / 2) for i, s in enumerate(starts)]
-print('+'.join(f'gte(t,{t:.4f})*lt(t,{t + 1 / 30:.4f})' for t in picks))  # [t, t + 1 frame): exactly one frame each
+print(' '.join(f'{t:.4f}' for t in picks))
 PY
 )
-ffmpeg -v error -y -i "$VIDEO" -vf "select='$SELECT'" -fps_mode vfr -start_number 1 "$OUT/frames/ch-%02d.png"
+# One seek per chapter, so ch-NN is chapter NN: a select window one frame wide could miss a frame of the trimmed video's
+# shifted timestamps and number the rest one off.
+N=0
+for T in $PICKS; do
+  N=$((N + 1))
+  ffmpeg -v error -y -ss "$T" -i "$VIDEO" -frames:v 1 "$OUT/frames/$(printf 'ch-%02d.png' "$N")"
+done
+# A seek past the video's end writes nothing and still exits 0: every chapter must have its frame.
+GOT=$(find "$OUT/frames" -maxdepth 1 -name 'ch-*.png' -size +0 | wc -l)
+if (( GOT != N )); then
+  echo "chapter frames: $GOT of $N written" >&2
+  exit 1
+fi
 
 # The window fills the frame: the outermost 2 px on each side are the app's, not the black X root.
 EDGES=$(for crop in "iw:2:0:0" "iw:2:0:ih-2" "2:ih:0:0" "2:ih:iw-2:0"; do

@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { FIXTURES, importPaths, launch, menuSnapshot, recordedPopupPoints, recordedPopups, rowByTitle, runMenuCommand, selectRows, stubContextMenu, type MenuNode } from './helpers';
+import { FIXTURES, assignTag, createTag, importPaths, launch, menuSnapshot, quietLibraryCalls, recordedPopupPoints, recordedPopups, rowByTitle, runMenuCommand, selectRows, stubContextMenu, type MenuNode } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const dirs = (i: { outputPath(...p: string[]): string }) => [i.outputPath('library'), i.outputPath('userdata')] as const;
@@ -158,6 +158,28 @@ test('a collection or tag context menu has no entries until a command lists its 
     expect(answers).toEqual([{ ok: true, data: null }, { ok: true, data: null }]);
     expect(await recordedPopups(app)).toEqual([]);
     await expect(page.getByTestId('action-error')).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the menu bar is rebuilt for a new tag, not for tagging items (m-1)', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await importInOrder(page, testInfo.outputPath('src'), ['alpha']);
+    const itemId = (await page.getByTestId('item-row').first().getAttribute('data-item-id')) ?? '';
+    expect(itemId).not.toBe('');
+    const builds = () => app.evaluate(() => (globalThis as { __learnMenuBuilds?: number }).__learnMenuBuilds ?? 0);
+    await quietLibraryCalls(app);
+    const before = await builds();
+    // positive control: a new tag rebuilds the menu bar
+    const tagId = await createTag(page, 'menu-tag');
+    await expect.poll(builds).toBe(before + 1);
+    await quietLibraryCalls(app);
+    // then filing an item under it does not
+    expect(await assignTag(page, tagId, [itemId])).toBe(1);
+    await quietLibraryCalls(app);
+    expect(await builds()).toBe(before + 1);
   } finally {
     await app.close();
   }

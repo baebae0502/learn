@@ -18,10 +18,11 @@ exposeSurface({
     settings: ['get', 'set'],
     prefs: ['get', 'set'],
     reader: ['open', 'getPosition', 'savePosition'],
+    search: ['body', 'pages', 'progress'],
     backup: ['create', 'cancel', 'restore'],
     translation: ['translate', 'cancel'],
     ui: ['showContextMenu', 'windowState', 'reportContext', 'confirm', 'confirmPurge', 'showShortcuts', 'openSettings', 'themeShown', 'showColumnMenu', 'reportIdle'],
   },
-  events: ['menuCommand', 'libraryChanged', 'windowState', 'settingsChanged', 'prefsChanged', 'nativeMenu', 'demoShortcut', 'import:progress', 'import:finished', 'item:openRequested', 'recovery:show', 'job:progress'],
+  events: ['menuCommand', 'libraryChanged', 'windowState', 'settingsChanged', 'prefsChanged', 'nativeMenu', 'demoShortcut', 'import:progress', 'import:finished', 'item:openRequested', 'recovery:show', 'job:progress', 'search:progress'],
   pathForFile: true,
 });

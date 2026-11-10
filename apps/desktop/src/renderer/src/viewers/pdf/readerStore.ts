@@ -3,6 +3,7 @@ import type { EventBus, PDFLinkService, PDFViewer } from 'pdfjs-dist/web/pdf_vie
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type { ReadingLocator, ReaderNav, ScrollModeName, SpreadModeName } from '@learn/domain';
 import { emptyHistory, type History } from './history';
+import type { ImageZoom, Rotation, Size } from '../image/imageFit';
 
 export type { ReaderNav };
 
@@ -42,9 +43,10 @@ export interface PdfViewHandle {
   setZoom(zoom: ZoomValue): void;
   /**
    * Puts the viewer where it was left: the rotation, the zoom, then the page and the place in it (a saved value without
-   * them opens at the top of the page, zoomed to fit). Done in one step, so no frame shows another place.
+   * them opens at the top of the page, zoomed to fit). Done in one step, so no frame shows another place. `at: 'page'`
+   * places page `pageIndex` as a jump to it lands (a 본문 일치 row), in the saved rotation, zoom and modes.
    */
-  restore(saved: Extract<ReadingLocator, { kind: 'pdf' }> | undefined, pageIndex: number): void;
+  restore(saved: Extract<ReadingLocator, { kind: 'pdf' }> | undefined, pageIndex: number, at?: 'saved' | 'page'): void;
   /** The pages flow another way: the page in view stays in view. Horizontal also ends any spread. Not a jump (no history). */
   setScroll(mode: ScrollModeName): void;
   setSpread(mode: SpreadModeName): void;
@@ -57,15 +59,50 @@ export interface PdfViewHandle {
   linkService(): PDFLinkService | null;
 }
 
+/** A page to show once the reader is placed (a 본문 일치 row, spec 5.8), and what its find bar then searches for (one word of the query). */
+export interface PendingJump {
+  pageIndex: number;
+  query: string;
+}
+
+/**
+ * Whether a reader keeps the page a 본문 일치 row left it: not once its document cannot be opened or shown, so a later open of
+ * that tab (relinked, or mounted again) is the reader's own. A password asked for keeps it: the page shows once it opens.
+ */
+export const keepsPendingJump = (open: 'opening' | 'ready' | 'password' | 'failed', viewFailed: boolean): boolean => open !== 'failed' && !viewFailed;
+
 export const INITIAL_PDF: PdfState = { ready: false, sized: false, placed: false, pageNumber: 1, pagesCount: 0, scale: 1, zoom: 'auto', rotation: 0, scroll: 'vertical', spread: 'none' };
 
-/** Why the sidebar has no pages to list: the item is in the trash, asks for a password, or has nothing to show. */
-export type NoPages = 'trashed' | 'locked' | 'none';
+/** Why the sidebar has no pages to list: the item is in the trash, asks for a password, has nothing to show, or is a picture. */
+export type NoPages = 'trashed' | 'locked' | 'none' | 'image';
+
+/** The image reader's state: what its toolbar shows and what the commands need (a picture drawn is `shown`). */
+export interface ImageState {
+  status: 'loading' | 'shown' | 'error';
+  zoom: ImageZoom;
+  scale: number;
+  rotation: Rotation;
+  /** The picture's size as Chromium draws it at 0° (its EXIF orientation applied); null until it is decoded. */
+  natural: Size | null;
+}
+
+/** What the commands do to the open picture. */
+export interface ImageViewHandle {
+  zoomIn(): void;
+  zoomOut(): void;
+  setZoom(z: ImageZoom): void;
+  rotate(delta: 90 | -90): void;
+}
+
+export const INITIAL_IMAGE: ImageState = { status: 'loading', zoom: 'fit', scale: 1, rotation: 0, natural: null };
 
 export interface ReaderStore {
   /** null while no PDF is open. */
   pdf: PdfState | null;
   handle: PdfViewHandle | null;
+  /** null while no picture is open; its handle only once the picture is drawn. */
+  image: ImageState | null;
+  imageHandle: ImageViewHandle | null;
   /** Said by the host of the reader (the item's state) and by the PDF reader (the password): the sidebar shows the first. */
   noPages: Readonly<Record<'host' | 'reader', NoPages | null>>;
   /**
@@ -74,9 +111,17 @@ export interface ReaderStore {
    */
   history: History<PdfPlace>;
   setHistory(h: History<PdfPlace>): void;
+  /**
+   * Left by a 본문 일치 row for this tab's reader: placed at that page when it first opens, or taken there by a jump when it
+   * is already placed; then the find bar opens on the query. With the scope, so a tab whose view is not mounted gets it too.
+   */
+  pendingJump: PendingJump | null;
+  setPendingJump(j: PendingJump | null): void;
   setNoPages(source: 'host' | 'reader', reason: NoPages | null): void;
   setPdf(p: Partial<PdfState> | null): void;
   setHandle(h: PdfViewHandle | null): void;
+  setImage(p: Partial<ImageState> | null): void;
+  setImageHandle(h: ImageViewHandle | null): void;
 }
 
 /** One reader's state; the store of each document is made with its scope (viewers/readerScope). */
@@ -84,12 +129,18 @@ export function createReaderStore(): StoreApi<ReaderStore> {
   return createStore<ReaderStore>()((set) => ({
     pdf: null,
     handle: null,
+    image: null,
+    imageHandle: null,
     noPages: { host: null, reader: null },
     history: emptyHistory<PdfPlace>(),
     setHistory: (history) => set({ history }),
+    pendingJump: null,
+    setPendingJump: (pendingJump) => set({ pendingJump }),
     setNoPages: (source, reason) => set((s) => (s.noPages[source] === reason ? s : { noPages: { ...s.noPages, [source]: reason } })),
     setPdf: (p) => set((s) => ({ pdf: p === null ? null : { ...(s.pdf ?? INITIAL_PDF), ...p } })),
     setHandle: (handle) => set({ handle }),
+    setImage: (p) => set((s) => ({ image: p === null ? null : { ...(s.image ?? INITIAL_IMAGE), ...p } })),
+    setImageHandle: (imageHandle) => set({ imageHandle }),
   }));
 }
 

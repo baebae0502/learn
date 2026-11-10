@@ -1,7 +1,7 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
 import { api, unwrap } from '../api';
-import { useLearnEvent } from '../events';
+import { keys } from '../data/queries';
 import { useNow } from '../useNow';
 import { t } from '../strings';
 import { Icon } from '../ui/Icon';
@@ -9,16 +9,11 @@ import { ProgressBar } from '../ui/ProgressBar';
 import { readingLine, readingProgressView } from './readingLine';
 import { Section } from './Section';
 
-const readingKey = (itemId: string) => ['reading', itemId] as const;
-
 /** 읽기: the furthest point read as the table's progress column gives it, and where reading stopped. None for an item never opened. */
 export function ReadingSection({ itemId }: { itemId: string }) {
-  const client = useQueryClient();
   const now = useNow();
-  const position = useQuery({ queryKey: readingKey(itemId), queryFn: () => unwrap(api().reader.getPosition({ itemId })) });
-  useLearnEvent('libraryChanged', ({ reason, itemIds }) => {
-    if ((reason === 'position' || reason === 'opened') && (itemIds === undefined || itemIds.includes(itemId))) void client.invalidateQueries({ queryKey: readingKey(itemId) });
-  });
+  // Kept fresh by the always-mounted change handler (data/libraryChange.ts), also while a reader hides this panel.
+  const position = useQuery({ queryKey: keys.reading(itemId), queryFn: () => unwrap(api().reader.getPosition({ itemId })) });
   const p = position.data;
   if (!p) return null;
   const view = readingProgressView(p.progress);
@@ -33,7 +28,7 @@ export function ReadingSection({ itemId }: { itemId: string }) {
         </div>
       )}
       {view.kind === 'done' && (
-        <div className="reading-progress">
+        <div className="reading-progress" data-done="">
           <span className="inline-flag c-success" title={t.library.progressDoneLabel} data-testid="reading-done">
             <Icon icon={Check} size="sm" />
             {t.library.progressDone}

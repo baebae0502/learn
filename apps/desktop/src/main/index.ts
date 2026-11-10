@@ -1,10 +1,12 @@
 // First: ESM evaluates imports in order, so the cold-start marks module runs before anything else (its value is
 // performance.timeOrigin either way).
 import { markPerf } from './perf';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, dialog, Menu, net, session, shell, systemPreferences, webContents, type MessageBoxOptions, type OpenDialogOptions, type WebContents } from 'electron';
-import { readOrganizeSnapshot } from '@learn/db';
+import { readMenuOrganize } from '@learn/db';
+import { resolveAssetPath } from '@learn/library';
 import {
   COMMANDS, LearnError, NO_LIBRARY_VIEW, SUBMENUS, availableMenuCommands, commandById, commandLabel, sameCommandContext, toLearnError, type AppInfo, type CommandArgs, type CommandContextState, type CommandId,
   type ErrorCode, type OrganizeSnapshot,
@@ -14,6 +16,7 @@ import { aboutPanelOptions } from './about';
 import { createActivateGate } from './activate-gate';
 import { APP_SCHEME, handleAppProtocol, registerAppScheme } from './app-protocol';
 import { isDemoOverlay } from './demo';
+import { registerUncaughtLog } from './uncaught-log';
 import { DETERMINISTIC_SWITCHES, isDeterministic, isE2E, isTranslationNetIntercept } from './deterministic';
 import { createFlushGate } from './edit-flush';
 import { broadcast, onBroadcast, sendEvent } from './events';
@@ -27,6 +30,7 @@ import { createRestoreJob } from './jobs/restore-job';
 import { createDuplicateAsker } from './jobs/duplicate-asker';
 import { createImportQueue } from './jobs/import-queue';
 import { createJobLane } from './jobs/lane';
+import { createThrottle } from './jobs/throttle';
 import { createQuitGuard, type QuitGuard } from './jobs/quit-guard';
 import { createLibrarySwitch, refuseLinkedInside, type LibrarySwitch } from './library-folder';
 import { createCheckSheets, startLibraryCheck, type AutoOutcome } from './library-check';
@@ -39,6 +43,9 @@ import { hardenApp } from './security';
 import { createSettingsWindow } from './settings-window';
 import { createSheetHost, sheetHeightKey, shortcutsDigest } from './sheets';
 import { mainStrings } from './strings';
+import { createTextExtractor } from './text/extractor';
+import { forkTextWorker, pdfjsAssetsDir } from './text/fork';
+import { createTextScheduler, type TextScheduler } from './text/scheduler';
 import { installTestHooks } from './test-hooks';
 import { applyTheme, currentTheme, onThemeChange } from './theme';
 import { createThemeFollower, shownPages, type ThemeMark } from './theme-follow';
@@ -54,6 +61,9 @@ import { isSheetOpen, resyncAllWindowStates, sheetClosed, sheetShown } from './w
 import { windowUrl } from './window-url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+
+/** The body-text worker's keeper: one utility process, started by the first job and gone after thirty idle seconds. */
+const textExtractor = createTextExtractor({ fork: () => forkTextWorker(path.join(here, 'text-worker.js')) });
 
 // Same app name (and thus userData path) whether launched via `electron .` or the built entry.
 app.setName('Learn');
@@ -74,6 +84,8 @@ const devOrigin = devServerUrl ? new URL(devServerUrl).origin : null;
 /** "개발자 도구" menu item: unpackaged runs only; E2E (LEARN_E2E=1) tests the shipped menu. */
 const isDevBuild = !app.isPackaged && !isE2E(app.isPackaged, process.env);
 
+registerUncaughtLog(isE2E(app.isPackaged, process.env), process, (line) => void process.stderr.write(line));
+
 const deterministic = isDeterministic(app.isPackaged, process.env);
 if (deterministic) for (const [name, value] of DETERMINISTIC_SWITCHES) app.commandLine.appendSwitch(name, value);
 
@@ -86,6 +98,8 @@ const chrome = (): ChromeOptions => ({ platform: process.platform, theme: curren
 registerAppScheme();
 
 let ctx: LibraryContext | null = null;
+/** The body-text scheduler, made once the library is open (null before, and when it did not open). */
+let text: TextScheduler | null = null;
 let libraryError: { code: ErrorCode; message: string } | null = null;
 let mainWindow: BrowserWindow | null = null;
 
@@ -103,6 +117,8 @@ const editFlush = createFlushGate({
 /** A library switch waiting for the quit to go ahead (library-folder.ts): forgotten when a gate keeps the app, applied in will-quit. */
 let cancelLibrarySwitch = (): void => {};
 let applyLibrarySwitch = (): void => {};
+/** Lets go of the ⌘/ sheet window made ahead for a main window that closed (the sheet host exists once the app is ready). */
+let discardPreparedSheet = (_win: BrowserWindow): void => {};
 
 /** The work line (spec 3.1): imports, backups and restores run on it one at a time. */
 const jobs = createJobLane();
@@ -127,9 +143,11 @@ function openMainWindow(): BrowserWindow {
     if (mainWindow !== win) return;
     mainWindow = null;
     endPositionNotices();
-    // A settings window prepared for this main window and never asked for goes with it on every platform: hidden, it
-    // would keep a Linux app alive (window-all-closed) and hold a renderer for nobody on macOS.
+    // A settings window prepared for this main window and never asked for goes with it on every platform, and so does the
+    // ⌘/ sheet window made ahead for it: hidden, either would keep a Linux app alive (window-all-closed) and hold a
+    // renderer for nobody on macOS.
     settingsWindow.discardPrepared();
+    discardPreparedSheet(win);
     // Linux/Windows: closing the main window ends the app (window-all-closed), so the settings window goes with it;
     // there is no dock to bring a main window back. macOS keeps the app, and the settings window, open (R-22).
     if (process.platform !== 'darwin') settingsWindow.current()?.close();
@@ -187,7 +205,7 @@ const menuUsesOrganize = menuNeedsOrganize(COMMANDS, SUBMENUS, 'menu');
 function menuOrganize(): OrganizeSnapshot | null {
   if (!menuUsesOrganize || !ctx) return null;
   try {
-    return readOrganizeSnapshot(ctx.db);
+    return readMenuOrganize(ctx.db);
   } catch (e) {
     console.warn(`[menu] reading the library for the menu bar failed: ${toLearnError(e).code}`); // the code only: no names in a log
     return null;
@@ -200,6 +218,10 @@ function menuOrganize(): OrganizeSnapshot | null {
  * report flips `enabled` in place (setUiContext), so an open dropdown stays open.
  */
 function installAppMenu(): void {
+  if (isE2E(app.isPackaged, process.env)) {
+    const marks = globalThis as { __learnMenuBuilds?: number };
+    marks.__learnMenuBuilds = (marks.__learnMenuBuilds ?? 0) + 1;
+  }
   appMenu = Menu.buildFromTemplate(
     buildAppMenu({
       isDev: isDevBuild,
@@ -236,9 +258,17 @@ const menuRebuild = createMenuRebuilder(() => {
     console.warn(`[menu] rebuilding the menu bar failed: ${toLearnError(e).code}`);
   }
 });
-// The collections and tags main announces change the menu bar's submenus, when it has any that list them.
+// The collections and tags main announces change the menu bar's submenus, when it has any that list them. A notice that names
+// items only files or tags them, which the menu bar does not show.
 onBroadcast((e) => {
-  if (menuUsesOrganize && e.name === 'libraryChanged' && (e.payload.reason === 'collections' || e.payload.reason === 'tags')) menuRebuild.request();
+  if (menuUsesOrganize && e.name === 'libraryChanged' && (e.payload.reason === 'collections' || e.payload.reason === 'tags') && e.payload.itemIds === undefined) menuRebuild.request();
+});
+
+// The trash, a restore and a purge change what the body-text worker may read (spec 5.7).
+onBroadcast((e) => {
+  if (!text || e.name !== 'libraryChanged') return;
+  const reason = e.payload.reason;
+  if (reason === 'trash' || reason === 'restore' || reason === 'purge' || reason === 'import') text.libraryChanged(reason);
 });
 
 let nativeMenuOpen = false;
@@ -405,6 +435,7 @@ if (!app.requestSingleInstanceLock()) {
           ? sheetHeightKey({ platform: process.platform, fontSize: prefs.get().fontSize, density: prefs.get().density, digest: shortcutsSheetDigest, view: payload.view ?? 'library' })
           : null,
     });
+    discardPreparedSheet = (win) => sheets.discardPrepared(win);
     /** Every native dialog with a parent window goes through this (IpcDeps.windows.asSheet). */
     const asSheet = async <T>(owner: BrowserWindow, show: () => Promise<T>): Promise<T> => {
       onSheetShown(owner, { native: true }); // the dialog takes the key: owner is not key under it (critique m2)
@@ -442,11 +473,44 @@ if (!app.requestSingleInstanceLock()) {
       },
       announce: (itemIds) => broadcast('libraryChanged', { reason: 'import', itemIds }),
     });
+    // Body text (spec 5.1): one file at a time while the work line is free, from the window's first idle on.
+    if (ctx) {
+      const openCtx = ctx;
+      // The timer may fire after the quit closed the database.
+      const indexProgress = createThrottle(() => {
+        if (openCtx.db.open) broadcast('search:progress', openCtx.text.progress());
+      }, 1000);
+      text = createTextScheduler({
+        repo: () => (openCtx.db.open ? openCtx.text : null),
+        extractor: textExtractor,
+        laneBusy: () => jobs.busy() !== null,
+        laneIdle: () => jobs.idle(),
+        // The managed copy first (findAssetsBySha orders them so): the first copy that is there and readable.
+        file: (sha256) => {
+          for (const asset of openCtx.repo.findAssetsBySha(sha256)) {
+            if (asset.availability !== 'available') continue;
+            try {
+              const file = resolveAssetPath(openCtx.layout, asset);
+              if (fs.existsSync(file)) return file;
+            } catch {
+              // A path that cannot be resolved is a copy that is not there.
+            }
+          }
+          return null;
+        },
+        assetsDir: pdfjsAssetsDir(here),
+        announce: (itemIds) => broadcast('libraryChanged', { reason: 'text', itemIds }),
+        progress: () => indexProgress.request(),
+        progressNow: () => indexProgress.flush(),
+        paused: isE2E(app.isPackaged, process.env) && process.env['LEARN_TEXT_EXTRACTION'] !== 'run',
+      });
+    }
     // Every window hears the queue (the progress toast, the busy screen); 기존 자료 열기 opens in the window it was
     // answered on, which may not be the one that put the file in (spec 3.4).
     imports.onProgress((state) => broadcast('import:progress', state));
     imports.onFinished((report, openIn) => {
       broadcast('import:finished', { report });
+      text?.wake();
       if (report.openItemId === null || openIn === null) return;
       const contents = webContents.fromId(openIn);
       if (contents && !contents.isDestroyed()) sendEvent(contents, 'item:openRequested', { itemId: report.openItemId });
@@ -617,10 +681,13 @@ if (!app.requestSingleInstanceLock()) {
         changed: (theme) => themeFollower.pageChanged(theme),
         shown: (sender, shade) => themeFollower.shown(sender.id, shade),
       },
-      // The main window drew its first list and went idle: the settings window is prepared, and the automatic check may show.
+      // The main window drew its first list and went idle: the settings window and the ⌘/ sheet's window are prepared, and
+      // the automatic check may show.
       prepareSettings: () => {
         settingsWindow.prepare();
+        if (mainWindow && !mainWindow.isDestroyed()) sheets.prepare(mainWindow);
         firstScreenDrawn();
+        text?.firstIdle();
       },
       switchLibrary,
     };
@@ -657,6 +724,16 @@ if (!app.requestSingleInstanceLock()) {
           return { db: ctx.db, collections: ctx.collections, tags: ctx.tags };
         },
         broadcast,
+        text: {
+          extractor: textExtractor,
+          assetsDir: pdfjsAssetsDir(here),
+          scheduler: () => text,
+          repo: () => deps.getContext().text,
+          shaOf: (itemId) => {
+            const item = ctx?.repo.getItem(itemId);
+            return (item && ctx?.repo.getAsset(item.assetId)?.sha256) || null;
+          },
+        },
         translation: fakeTranslation ?? undefined,
         translationNet: translationNet ?? undefined,
         imports: { importer: () => getContext().importer, queue: imports, mainWindowId: () => liveMainWindow()?.webContents.id ?? null, lane: jobs },
@@ -685,6 +762,7 @@ if (!app.requestSingleInstanceLock()) {
       void startLibraryCheck(ctx, {
         announce: announceAvailability,
         requestAuto: requestAutoCheck,
+        onChecked: () => text?.startupChecked(),
         gate: {
           firstScreen,
           busy: () => {
@@ -734,6 +812,9 @@ if (!app.requestSingleInstanceLock()) {
   app.on('will-quit', () => {
     applyLibrarySwitch();
     checkStopped = true;
+    // The worker first, the database after: a running job is requeued and gets its attempt back (a SIGKILL leaves it to the next startup check).
+    if (text) text.dispose();
+    else textExtractor.dispose();
     menuRebuild.cancel();
     if (ctx?.db.open) ctx.db.close();
   });

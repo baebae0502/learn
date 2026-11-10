@@ -31,6 +31,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   clearTagFilter: vi.fn(),
   back: vi.fn(),
   openItems: vi.fn(),
+  openAtPage: vi.fn(),
   closeTab: vi.fn(),
   reopenClosedTab: vi.fn(),
   selectRelativeTab: vi.fn(),
@@ -64,6 +65,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   setZoom: vi.fn(),
   rotate: vi.fn(),
   setPageColor: vi.fn(),
+  setImageBackground: vi.fn(),
   setScroll: vi.fn(),
   setSpread: vi.fn(),
   goToPage: vi.fn(),
@@ -288,6 +290,20 @@ describe('renderer command registry', () => {
     expect(lib.zoom).not.toHaveBeenCalled();
     expect(lib.setTextSize).toHaveBeenCalledTimes(1);
   });
+  it('zooms, fits and turns a drawn picture through the same handlers, and reports it', () => {
+    const picture = env({ view: 'viewer', imageOpen: true });
+    expect(runCommand('view.textBigger', picture)).toBe(true);
+    expect(picture.zoom).toHaveBeenCalledWith('in');
+    expect(runCommand('view.textReset', picture)).toBe(true);
+    expect(picture.zoom).toHaveBeenCalledWith('actual');
+    expect(runCommand('reader.zoomPageFit', picture)).toBe(true);
+    expect(picture.setZoom).toHaveBeenCalledWith('page-fit');
+    expect(runCommand('reader.rotateCcw', picture)).toBe(true);
+    expect(picture.rotate).toHaveBeenCalledWith(-90);
+    expect(runCommand('reader.zoomAuto', picture)).toBe(false); // the PDF's own
+    expect(contextOf(picture)).toMatchObject({ imageOpen: true });
+    expect(contextOf(env({ view: 'viewer' }))).not.toHaveProperty('imageOpen');
+  });
   it('turns the spread commands off while the PDF scrolls horizontally and reports how it scrolls', () => {
     const horizontal = env({ view: 'viewer', pdfOpen: true, pdfScroll: 'horizontal' });
     for (const id of ['reader.spreadNone', 'reader.spreadOdd', 'reader.spreadEven'] as const) expect(runCommand(id, horizontal), id).toBe(false);
@@ -296,6 +312,15 @@ describe('renderer command registry', () => {
     expect(contextOf(horizontal)).toMatchObject({ pdfScroll: 'horizontal' });
     expect(contextOf(env({ view: 'viewer', pdfOpen: true }))).not.toHaveProperty('pdfScroll');
     expect(contextOf(env({ view: 'viewer', pdfScroll: 'page' }))).not.toHaveProperty('pdfScroll');
+  });
+  it('runs the three backgrounds on a drawn picture only', () => {
+    const ids = ['reader.imageBackgroundLight', 'reader.imageBackgroundDark', 'reader.imageBackgroundChecker'] as const;
+    const pdf = env({ view: 'viewer', pdfOpen: true });
+    expect(ids.map((id) => runCommand(id, pdf))).toEqual([false, false, false]);
+    expect(pdf.setImageBackground).not.toHaveBeenCalled();
+    const image = env({ view: 'viewer', imageOpen: true });
+    expect(ids.map((id) => runCommand(id, image))).toEqual([true, true, true]);
+    expect(vi.mocked(image.setImageBackground).mock.calls).toEqual([['light'], ['dark'], ['checker']]);
   });
   it('runs the reader commands on the open PDF only', () => {
     const e = env({ view: 'viewer', pdfOpen: true });

@@ -6,7 +6,17 @@ import { defineConfig } from 'electron-vite';
 const preload = (kind: 'main' | 'settings' | 'sheet') => fileURLToPath(new URL(`src/preload/${kind}.ts`, import.meta.url));
 
 export default defineConfig({
-  main: {},
+  main: {
+    build: {
+      // The body-text worker is its own entry beside index.js: a utility process loads it by path (main/text/fork.ts).
+      rollupOptions: {
+        input: {
+          index: fileURLToPath(new URL('src/main/index.ts', import.meta.url)),
+          'text-worker': fileURLToPath(new URL('src/main/text/worker.ts', import.meta.url)),
+        },
+      },
+    },
+  },
   preload: {
     build: {
       // A sandboxed preload must be one CommonJS file: it cannot require a sibling chunk, so each entry is bundled on

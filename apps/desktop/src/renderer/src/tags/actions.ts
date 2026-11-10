@@ -1,4 +1,5 @@
 import { api, unwrap } from '../api';
+import { libraryChanges } from '../data/queries';
 import { currentModel, patchOrganize } from '../sidebar/actions';
 import { useLibrary } from '../state/library-store';
 import { showActionFailed, showToast } from '../ui/toasts';
@@ -17,6 +18,7 @@ export const tagActions = createTagActions({
   confirm: (input) => unwrap(api().ui.confirm(input)),
   model: currentModel,
   patch: patchOrganize,
+  expectEcho: (itemIds) => libraryChanges.expectEcho('tags', itemIds),
   leaveFilter: (tagId, into) => useLibrary.getState().dropFromTagFilter(tagId, into),
   opener: () => document.activeElement,
   failed: showActionFailed,

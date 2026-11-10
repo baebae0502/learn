@@ -12,6 +12,12 @@
  *                  &tabs=2|many|drag (one reader tab, 12 tabs that overflow, a tab being dragged)  &history=none|back|both
  *                  &view=menu|menu-scroll|menu-spread  &scroll=horizontal|page  &spread=odd  &menu=tab  &sidebar=hidden  &w=1024
  *   reader-video   ?state=nosubs|nomatch
+ *   reader-image   ?m=7c (M7c): &bg=light|dark|checker &img=small|transparent|diagram &zoom=width|400 &rotate=90 &menu=zoom|view
+ *                  &state=loading|error|missing|trashed &w=1024 &sidebar=nopages
+ *   library        ?m=7c (M7c): &search=scope-states|scope-menu (&indexing=1) &scope=fulltext&q=형광 &matches=3|many|loading|indexing|empty|locked
+ *                  |truncated|truncated-none (an index cut at 5,000 pages: its line under the rows, or alone)
+ *                  (many: &scroll=end) &panel=image|image-large|pdf-indexing|pdf-failed &state=noresults&scope=fulltext (&indexing=1 | &onechar=1)
+ *   library-empty  ?m=7c (M7c): the formats line with images (&w=1024) and &state=drop with 파일 3개(PDF 1 · 이미지 2)
  *   palette        ?state=none
  *   settings       ?state=nobackup   ?section=translation (M7a: the 번역 group; &tr=off shows 번역 사용 끔)
  *   library        ?m=7b&tabs=2 (M7b: the library tab active with one reader tab open)  ?reading=pdf|video|legacy (M7b: the 읽기 section)
@@ -40,7 +46,7 @@
     return `<span class="chip ${extra}"><span class="dot" style="background:${tagHex(n)}"></span>${esc(t.name)}</span>`;
   };
 
-  const kindIcon = (kind) => (kind === 'video' ? 'clapperboard' : 'file-text');
+  const kindIcon = (kind) => (kind === 'video' ? 'clapperboard' : kind === 'image' ? 'image' : 'file-text');
 
   /** Web-drawn pop-up menu item (only for pop-up buttons inside the content, ADR-0005). */
   const mi = (label, { check, shortcut, active, disabled, title, sub, id } = {}) =>
@@ -111,6 +117,7 @@
 
   // ── Library: table ─────────────────────────────────────────────────────────
   const COLS = 'minmax(0, 1fr) 156px 52px 104px 120px';
+  const COLS_KIND = 'minmax(0, 1fr) 156px 52px 88px 104px 120px'; // M7c: 종류 (88) after 연도, the app's default order
   // The trash adds a last column, 삭제한 날짜 (spec 4.3), the same width as 추가일.
   const TRASH_COLS = `${COLS} 120px`;
 
@@ -120,7 +127,7 @@
     return `<span class="progress"><i style="width:${p}%"></i></span><span class="pct">${p}%</span>`;
   }
 
-  function tableRow(it, { selected, focused, hover, cursor, firstDots, progressEnd = false }) {
+  function tableRow(it, { selected, focused, hover, cursor, firstDots, progressEnd = false, kindCol = false }) {
     const cls = ['table-row', selected ? 'is-selected' : '', focused ? 'is-focused' : '', hover ? 'is-hover' : '', cursor ? 'is-cursor' : '', it.missing ? 'is-missing' : ''].join(' ');
     const dots = it.tags.length
       ? `<span class="tag-dots" ${firstDots ? ms('M5', '표의 색 점') : ''}>${it.tags.map((n) => `<i style="background:${tagHex(n)}"></i>`).join('')}</span>`
@@ -134,9 +141,10 @@
         ? `<span class="inline-flag c-warning" title="이 동영상 형식은 재생할 수 없습니다">${icon('video-off', 'sm')}재생 불가</span>`
         : '';
     return `<div class="${cls}" role="row" aria-selected="${!!selected}">
-      <div class="td" role="gridcell">${icon(kindIcon(it.kind))}<span class="title ellipsis">${esc(it.title)}</span>${linked}${dots}${flag}${kept}</div>
+      <div class="td" role="gridcell">${icon(kindIcon(it.kind))}<span class="title ellipsis">${it.mark ? esc(it.title).replace(it.mark, `<mark>${it.mark}</mark>`) : esc(it.title)}</span>${linked}${dots}${flag}${kept}</div>
       <div class="td" role="gridcell"><span class="ellipsis">${esc(it.authors)}</span></div>
       <div class="td num" role="gridcell">${it.year}</div>
+      ${kindCol ? `<div class="td" role="gridcell"><span class="ellipsis">${{ pdf: 'PDF', video: '동영상', image: '이미지' }[it.kind]}</span></div>` : ''}
       <div class="td ${progressEnd ? 'end' : ''}" role="gridcell">${progressCell(it.progress, { blankUnread: progressEnd })}</div>
       <div class="td num" role="gridcell"><span class="ellipsis">${esc(it.added)}</span></div>
       ${it.deleted ? `<div class="td num" role="gridcell"><span class="ellipsis">${esc(it.deleted)}</span></div>` : ''}
@@ -156,8 +164,8 @@
     </div>`;
 
   /** `sorted`: the column that sorts the view (its arrow: `dir`); `extra`: columns after 추가일 (the trash's 삭제한 날짜). */
-  function tableHead({ sorted = '추가일', dir = 'desc', extra = [], progressEnd = false } = {}) {
-    return ['제목', '저자', '연도', '진행', '추가일', ...extra]
+  function tableHead({ sorted = '추가일', dir = 'desc', extra = [], progressEnd = false, kindCol = false } = {}) {
+    return ['제목', '저자', '연도', ...(kindCol ? ['종류'] : []), '진행', '추가일', ...extra]
       .map((l) => {
         const on = l === sorted;
         const tag = l === '진행' ? (progressEnd ? ms('M7a', '진행 열(오른쪽 정렬 · 읽지 않은 자료는 비움 · 정렬)') : ms('M7', '진행 열')) : l === '삭제한 날짜' ? ms('M6', '삭제한 날짜 열(최근순)') : '';
@@ -166,7 +174,7 @@
       .join('');
   }
 
-  function libraryTable({ selectedIds = [1], focused = true, cursorId = null, body = null, items = D.items, cols = COLS, head = {}, top = '', progressEnd = false } = {}) {
+  function libraryTable({ selectedIds = [1], focused = true, cursorId = null, body = null, items = D.items, cols = COLS, head = {}, top = '', progressEnd = false, kindCol = false } = {}) {
     let firstDotsDone = false;
     const rows =
       body ??
@@ -177,11 +185,11 @@
             if (firstDots) firstDotsDone = true;
             // A group boundary in 중복 항목 (critique 1-6): a 1 px line between groups.
             const sep = it.groupStart ? '<div class="table-group-sep" role="presentation"></div>' : '';
-            return sep + tableRow(it, { selected: selectedIds.includes(it.id), focused, cursor: it.id === cursorId, firstDots, progressEnd });
+            return sep + tableRow(it, { selected: selectedIds.includes(it.id), focused, cursor: it.id === cursorId, firstDots, progressEnd, kindCol });
           })
           .join('');
     return `<div class="table" role="grid" style="--cols:${cols}" ${ms('M4', '항목 표(정렬·열 구성·선택)')}>
-      <div class="table-head" role="row">${tableHead({ ...head, progressEnd })}</div>
+      <div class="table-head" role="row">${tableHead({ ...head, progressEnd, kindCol })}</div>
       <div class="table-body">${rows}</div>
     </div>`;
   }
@@ -193,8 +201,23 @@
    * `action`: the view's own button, left of 가져오기 (the trash's 휴지통 비우기…, 중복 항목's 모두 정리). `noImport`: the
    * trash view has no 가져오기 (what is imported goes to 내 라이브러리; ⌘O, the menu bar and drops still work).
    */
-  function libraryHeader({ title = '분자생물학', count = '48개', search = null, inspectorOn = true, toggleTitle = '항목 패널 가리기 ⌥⌘I', toggleMs = ['M4', '항목 패널 토글'], action = '', noImport = false } = {}) {
-    const field = search
+  /**
+   * M7c (spec 5.8): the scope button takes the magnifier's place at the start of the quick-search field. `btn`: the
+   * button's state (default | hover | pressed | focus); `scope`: meta | full — the placeholder follows the scope.
+   */
+  function scopeField({ scope = 'meta', value = '', btn = 'default', id = 'scope-btn', width = 240, focus = true } = {}) {
+    const placeholder = scope === 'full' ? '제목, 저자, 태그, 본문 검색' : '제목, 저자, 태그 검색';
+    const cls = btn === 'default' ? '' : `is-${btn}`;
+    return `<div class="field ${value && focus ? 'is-focus' : ''}" style="width:${width}px" ${ms('M4', '빠른 검색')}>
+      <span ${id ? `id="${id}"` : ''} class="scope-btn ${cls}" role="button" aria-haspopup="menu" aria-label="검색 범위" title="검색 범위" ${ms('M7c', '검색 범위 ▾ 단추')}>${icon('search', 'sm')}${icon('chevron-down', 'xs')}</span>
+      ${value ? `<span class="value">${esc(value)}</span>${focus ? '<span class="caret"></span>' : ''}<span class="spacer"></span><span title="검색어 지우기">${icon('circle-x', 'sm')}</span>` : `<span class="placeholder ellipsis">${placeholder}</span>`}
+    </div>`;
+  }
+
+  function libraryHeader({ title = '분자생물학', count = '48개', search = null, inspectorOn = true, toggleTitle = '항목 패널 가리기 ⌥⌘I', toggleMs = ['M4', '항목 패널 토글'], action = '', noImport = false, scope7c = null } = {}) {
+    const field = scope7c
+      ? scopeField(scope7c)
+      : search
       ? `<div class="field is-focus" style="width:240px" ${ms('M4', '빠른 검색')}>${icon('search', 'sm')}<span class="value">${esc(search)}</span><span class="caret"></span><span class="spacer"></span><span title="검색어 지우기">${icon('circle-x', 'sm')}</span></div>`
       : `<div class="field" style="width:240px" ${ms('M4', '빠른 검색')}>${icon('search', 'sm')}<span class="placeholder ellipsis">제목, 저자, 태그 검색</span></div>`;
     return `<div class="pane-header">
@@ -246,9 +269,10 @@
     const head = trashed
       ? `<div class="item-head" ${ms('M6', '휴지통 항목 패널 머리(복원 · ‘휴지통에 있습니다’ 줄)')}>`
       : `<div class="item-head" ${ms('M4', '항목 패널 머리(열기·Finder에서 보기)')}>`;
-    return `<div class="inspector-scroll" ${trashed ? ms('M6', '휴지통 항목 패널(읽기 전용)') : ''}>
+    return `<div class="inspector-scroll" ${it.scrollTo ? `data-scroll-to="${it.scrollTo}"` : ''} ${trashed ? ms('M6', '휴지통 항목 패널(읽기 전용)') : ''}>
       ${head}
-        <div class="kind">${icon(it.video ? 'clapperboard' : 'file-text', 'sm')}${esc(it.kind)} · ${it.video ? it.length : `${pages}쪽`}</div>
+        ${it.preview ?? ''}
+        <div class="kind">${icon(it.kindIcon ?? (it.video ? 'clapperboard' : 'file-text'), 'sm')}${it.kindText ? esc(it.kindText) : `${esc(it.kind)} · ${it.video ? it.length : `${pages}쪽`}`}</div>
         <h2>${esc(it.title)}</h2>
         <div class="authors">${esc(it.authors)} · ${it.year ?? 2024}</div>
         ${
@@ -260,8 +284,15 @@
         </div>`
         }
       </div>
+      ${it.matches ?? ''}
       ${
-        r
+        r?.done
+          ? `<section class="section" ${ms('M7c', '읽기 절(이미지: 한 번 보면 ✓ 완료)')}>
+        ${sectionHead('읽기')}
+        <div class="inline-flag c-success" style="display:flex;min-height:20px">${icon('check', 'sm')}완료</div>
+        <div class="t-footnote c-secondary reading-line" style="margin-top:4px">열어\u00a0봄\u00a0· ${esc(r.opened)}</div>
+      </section>`
+          : r
           ? `<section class="section" ${ms('M7b', '읽기 절')}>
         ${sectionHead('읽기')}
         <div class="row gap-8"><span class="progress wide thick"><i style="width:${r.percent}%"></i></span><span class="pct t-footnote">${r.percent}%</span></div>
@@ -286,6 +317,7 @@
       <section class="section" ${ms('M4', '파일 절·해시 복사')}>
         ${sectionHead('파일')}
         <dl class="kv">${it.file.map(([k, v]) => `<dt>${k}</dt><dd class="ellipsis">${esc(v)}</dd>`).join('')}
+          ${it.fileExtra ?? ''}
           <dt>SHA-256</dt><dd class="row gap-6"><span class="mono c-secondary" title="${it.shaFull}">${it.sha}</span><span class="icon-btn sm" title="전체 SHA-256 복사">${icon('copy', 'sm')}</span></dd>
         </dl>
         ${it.copies ? editedCopies(it.copies) : ''}
@@ -329,7 +361,7 @@
       ${icon('mouse-pointer-2')}
       <div class="pe-title">선택한 자료 없음</div>
       <div class="pe-text">표에서 자료를 고르면 정보와 읽기 진행이 여기에 보입니다.</div>
-      ${stats ? `<div class="pe-text c-tertiary" style="margin-top:12px">분자생물학 · 자료 48개(PDF 35 · 동영상 13) · 1.9 GB</div>` : ''}
+      ${stats ? `<div class="pe-text c-tertiary" style="margin-top:12px">${params.get('m') === '7c' ? '분자생물학\u00a0· 자료 48개(PDF\u00a032\u00a0· 동영상\u00a013\u00a0· 이미지\u00a03)\u00a0· 1.9\u00a0GB' : '분자생물학 · 자료 48개(PDF 35 · 동영상 13) · 1.9 GB'}</div>` : ''}
     </div>`;
   }
 
@@ -357,7 +389,287 @@
     </div>`;
   }
 
+  // ── M7c: pictures drawn by the mockup itself (no third-party photos) ──────────────────────────────────────────────
+  let svgUid = 0;
+  /**
+   * The "large photo": a 4032 × 3024 test picture made of gradients and shapes, with a fine grid so that 400 % shows
+   * detail. `view` crops it (zoomed scenes): [x, y, w, h] in picture pixels.
+   */
+  function photoSvg({ width, height, view = null }) {
+    const u = ++svgUid;
+    const box = view ? view.join(' ') : '0 0 4032 3024';
+    const bars = ['#f2f2f2', '#e8d825', '#27c9d3', '#2fbf4f', '#c93fc4', '#d63a3a', '#3550d6']
+      .map((c, i) => `<rect x="${i * 576}" y="0" width="576" height="170" fill="${c}"/>`)
+      .join('');
+    return `<svg width="${width}" height="${height}" viewBox="${box}" preserveAspectRatio="none" role="img" aria-label="시험 무늬">
+      <defs>
+        <linearGradient id="sky${u}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#16315f"/><stop offset=".42" stop-color="#4f7fb8"/><stop offset=".7" stop-color="#f1b36b"/></linearGradient>
+        <radialGradient id="sun${u}"><stop offset="0" stop-color="#fff6d8"/><stop offset=".5" stop-color="#ffd27a" stop-opacity=".85"/><stop offset="1" stop-color="#ffb347" stop-opacity="0"/></radialGradient>
+        <linearGradient id="sea${u}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f7f8f"/><stop offset="1" stop-color="#0f3a46"/></linearGradient>
+        <pattern id="fine${u}" width="84" height="84" patternUnits="userSpaceOnUse"><path d="M84 0H0V84" fill="none" stroke="#fff" stroke-opacity=".16" stroke-width="3"/></pattern>
+        <pattern id="coarse${u}" width="336" height="336" patternUnits="userSpaceOnUse"><path d="M336 0H0V336" fill="none" stroke="#fff" stroke-opacity=".34" stroke-width="7"/></pattern>
+      </defs>
+      <rect width="4032" height="3024" fill="url(#sky${u})"/>
+      <circle cx="2900" cy="1500" r="760" fill="url(#sun${u})"/>
+      <circle cx="2900" cy="1500" r="250" fill="#fff1c4"/>
+      <path d="M0 1980 C 600 1560 1100 1760 1700 1500 S 2900 1760 3400 1450 S 3900 1650 4032 1560 V3024 H0Z" fill="#3a6f78"/>
+      <path d="M0 2200 C 700 1900 1300 2080 1900 1860 S 3000 2060 3600 1820 S 3950 1960 4032 1900 V3024 H0Z" fill="#23525b"/>
+      <path d="M0 2420 C 800 2200 1500 2330 2200 2200 S 3300 2330 4032 2230 V3024 H0Z" fill="url(#sea${u})"/>
+      ${[2520, 2640, 2760, 2880].map((y, i) => `<rect x="${300 + i * 380}" y="${y}" width="${1500 - i * 120}" height="14" rx="7" fill="#fff" fill-opacity=".22"/>`).join('')}
+      ${bars}
+      <rect width="4032" height="3024" fill="url(#fine${u})"/>
+      <rect width="4032" height="3024" fill="url(#coarse${u})"/>
+      <circle cx="2016" cy="1512" r="620" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="12"/>
+      <path d="M2016 892V2132M1396 1512H2636" stroke="#fff" stroke-opacity=".7" stroke-width="12"/>
+      <circle cx="2016" cy="1512" r="90" fill="#fff" fill-opacity=".85"/>
+    </svg>`;
+  }
+  /** A small picture (480 × 320) that must not be enlarged in the 창에 맞춤 mode. */
+  function smallSvg({ width, height }) {
+    const u = ++svgUid;
+    return `<svg width="${width}" height="${height}" viewBox="0 0 480 320" role="img" aria-label="시험 무늬">
+      <defs><linearGradient id="sm${u}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6b5ca5"/><stop offset="1" stop-color="#2a9d8f"/></linearGradient>
+      <pattern id="sg${u}" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M20 0H0V20" fill="none" stroke="#fff" stroke-opacity=".2"/></pattern></defs>
+      <rect width="480" height="320" fill="url(#sm${u})"/><rect width="480" height="320" fill="url(#sg${u})"/>
+      <circle cx="150" cy="160" r="84" fill="#f6c667"/><rect x="250" y="76" width="150" height="168" rx="14" fill="#fff" fill-opacity=".85"/>
+      <path d="M268 220L316 150L350 196L372 168L388 220Z" fill="#2f7fb6"/>
+    </svg>`;
+  }
+  /** A transparent PNG (640 × 640): a mark with holes, so the background shows through. */
+  function transparentSvg({ width, height }) {
+    return `<svg width="${width}" height="${height}" viewBox="0 0 640 640" role="img" aria-label="투명한 시험 무늬">
+      <circle cx="320" cy="320" r="270" fill="none" stroke="#6b5ca5" stroke-width="64"/>
+      <circle cx="320" cy="320" r="150" fill="#2a9d8f" fill-opacity=".85"/>
+      <path d="M320 70L372 262L570 262L410 380L470 570L320 452L170 570L230 380L70 262L268 262Z" fill="#f6c667" fill-opacity=".92" stroke="#fff" stroke-width="10" transform="translate(0 0) scale(.62) translate(196 196)"/>
+      <circle cx="320" cy="320" r="40" fill="none" stroke="#fff" stroke-width="12"/>
+    </svg>`;
+  }
+  /** A diagram on a white ground (1920 × 1080): what most study images look like. */
+  function diagramSvg({ width, height }) {
+    return `<svg width="${width}" height="${height}" viewBox="0 0 1920 1080" role="img" aria-label="시험 무늬">
+      <rect width="1920" height="1080" fill="#fff"/>
+      <rect x="0" y="470" width="1920" height="140" fill="#e7edf3"/>
+      ${Array.from({ length: 14 }, (_, i) => `<circle cx="${110 + i * 130}" cy="540" r="46" fill="#cbd7e3" stroke="#6b7c93" stroke-width="6"/>`).join('')}
+      <rect x="840" y="250" width="240" height="460" rx="60" fill="#6b5ca5" fill-opacity=".85"/>
+      <circle cx="960" cy="180" r="70" fill="#f6c667" stroke="#8a6a1f" stroke-width="6"/>
+      <path d="M960 250V330M900 150L960 210L1020 150" fill="none" stroke="#3b3b3b" stroke-width="10"/>
+      <path d="M1080 420H1400M1330 380L1400 420L1330 460" fill="none" stroke="#2a9d8f" stroke-width="12"/>
+      <rect x="1400" y="360" width="300" height="120" rx="16" fill="#fff" stroke="#2a9d8f" stroke-width="8"/>
+      <path d="M840 900H1080" stroke="#3b3b3b" stroke-width="8"/>
+    </svg>`;
+  }
+  const IMAGES = {
+    photo: { w: 4032, h: 3024, title: '수용체 분포 형광 현미경 사진', draw: photoSvg },
+    small: { w: 480, h: 320, title: '실험 장비 아이콘', draw: smallSvg },
+    transparent: { w: 640, h: 640, title: '연구실 로고', draw: transparentSvg },
+    diagram: { w: 1920, h: 1080, title: '세포막 수용체 모식도', draw: diagramSvg },
+  };
+
+  // ── M7c: the library ───────────────────────────────────────────────────────────────────────────────────────────────
+  const NBSP_SLASH = ' / ';
+  const SEARCHED = '제목⁠·저자⁠·태그⁠·출판사⁠·원래 이름⁠·초록⁠·메모';
+
+  /** A two-line row of the search scope menu: the name and what it searches. */
+  const miTwo = (label, desc, check, active = false) =>
+    `<div class="mi two ${active ? 'is-active' : ''}"><span class="check">${check ? icon('check', 'sm') : ''}</span><span class="mi-text"><span>${label}</span><span class="mi-desc">${desc}</span></span></div>`;
+
+  function scopeMenu({ full, indexing }) {
+    return `<div class="menu" data-anchor="scope-btn" style="width:320px" role="menu" aria-label="검색 범위" ${ms('M7c', '검색 범위 메뉴(정보 · 정보와 본문 · 본문 색인 진행)')}>
+      ${miTwo('정보', SEARCHED, !full)}${miTwo('정보와 본문', 'PDF 본문 포함', full, !full && !indexing)}
+      ${indexing ? `<div class="msep"></div><div class="mi info"><span class="check"></span><span>본문 색인 37${NBSP_SLASH}120</span></div>` : ''}
+    </div>`;
+  }
+
+  /** The four states of the scope button in one picture (spec 12 ④). */
+  function scopeStates() {
+    const rows = [['기본', 'default'], ['호버', 'hover'], ['눌림', 'pressed'], ['포커스', 'focus']];
+    return `<div class="scope-states" aria-label="검색 범위 단추의 상태">${rows
+      .map(([label, btn]) => `<span class="lbl">${label}</span>${scopeField({ btn, id: null })}`)
+      .join('')}</div>`;
+  }
+
+  /** The item panel's 본문 일치 section (spec 5.8). `kind`: 3 | many | loading | indexing | empty | locked. */
+  const TEXT_STATUS = {
+    indexing: '본문을 색인하는 중입니다.',
+    empty: '글자를 찾지 못했습니다. 스캔한 PDF일 수 있습니다.',
+    failed: '본문을 색인하지 못했습니다. 파일이 복잡하거나 손상되었을 수 있습니다.',
+    locked: '암호로 보호된 PDF라 본문을 색인하지 않았습니다.',
+    truncated: '앞 5,000쪽까지 색인했습니다.',
+  };
+  function matchSection(kind) {
+    const rows = (pages, states = []) =>
+      pages
+        .map((pg, i) => {
+          const snip = D.snippets[i % D.snippets.length];
+          const st = states[i] ?? '';
+          return `<div class="match-row ${st}" role="option" aria-label="${pg}쪽, ${esc(snip.replace(/<[^>]+>/g, ''))}"><span class="pg num">${pg}쪽</span><span class="snip">${snip}</span></div>`;
+        })
+        .join('');
+    const count = (n) => `<span class="c-tertiary t-footnote num">${n}</span>`;
+    let head = sectionHead('본문 일치');
+    let body;
+    if (kind === '3') {
+      head = sectionHead('본문 일치', count('쪽\u00a03개'));
+      body = `<div class="match-list" role="listbox" aria-label="본문 일치">${rows([12, 31, 44], params.get('matches') === '3' ? ['', 'is-hover', 'is-cursor'] : [])}</div>`;
+    } else if (kind === 'many') {
+      head = sectionHead('본문 일치', count('쪽\u00a034개'));
+      body = `<div class="match-list" role="listbox" aria-label="본문 일치">${rows(D.matchPages)}</div><div class="match-more" id="match-more">외 14쪽</div>`;
+    } else if (kind === 'truncated') {
+      // R68: a done index cut at a limit says so under its rows (the more line's 4 above it).
+      head = sectionHead('본문 일치', count('쪽\u00a03개'));
+      body = `<div class="match-list" role="listbox" aria-label="본문 일치">${rows([12, 31, 44])}</div><div class="match-status" role="status">${TEXT_STATUS.truncated}</div>`;
+    } else if (kind === 'truncated-none') {
+      // R68: no page matched in the pages read, so the cut is said alone — no match must not read as none in the whole file.
+      body = `<div class="match-status" role="status">${TEXT_STATUS.truncated}</div>`;
+    } else if (kind === 'loading') {
+      body = `<div class="loading"><span class="spinner"></span>찾는 중…</div>`;
+    } else {
+      body = `<div class="match-status" role="status">${TEXT_STATUS[kind]}</div>`;
+    }
+    return `<section class="section" ${ms('M7c', '본문 일치 절(쪽 + 조각, 최대 20쪽 · 외 N쪽 · 찾는 중 · 색인 중 · 글자 없음 · 암호 · 잘린 색인)')}>${head}${body}</section>`;
+  }
+  const textRow = (kind) => `<dt>본문 검색</dt><dd class="status">${TEXT_STATUS[kind]}</dd>`;
+
+  const IMG_ROWS = D.imageRows;
+  /** The library's rows with the image rows in (they were added a little after the lecture). */
+  const withImages = () => {
+    const items = [...D.items];
+    items.splice(items.findIndex((x) => x.id === 3), 0, ...IMG_ROWS);
+    return items;
+  };
+  /** 형광: an info match is marked in the title; a body-only match is not (spec 5.8, to confirm with the owner). */
+  const fulltextRows = () => {
+    const by = (id) => D.items.find((x) => x.id === id);
+    return [
+      by(1),
+      { ...IMG_ROWS[0], mark: '형광' },
+      { id: 501, kind: 'pdf', title: '형광 단백질 표지 실험 노트', authors: '연구실 공용', year: 2026, progress: 45, added: '2026. 10. 11.', tags: [], mark: '형광' },
+      by(11),
+      by(12),
+      by(15),
+      { id: 502, kind: 'pdf', title: 'GFP 형광 이미징 입문', authors: 'Varga', year: 2022, progress: null, added: '2026. 9. 30.', tags: [], mark: '형광' },
+    ];
+  };
+
+  /** R68: a PDF past the 5,000-page limit, matched by its title (형광), so it is listed even when no page read matched. */
+  const BIG_BOOK = {
+    ...D.selectedItem,
+    title: '형광 현미경 기법 대사전 · 합본',
+    authors: '현미경 기법 편찬회',
+    year: 2021,
+    kindText: 'PDF 문서 · 6,240쪽',
+    info: [
+      ['저자', '현미경 기법 편찬회'],
+      ['연도', '2021'],
+      ['쪽수', '6,240쪽'],
+      ['언어', '한국어'],
+      ['추가일', '2026. 10. 2. 오후 3:12'],
+      ['수정일', '2026. 10. 2. 오후 3:12'],
+    ],
+    reading: { page: 412, pages: 6240, percent: 7, opened: '어제 오후 10:05' },
+    file: [
+      ['보관', '복사본 · 라이브러리 안'],
+      ['크기', '486.3 MB'],
+      ['원래 이름', 'fluorescence_microscopy_handbook.pdf'],
+    ],
+    sha: 'c58e01f7…',
+    shaFull: 'c58e01f7a3d92b6e04f1c87d5b2a9e3f6c0d4b18e7a5f2c93d6b0e8a17f4c25d',
+    tags: [],
+    plainTags: [],
+    collections: [['분자생물학']],
+  };
+  const BIG_BOOK_ROW = { id: 503, kind: 'pdf', title: BIG_BOOK.title, authors: BIG_BOOK.authors, year: 2021, progress: 7, added: '2026. 10. 2.', tags: [], mark: '형광' };
+
+  function libraryWindow7c() {
+    const q = (k) => params.get(k);
+    const search = q('search');
+    const matches = q('matches');
+    const panel = q('panel');
+    const indexing = q('indexing') === '1';
+    const full = q('scope') === 'fulltext' || !!matches || (search === 'scope-menu' && indexing);
+    const scope = full ? 'full' : 'meta';
+    let header;
+    let table;
+    let insp;
+    let overlays = '';
+
+    if (matches || (q('scope') === 'fulltext' && q('q') && state !== 'noresults')) {
+      const kind = matches || '3';
+      const cut = kind === 'truncated' || kind === 'truncated-none';
+      header = libraryHeader({ count: cut ? '8개 / 48개' : '7개 / 48개', scope7c: { scope: 'full', value: q('q') || '형광', focus: false } });
+      // matches=3: the keyboard is in the match list, so the table's selection is the neutral (unfocused) one.
+      const rowsShown = cut ? [...fulltextRows().slice(0, 3), BIG_BOOK_ROW, ...fulltextRows().slice(3)] : fulltextRows();
+      table = libraryTable({ items: rowsShown, selectedIds: [cut ? 503 : 1], focused: matches !== '3', cols: COLS_KIND, kindCol: true });
+      const withStatus = ['indexing', 'empty', 'locked', 'truncated', 'truncated-none'].includes(kind);
+      insp = inspectorItem({
+        ...(cut ? BIG_BOOK : D.selectedItem),
+        matches: matchSection(kind),
+        fileExtra: withStatus ? textRow(cut ? 'truncated' : kind) : '',
+        scrollTo: q('scroll') === 'end' ? '#match-more' : '',
+      });
+    } else if (state === 'noresults') {
+      // The app's searchEmptyBody (the fields, "‘view’의" first) with "·PDF 본문" only when the body was searched: two letters or more.
+      const one = q('onechar') === '1';
+      const query = one ? '효' : '효소 억제제';
+      header = libraryHeader({ count: '0개 / 48개', scope7c: { scope, value: query } });
+      const searched = full && !one;
+      const where = `‘분자생물학’\u2060의 ${SEARCHED}${searched ? '\u2060·PDF\u00a0본문' : ''}에서 찾았습니다.`;
+      const extra = !full ? '' : one ? '본문은 두\u00a0글자 이상인 낱말로 찾습니다.' : indexing ? `본문 색인이 끝나면 더 찾을 수 있습니다(37${NBSP_SLASH}120).` : '';
+      table = libraryTable({
+        cols: COLS_KIND,
+        kindCol: true,
+        body: `<div class="pane-empty top" ${ms('M4', '검색 결과 없음')}>
+          ${icon('search-x')}
+          <div class="pe-title">‘${query}’\u2060와 일치하는 자료가 없습니다</div>
+          <div class="pe-text">${where}${extra ? `<br>${extra}` : ''}</div>
+          <div class="row gap-8"><div class="btn">검색어 지우기</div><div class="btn">내 라이브러리 전체에서 찾기</div></div>
+        </div>`,
+      });
+      insp = inspectorNone();
+    } else {
+      const open = search === 'scope-menu';
+      header = libraryHeader({ scope7c: { scope, btn: open ? 'pressed' : 'default' } });
+      let selected = [1];
+      let items = withImages();
+      insp = inspectorItem();
+      if (panel === 'image') {
+        selected = [401];
+        const small = photoSvg({ width: 213, height: 160 });
+        insp = inspectorItem({ ...D.imageItem, kindIcon: 'image', preview: `<div class="item-preview" ${ms('M7c', '이미지 미리보기(높이 ≤ 160, 바탕 --bg-sunken)')}>${small}</div>` });
+      } else if (panel === 'image-large') {
+        const big = { id: 404, kind: 'image', title: '조직 단면 전체 스캔', authors: '연구실 공용', year: 2026, progress: null, added: '어제 오후 8:30', tags: [], w: 9000, h: 6000 };
+        items = [...items];
+        items.splice(items.findIndex((x) => x.id === 3), 0, big);
+        selected = [404];
+        insp = inspectorItem({
+          ...D.imageItem,
+          title: big.title,
+          kindText: '이미지 · 9000 × 6000',
+          reading: null,
+          sha: 'b41f09d2…',
+          shaFull: 'b41f09d2c7a35e8f1d06b94a72e3c5f80d1b6a4e9c27f35d8a01e6b4c9d2f7a3',
+          info: [['저자', '연구실 공용'], ['연도', '2026'], ['추가일', '어제 오후 8:30']],
+          file: [['보관', '복사본 · 라이브러리 안'], ['크기', '48.2 MB'], ['원래 이름', 'tissue_section_full.png']],
+          preview: `<div class="item-preview icon-only" ${ms('M7c', '이미지 미리보기 자리(5,000만 화소를 넘는 이미지는 아이콘 칸)')}>${icon('image', 'xl')}</div>`,
+        });
+      } else if (panel === 'pdf-indexing' || panel === 'pdf-failed') {
+        insp = inspectorItem({ ...D.selectedItem, fileExtra: textRow(panel === 'pdf-failed' ? 'failed' : 'indexing') });
+      }
+      table = libraryTable({ items, selectedIds: selected, focused: !open, cols: COLS_KIND, kindCol: true });
+      if (open) overlays = scopeMenu({ full, indexing });
+      else if (search === 'scope-states') overlays = scopeStates();
+    }
+    // The approved M7b tab strip: the library tab (active) with an image tab and a PDF tab open.
+    const tabs = [
+      { id: 'library', title: '라이브러리', icon: 'library-big', home: true, active: true },
+      { id: 'r-img', title: '수용체 분포 형광 현미경 사진', icon: 'image' },
+      { id: 'r-pdf', title: '분자생물학 6장 · 신호 전달', icon: 'file-text' },
+    ];
+    return M.windowShell({ tabs, tabsCls: 'm7b', sidebar: librarySidebar(), main: header + table, inspector: insp, overlays });
+  }
+
   function libraryWindow(opts = {}) {
+    if (params.get('m') === '7c') return libraryWindow7c();
     const st = opts.state ?? state;
     let header = libraryHeader(opts.header);
     let table;
@@ -469,26 +781,31 @@
 
   // ── Library: empty + drop overlay ──────────────────────────────────────────
   function emptyLibrary(drop) {
+    const m7c = params.get('m') === '7c';
+    const w = Number(params.get('w')) || 1440;
     const main = `<div class="empty-state" ${ms('M3', '빈 라이브러리 안내')}>
         <div class="glyph">${icon('library-big', 'xl')}</div>
         <h1>아직 자료가 없습니다</h1>
-        <p>PDF나 동영상을 이&nbsp;창에 끌어다 놓거나 가져올 파일을 선택하세요.<br>원본은 그대로 두고 라이브러리에 사본을 만듭니다.</p>
+        <p>${m7c ? 'PDF&#8288;·동영상&#8288;·이미지를 이&nbsp;창에 끌어다 놓거나 가져올 파일을 선택하세요.' : 'PDF나 동영상을 이&nbsp;창에 끌어다 놓거나 가져올 파일을 선택하세요.'}<br>원본은 그대로 두고 라이브러리에 사본을 만듭니다.</p>
         <div class="actions">
           <div class="btn primary large" title="⌘O">파일 가져오기…</div>
           <div class="btn large" title="⌥⌘O">외부 파일 연결…</div>
         </div>
         <div class="hints">
           <div class="row"><span>파일 가져오기</span>${kbd('⌘', 'O')}<span style="width:12px"></span><span>명령 팔레트</span>${kbd('⌘', 'K')}</div>
-          <div class="row">PDF와 MP4 · MOV · WebM 동영상을 지원합니다.</div>
+          ${m7c ? `<div class="row formats" ${ms('M7c', '지원 형식 줄(PDF · 동영상 · 이미지)')}>PDF, MP4&nbsp;·&nbsp;MOV&nbsp;·&nbsp;WebM 동영상, PNG&nbsp;·&nbsp;JPEG&nbsp;·&nbsp;WebP&nbsp;·&nbsp;GIF&nbsp;·&nbsp;AVIF 이미지를 지원합니다.</div>` : '<div class="row">PDF와 MP4 · MOV · WebM 동영상을 지원합니다.</div>'}
         </div>
       </div>`;
-    return M.windowShell({
+    const win = M.windowShell({
       tabs: [{ title: '라이브러리', icon: 'library-big', home: true, active: true }],
       unified: { title: '내 라이브러리', actions: importButton() },
       sidebar: `<div ${ms('M5', '컬렉션 없음 안내')}>${librarySidebar({ empty: true, selected: 'all', focused: false })}</div>`,
       main,
       overlays: drop ? dropOverlay() : '',
+      style: w < 1440 ? `--win-w:${w}px;--win-h:768px` : '',
     });
+    if (w >= 1440) return win;
+    return `<div class="desktop">${win}<div class="sim-note">창 ${w} · 사이드바 240 + 안내 ${w - 240} — 지원 형식 줄은 1024에서도 한 줄입니다</div></div>`;
   }
 
   function dropOverlay() {
@@ -497,7 +814,7 @@
       <div class="drop-panel">
         <div class="glyph">${icon('download', 'xl')}</div>
         <h1>놓으면 라이브러리로 가져옵니다</h1>
-        <div class="files">파일 3개(PDF 2 · 동영상 1)</div>
+        <div class="files">${params.get('m') === '7c' ? '파일 3개(PDF 1 · 이미지 2)' : '파일 3개(PDF 2 · 동영상 1)'}</div>
         <div class="drop-modes">
           <div class="drop-mode is-on">${icon('copy')}<span class="dm-title">사본으로 가져오기</span>
             <span class="dm-text">라이브러리 폴더에 복사합니다.<br>원본은 그대로 둡니다.</span></div>
@@ -870,7 +1187,7 @@
     return `<div class="reader-toolbar">
       <div class="group" ${ms('M7a', '쪽 입력과 이전·다음 쪽')}>
         ${nav7b}
-        <div class="page-field ${dis} ${history ? 'after-nav' : ''}"><div class="field" title="쪽 번호 ⌥⌘G">${page}</div>${narrow ? '' : `<span class="num">/ ${pages}</span>`}</div>
+        <div class="page-field v2 ${dis} ${history ? 'after-nav' : ''}"><div class="field" title="쪽 번호 ⌥⌘G">${page}</div>${narrow ? '' : `<span class="num">/ ${pages}</span>`}</div>
         <span class="icon-btn ${dis}" title="이전 쪽 ←">${icon('chevron-up')}</span>
         <span class="icon-btn ${dis}" title="다음 쪽 →">${icon('chevron-down')}</span>
       </div>
@@ -1789,7 +2106,7 @@
       orphans: ci({
         ic: 'triangle-alert', cls: 'c-warning', title: '쓰이지 않는 사본 3개',
         text: '어느&nbsp;자료도 쓰지 않는 라이브러리 폴더의 파일입니다.',
-        meta: '96 MB', stack: true, action: '<div class="btn small">자료로 되살리기</div><div class="btn small">정리…</div>',
+        meta: '96 MB', stack: true, action: '<div class="btn small">자료로 되살리기</div><div class="btn small">지우기…</div>',
       }),
       lost: ci({
         ic: 'triangle-alert', cls: 'c-warning', title: '사본이 사라진 자료 4개',
@@ -2718,12 +3035,144 @@
     </div>`;
   }
 
+  // ── M7c: the image reader ──────────────────────────────────────────────────────────────────────────────────────────
+  const NO_PAGES_SIDEBAR = `<div class="pane-empty top" ${ms('M7c', '쪽 없음 안내(이미지 리더의 사이드바, 모든 상태)')}>${icon('image')}<div class="pe-title">이미지에는 쪽이 없습니다</div></div>`;
+
+  function imageZoomMenu(mode) {
+    return `<div class="menu" data-anchor="zoom-btn" style="width:232px" role="menu" ${ms('M7c', '이미지 확대 메뉴(창에 맞춤 · 너비에 맞춤 · 실제 크기 · 확대 · 축소)')}>
+      ${mi('창에 맞춤', { check: mode === 'fit' })}${mi('너비에 맞춤', { check: mode === 'width' })}${mi('실제 크기', { shortcut: '⌘0' })}
+      <div class="msep"></div>
+      ${mi('확대', { shortcut: '⌘+' })}${mi('축소', { shortcut: '⌘−' })}
+    </div>`;
+  }
+
+  function imageViewMenu({ bg }) {
+    return `<div class="menu" data-anchor="view-btn" data-align="end" style="width:232px" role="menu" ${ms('M7c', '이미지 보기 메뉴(배경 · 회전)')}>
+      <div class="mhead">배경</div>${mi('밝게', { check: bg === 'light' })}${mi('어둡게', { check: bg === 'dark' })}${mi('체크무늬', { check: bg === 'checker' })}
+      <div class="msep"></div>
+      ${mi('시계 방향으로 회전', { shortcut: '⌘R' })}${mi('반시계 방향으로 회전', { shortcut: '⌘L' })}
+    </div>`;
+  }
+
+  function imageToolbar({ zoom, menu, disabled, note = '' }) {
+    const dis = disabled ? 'is-disabled' : '';
+    return `<div class="reader-toolbar image" role="toolbar" aria-label="이미지 도구">
+      <div class="l">${note ? `<span class="image-note">${note}</span>` : ''}</div>
+      <div class="zoom-field ${dis}" id="zoom-btn" ${ms('M7c', '이미지 확대 필드·▾ 단추')}>
+        <div class="field" title="확대 비율">${zoom}</div>
+        <span class="icon-btn sm ${menu === 'zoom' ? 'is-pressed' : ''} ${dis}" id="zoom-menu-btn" title="확대 메뉴">${icon('chevron-down', 'xs')}</span>
+      </div>
+      <div class="r"><span class="btn small plain has-menu ${menu === 'view' ? 'is-pressed' : ''} ${dis}" id="view-btn" title="보기" ${ms('M7c', '이미지 보기 ▾ 단추')}>보기${icon('chevron-down', 'xs')}</span></div>
+    </div>`;
+  }
+
+  function imageNotice(kind, file) {
+    return {
+      error: `<div class="notice" role="status" ${ms('M7c', '이미지 그릴 수 없음(Finder에서 보기 · 기본 앱으로 열기)')}>
+            <div class="glyph">${icon('image-off', 'xl')}</div>
+            <h2>이 이미지를 표시할 수 없습니다</h2>
+            <p>파일 내용이 손상되었거나 그릴 수 없는 형식입니다. 원본 파일은 그대로 보관됩니다. 다른 사본이 있으면 다시 가져오세요.</p>
+            <div class="file">${file}</div>
+            <div class="actions"><div class="btn has-icon" title="⇧⌘R">${icon('folder-search')}Finder에서 보기</div><div class="btn has-icon">${icon('external-link')}기본 앱으로 열기</div></div>
+          </div>`,
+      missing: `<div class="notice" role="status" ${ms('M3', '원본 없음(다시 연결)')}>
+            <div class="glyph warning">${icon('link-2-off', 'xl')}</div>
+            <h2>원본&nbsp;파일을 찾을 수 없습니다</h2>
+            <p>외부 연결 자료입니다. 파일을 옮겼거나 이름을 바꿨다면 새&nbsp;위치를 지정하세요. 필기와&nbsp;태그는 그대로 남아 있습니다.</p>
+            <div class="file mono" title="/Users/seojin/Downloads/seminar/slide-capture.png">~/Downloads/seminar/slide-capture.png</div>
+            <div class="actions"><div class="btn primary">다시 연결…</div><div class="btn">라이브러리로 돌아가기</div></div>
+          </div>`,
+      trashed: `<div class="notice" role="status" ${ms('M6', '리더 휴지통 안내(복원·라이브러리로 돌아가기)')}>
+            <div class="glyph">${icon('trash-2', 'xl')}</div>
+            <h2>이&nbsp;자료는 휴지통에 있습니다</h2>
+            <p>복원하면 이&nbsp;자리에서 다시 엽니다.</p>
+            <div class="actions"><div class="btn primary" title="↩">복원</div><div class="btn">라이브러리로 돌아가기</div></div>
+          </div>`,
+    }[kind];
+  }
+
+  function imageWindow() {
+    const q = (k) => params.get(k);
+    const w = Number(q('w')) || 1440;
+        const menu = ['zoom', 'view'].includes(q('menu')) ? q('menu') : null;
+    const dead = ['error', 'missing', 'trashed'].includes(state) ? state : null;
+    const loading = state === 'loading';
+    const img = IMAGES[['small', 'transparent', 'diagram'].includes(q('img')) ? q('img') : 'photo'];
+    const bg = ['light', 'dark', 'checker'].includes(q('bg')) ? q('bg') : M.isDark() ? 'dark' : 'light';
+    const rotate = q('rotate') === '90' ? 90 : 0;
+    const mode = q('zoom') === 'width' ? 'width' : q('zoom') === '400' ? '400' : 'fit';
+    const title = dead === 'missing' ? '세미나 슬라이드 캡처' : img.title;
+
+    // The stage: the window less the sidebar (240) and the 52 px tab strip and 44 px toolbar; no item panel in the reader.
+    const sw = w - 240;
+    const sh = (w < 1440 ? 768 : 900) - 52 - 44;
+    const [rw, rh] = rotate ? [img.h, img.w] : [img.w, img.h];
+    const fit = Math.min(1, (sw - 48) / rw, (sh - 48) / rh);
+    const scale = mode === 'width' ? (sw - 48) / rw : mode === '400' ? 4 : fit;
+    const zoomLabel = loading ? '…' : `${Math.round(scale * 100)}%`;
+
+    let stage;
+    let note = '';
+    if (dead) {
+      stage = `<div class="pdf-stage"><div class="stage-center">${imageNotice(dead, 'receptor_fluorescence_0412.jpg · 6.8 MB')}</div></div>`;
+    } else if (loading) {
+      // The picture is not drawn before the saved place is applied; only the stage's ground.
+      stage = `<div class="image-stage" data-bg="${bg}" role="region" tabindex="0" aria-label="이미지" aria-busy="true"></div>`;
+    } else {
+      const dw = rw * scale;
+      const dh = rh * scale;
+      let pic;
+      let extra = '';
+      if (mode === '400') {
+        // 400 %: the stage shows a 300 × 201 part of the picture around the saved centre.
+        const vw = sw / 4;
+        const vh = sh / 4;
+        const cx = Number(q('cx')) || 0.62;
+        const cy = Number(q('cy')) || 0.43;
+        pic = `<div class="image-pic" style="left:0;top:0;width:${sw}px;height:${sh}px">${img.draw({ width: sw, height: sh, view: [Math.round(cx * img.w - vw / 2), Math.round(cy * img.h - vh / 2), vw, vh] })}</div>`;
+        extra = `<span class="image-hand" style="left:${Math.round(sw / 2 - 12)}px;top:${Math.round(sh / 2 - 12)}px">${icon('grab', 'lg')}</span>`;
+        note = '목업 메모 · 커서 grab · 끄는 동안 grabbing — 그림이 무대보다 클 때만';
+      } else {
+        const left = Math.max(24, (sw - dw) / 2);
+        const top = dh + 48 <= sh ? (sh - dh) / 2 : 24;
+        pic = rotate
+          ? `<div class="image-pic rot" style="left:${left}px;top:${top}px;width:${dw}px;height:${dh}px"><svg-slot></svg-slot></div>`.replace(
+              '<svg-slot></svg-slot>',
+              img.draw({ width: img.w * scale, height: img.h * scale }).replace('<svg ', `<svg style="margin:${-(img.h * scale) / 2}px 0 0 ${-(img.w * scale) / 2}px;transform:rotate(${rotate}deg)" `),
+            )
+          : `<div class="image-pic" style="left:${left}px;top:${top}px;width:${dw}px;height:${dh}px">${img.draw({ width: dw, height: dh })}</div>`;
+        if (mode === 'width' && dh + 48 > sh) note = '목업 메모 · 너비에 맞춤 — 그림이 무대보다 길어 세로로 스크롤합니다';
+        if (mode === 'fit' && img === IMAGES.small) note = '목업 메모 · 작은 이미지는 키우지 않습니다 — 창에 맞춤도 100%';
+        if (img === IMAGES.diagram) note = '목업 메모 · 흰 바탕 그림 · 테두리와 그림자 없음';
+      }
+      stage = `<div class="image-stage ${mode === '400' ? 'is-grab' : ''}" data-bg="${bg}" role="region" tabindex="0" aria-label="이미지" ${ms('M7c', '이미지 무대(스크롤 · 끌기 · 핀치)')}>${pic}${extra}</div>`;
+    }
+
+    const toolbar = dead ? '' : imageToolbar({ zoom: zoomLabel, menu, disabled: loading, note });
+    const main = `${toolbar}<div class="reader-body">${stage}</div>`;
+    let overlays = '';
+    if (menu === 'zoom') overlays = imageZoomMenu(mode);
+    else if (menu === 'view') overlays = imageViewMenu({ bg });
+    // R46: the ▾ is disabled with a reason, so its tooltip is the name and the reason in secondary colour (design-spec 6), as the app's.
+    else if (loading) overlays = `<span class="tooltip" data-anchor="zoom-menu-btn" role="tooltip">확대 메뉴<span class="why">이미지를 여는 중입니다</span></span>`;
+
+    const tabs = [
+      { id: 'library', title: '라이브러리', icon: 'library-big', home: true },
+      { id: 'r-open', title, icon: 'image', active: true },
+    ];
+    const shell = (extra = {}) =>
+      M.windowShell({ tabs, tabsCls: 'm7b', sidebar: NO_PAGES_SIDEBAR, main, inspector: null, overlays, ...extra });
+    if (w >= 1440) return shell();
+    return `<div class="desktop">${shell({ style: `--win-w:${w}px;--win-h:768px` })}<div class="sim-note">창 ${w} · 사이드바 240 + 이미지 ${w - 240} — 항목 패널이 없어 도구 막대는 확대 필드와 보기 ▾뿐입니다. 맞춤은 창 크기에 맞춰 다시 계산합니다</div></div>`;
+  }
+
   // ── Render entry ───────────────────────────────────────────────────────────
   const screens = {
     library: () => libraryWindow({}),
     'library-empty': () => emptyLibrary(state === 'drop'),
     'reader-pdf': pdfWindow,
     'reader-video': () => videoWindow(),
+    'reader-image': imageWindow,
     palette: () => libraryWindow({ state: 'item', table: { focused: false }, overlays: palette() }),
     settings: () => libraryWindow({ state: 'item', table: { focused: false }, inactive: true, above: settingsWindow() }),
     components: componentsBoard,

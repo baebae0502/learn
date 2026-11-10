@@ -86,7 +86,28 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
         /** The class goes with the mode in the same call: a jump right after the change must measure the new layout, which a rendered attribute would not give. */
         const markScroll = () => viewerEl.classList.toggle('scrollPage', viewer.scrollMode === ScrollMode.PAGE);
         const layoutNow = (): FitLayout => ({ flow: scrollNow(), columns: spreadNow() === 'none' ? 1 : 2 });
-        const eventBus = new EventBus();
+        /**
+         * The stage as a text layer's notice found it, before any listener ran: pdf.js's late focus of a link's target (an internal
+         * listener, run first) scrolls it, and a scroll made in the same task as the notice has no scroll event yet. Null outside
+         * that notice and while the tab is hidden. The bus takes no new own property, so its dispatch is overridden in a subclass.
+         */
+        let stageAtLayer: { top: number; left: number } | null = null;
+        const stageNow = () => ({ top: container.scrollTop, left: container.scrollLeft });
+        class StageEventBus extends EventBus {
+          override dispatch(name: string, data: object): void {
+            if (name !== 'textlayerrendered') {
+              super.dispatch(name, data);
+              return;
+            }
+            stageAtLayer = shownRef.current ? stageNow() : null;
+            try {
+              super.dispatch(name, data);
+            } finally {
+              stageAtLayer = null;
+            }
+          }
+        }
+        const eventBus = new StageEventBus();
         const linkService = new PDFLinkService({ eventBus, externalLinkTarget: LinkTarget.BLANK });
         // The controller searches the document's text whether or not the find bar is open; the bar only asks and shows.
         const findController = new PDFFindController({ linkService, eventBus, updateMatchesCountOnProgress: true });
@@ -216,7 +237,12 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
           // current one in a row or a spread, an earlier page at the document's end, where the stage cannot move, so the last page was
           // never reached.
           const { first } = viewer._getVisiblePages() as { first?: unknown };
-          if (first) viewer._updateLocation(first);
+          if (first) {
+            viewer._updateLocation(first);
+            // And reported now, as update() reports it a frame later: the reader's place is saved from that report, so a quit or a
+            // closed tab in the frame after a turn kept the page from before it. Only the report: no current page is picked, as above.
+            eventBus.dispatch('updateviewarea', { source: viewer, location: viewer._location });
+          }
         };
         const place: PdfViewHandle['place'] = ({ pageNumber, destArray }) => {
           if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > viewer.pagesCount) return;
@@ -248,7 +274,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
          * pdf.js focuses the target page's text layer once it is drawn (goToDestination's one-shot listener, an internal one that runs
          * before ours), and the browser scrolls the focused page into view. A reader who has already left that jump (back, forward,
          * another jump) must not be taken to it by a text layer that was slow: the page is remembered here, and when its layer arrives
-         * the scroll goes back to where the stage was (the last scroll event's: the focus's own has not been reported yet).
+         * the scroll goes back to where the stage was when the notice came, before that focus moved it (stageAtLayer).
          */
         let linkTarget: number | null = null;
         const abandoned = new Set<number>();
@@ -258,18 +284,20 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
           jumped = null;
         };
         eventBus.on('textlayerrendered', (e: { pageNumber: number }) => {
+          // The last scroll event can be older than the stage: a scroll set in the task this notice came in is reported next frame.
+          const here = stageAtLayer ?? scrolled;
           if (linkTarget === e.pageNumber) {
             linkTarget = null;
             // A scroll of the reader's own since the jump (wheel, scroll bar, keys) leaves the link as a move of ours does.
             const landed = jumped?.pageNumber === e.pageNumber ? jumped : null;
-            if (landed && (Math.abs(scrolled.top - landed.scrollTop) > 2 || Math.abs(scrolled.left - landed.scrollLeft) > 2)) {
+            if (landed && (Math.abs(here.top - landed.scrollTop) > 2 || Math.abs(here.left - landed.scrollLeft) > 2)) {
               abandoned.add(e.pageNumber);
               jumped = null;
             }
           }
           if (!abandoned.delete(e.pageNumber) || !shownRef.current) return;
-          container.scrollTop = scrolled.top;
-          container.scrollLeft = scrolled.left;
+          container.scrollTop = here.top;
+          container.scrollLeft = here.left;
         });
         const step = (direction: 'back' | 'forward') => {
           const here = hereNow();
@@ -338,7 +366,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
             if (typeof z === 'number') viewer.currentScale = z;
             else fitTo(z);
           },
-          restore: (saved, pageIndex) => {
+          restore: (saved, pageIndex, at = 'saved') => {
             const zoom = saved?.zoom ?? 'auto';
             // The modes come first: the zoom is fitted to the layout and the place is a place of that layout.
             const scroll = saved?.scroll ?? 'vertical';
@@ -352,8 +380,10 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
             // The fit follows the current page, which is page 1 until the scroll below (R-21: a mixed-size document is fitted to the page in view, as pdf.js does).
             else fitTo(zoom);
             // Not a link: a place at the top or left edge of a page gets the room the mockup draws there (placement.ts), and one inside
-            // the margin, which a saved place can be, comes back exactly.
-            jump({ pageNumber: pageIndex + 1, destArray: [null, { name: 'XYZ' }, saved?.left ?? 0, saved?.top ?? null, null] }, false, false);
+            // the margin, which a saved place can be, comes back exactly. A page asked for lands as place() lands it; the saved
+            // point belongs to another page.
+            if (at === 'page') jump({ pageNumber: pageIndex + 1 }, false, false);
+            else jump({ pageNumber: pageIndex + 1, destArray: [null, { name: 'XYZ' }, saved?.left ?? 0, saved?.top ?? null, null] }, false, false);
             // Reports the place the viewer is at now, so the saver starts from it and saves only what the reader changes.
             viewer.update();
             store.setPdf({ placed: true, pageNumber: pageIndex + 1, scale: viewer.currentScale, zoom, rotation: viewer.pagesRotation as Rotation, scroll: scrollNow(), spread: spreadNow() });

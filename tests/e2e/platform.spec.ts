@@ -36,8 +36,8 @@ const entries = (items: readonly MenuNode[]) => items.map((n) => [n.type === 'se
 const VIEW_START = [
   [null, '명령 팔레트…'], ['-', ''], [null, '사이드바 가리기'], [null, '항목 패널 보기/가리기'], [null, '정렬 기준'], [null, '썸네일 보기'], [null, '목차 보기'], ['-', ''],
   [null, '글자 크게'], [null, '글자 크게'], [null, '글자 작게'], [null, '기본 글자 크기'], ['-', ''],
-  // The reader's: how the page fits, the rotation, then 쪽 색 ▸, 스크롤 ▸ and 펼침 ▸ (their rows are the groups', without marks).
-  [null, '자동 맞춤'], [null, '너비에 맞춤'], [null, '한 쪽 전체 보기'], ['-', ''], [null, '시계 방향으로 회전'], [null, '반시계 방향으로 회전'], [null, '쪽 색'], [null, '스크롤'], [null, '펼침'], ['-', ''],
+  // The reader's: how the page fits, the rotation, then 쪽 색 ▸, 스크롤 ▸, 펼침 ▸ and 배경 ▸ (their rows are the groups', without marks).
+  [null, '자동 맞춤'], [null, '너비에 맞춤'], [null, '한 쪽 전체 보기'], ['-', ''], [null, '시계 방향으로 회전'], [null, '반시계 방향으로 회전'], [null, '쪽 색'], [null, '스크롤'], [null, '펼침'], [null, '배경'], ['-', ''],
 ];
 
 async function session(testInfo: { outputPath(...p: string[]): string }) {
@@ -123,7 +123,7 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
     for (const c of COMMANDS) {
       const hits = all.filter((n) => n.id === c.id);
       if (!c.menu) {
-        // The members of 쪽 색 ▸, 스크롤 ▸ and 펼침 ▸ are rows of those groups (the menu bar shows no mark), not placed commands.
+        // The members of 쪽 색 ▸, 스크롤 ▸, 펼침 ▸ and 배경 ▸ are rows of those groups (the menu bar shows no mark), not placed commands.
         expect(hits, `${c.id} is context-menu only`).toHaveLength(groupRows.has(c.id) ? 1 : 0);
         continue;
       }

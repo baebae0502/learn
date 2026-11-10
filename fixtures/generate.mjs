@@ -235,12 +235,67 @@ async function makeKorean(file) {
   fs.writeFileSync(file, await saved.save());
 }
 
-// ffmpeg is only touched when a video fixture is actually missing, so a warm fixture dir needs no ffmpeg.
+// ---- korean-cmap.pdf: Korean text in a font that is NOT embedded ------------------------------------------------------
+// A Type0 font with the predefined UniKS-UCS2-H encoding and Adobe-Korea1 ordering, no ToUnicode: pdf.js must read its
+// cMap files to turn the codes into text, which korean.pdf (an embedded font with a ToUnicode map) never needs.
+
+export const KOREAN_CMAP_TEXT = '한글검색시험';
+
+async function makeKoreanCmap(file) {
+  const doc = await PDFDocument.create();
+  const ctx = doc.context;
+  const cid = ctx.obj({
+    Type: 'Font',
+    Subtype: 'CIDFontType0',
+    BaseFont: 'HYSMyeongJo-Medium',
+    CIDSystemInfo: ctx.obj({ Registry: PDFString.of('Adobe'), Ordering: PDFString.of('Korea1'), Supplement: 1 }),
+    FontDescriptor: ctx.obj({ Type: 'FontDescriptor', FontName: 'HYSMyeongJo-Medium', Flags: 6, FontBBox: [0, -200, 1000, 900], ItalicAngle: 0, Ascent: 880, Descent: -120, CapHeight: 700, StemV: 80 }),
+    DW: 1000,
+  });
+  const type0 = ctx.obj({ Type: 'Font', Subtype: 'Type0', BaseFont: 'HYSMyeongJo-Medium-UniKS-UCS2-H', Encoding: 'UniKS-UCS2-H', DescendantFonts: [ctx.register(cid)] });
+  const page = doc.addPage([595, 842]);
+  page.node.setFontDictionary(PDFName.of('F1'), ctx.register(type0));
+  const codes = [...KOREAN_CMAP_TEXT].map((c) => c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')).join('');
+  const stream = ctx.flateStream(`BT /F1 18 Tf 56 760 Td <${codes}> Tj ET`);
+  page.node.set(PDFName.of('Contents'), ctx.register(stream));
+  fs.writeFileSync(file, await doc.save());
+}
+
+// ---- no-text.pdf and search-30.pdf: body-text indexing (nothing to read; a long file with Latin and Korean on every page) ----
+
+/** Two pages of shapes and no text at all: a scan without a text layer reads as "empty". */
+async function makeNoText(file) {
+  const doc = await PDFDocument.create();
+  doc.setTitle('Learn fixture: shapes only');
+  for (let i = 1; i <= 2; i++) {
+    const page = doc.addPage([595, 842]);
+    page.drawRectangle({ x: 56, y: 560, width: 220 + i * 20, height: 120, borderColor: rgb(0.18, 0.5, 0.48), borderWidth: 3 });
+    page.drawCircle({ x: 400, y: 300, size: 40 + i * 10, borderColor: rgb(0.5, 0.2, 0.2), borderWidth: 2 });
+  }
+  fs.writeFileSync(file, await doc.save());
+}
+
+/** 30 pages: "Page N: fluorescence signal transduction" in Helvetica and "형광 현미경 관찰 기록 N" in the whole Pretendard (as korean.pdf). */
+async function makeSearch30(file) {
+  const doc = await PDFDocument.create();
+  doc.registerFontkit(fontkit);
+  const latin = await doc.embedFont(StandardFonts.Helvetica);
+  const korean = await doc.embedFont(fs.readFileSync(path.join(here, '../apps/desktop/src/renderer/src/design/fonts/PretendardVariable.woff2')), { subset: false });
+  doc.setTitle('Learn fixture: search 30');
+  for (let n = 1; n <= 30; n++) {
+    const page = doc.addPage([595, 842]);
+    page.drawText(`Page ${n}: fluorescence signal transduction`, { x: 56, y: 770, size: 14, font: latin });
+    page.drawText(`형광 현미경 관찰 기록 ${n}`, { x: 56, y: 740, size: 14, font: korean });
+  }
+  fs.writeFileSync(file, await doc.save());
+}
+
+// ffmpeg is only touched when a video fixture (or the large photo) is actually missing, so a warm fixture dir needs no ffmpeg.
 const runFfmpeg = (args, opts) => {
   try {
     return execFileSync('ffmpeg', args, opts);
   } catch (e) {
-    if (e?.code === 'ENOENT') throw new Error('ffmpeg not found on PATH — needed to generate the missing video fixtures');
+    if (e?.code === 'ENOENT') throw new Error('ffmpeg not found on PATH — needed to generate the missing video and photo fixtures');
     throw e;
   }
 };
@@ -256,8 +311,41 @@ if (need('한글 경로 (테스트) #1.pdf')) await makePdf(path.join(out, '한�
 if (need('paper-100.pdf')) await makePaper(path.join(out, 'paper-100.pdf'));
 if (need('long-outline.pdf')) await makeLongOutline(path.join(out, 'long-outline.pdf'));
 if (need('korean.pdf')) await makeKorean(path.join(out, 'korean.pdf'));
+if (need('korean-cmap.pdf')) await makeKoreanCmap(path.join(out, 'korean-cmap.pdf'));
+if (need('no-text.pdf')) await makeNoText(path.join(out, 'no-text.pdf'));
+if (need('search-30.pdf')) await makeSearch30(path.join(out, 'search-30.pdf'));
 // Encrypted PDFs cannot be made with pdf-lib: the committed file is made once with mutool (fixtures/static/README.md).
 if (need('locked.pdf')) fs.copyFileSync(path.join(here, 'static', 'locked.pdf'), path.join(out, 'locked.pdf'));
+
+// The five committed raster images (fixtures/static/images), copied so a spec reads them from one folder; png-named.jpg is
+// transparent.png under a wrong extension.
+for (const name of ['transparent.png', 'orient6.jpg', 'alpha.webp', 'two-frames.gif', 'still.avif']) {
+  if (need(name)) fs.copyFileSync(path.join(here, 'static', 'images', name), path.join(out, name));
+}
+if (need('png-named.jpg')) fs.copyFileSync(path.join(here, 'static', 'images', 'transparent.png'), path.join(out, 'png-named.jpg'));
+
+/** CRC-32 (ISO-HDLC, the PNG chunk check) of a byte array. */
+function crc32(bytes) {
+  let c = 0xffffffff;
+  for (const b of bytes) {
+    c ^= b;
+    for (let k = 0; k < 8; k++) c = c & 1 ? (c >>> 1) ^ 0xedb88320 : c >>> 1;
+  }
+  return (c ^ 0xffffffff) >>> 0;
+}
+// A PNG that imports (its signature and IHDR say PNG, 64 × 48) but cannot be drawn: the 33-byte head and no body at all.
+if (need('broken.png')) {
+  const ihdr = Buffer.alloc(17);
+  ihdr.write('IHDR', 0, 'latin1');
+  ihdr.writeUInt32BE(64, 4);
+  ihdr.writeUInt32BE(48, 8);
+  ihdr.set([8, 6, 0, 0, 0], 12); // 8-bit RGBA, deflate, adaptive filter, not interlaced
+  const chunk = Buffer.alloc(25);
+  chunk.writeUInt32BE(13, 0);
+  ihdr.copy(chunk, 4);
+  chunk.writeUInt32BE(crc32(ihdr), 21);
+  fs.writeFileSync(path.join(out, 'broken.png'), Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk]));
+}
 
 if (need('sample-h264-aac.mp4')) {
   ffmpeg([
@@ -265,6 +353,10 @@ if (need('sample-h264-aac.mp4')) {
     '-c:v', 'libx264', '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-g', '60', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart',
     path.join(out, 'sample-h264-aac.mp4'),
   ]);
+}
+// A large photo for the image reader's open time (4032 × 3024, a phone camera's size): one frame of the test pattern.
+if (need('photo-4032.jpg')) {
+  ffmpeg(['-f', 'lavfi', '-i', 'testsrc2=size=4032x3024', '-frames:v', '1', '-q:v', '3', path.join(out, 'photo-4032.jpg')]);
 }
 if (need('sample-mpeg4part2.mp4')) {
   ffmpeg(['-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30', '-t', '3', '-c:v', 'mpeg4', path.join(out, 'sample-mpeg4part2.mp4')]);

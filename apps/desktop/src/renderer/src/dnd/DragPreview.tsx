@@ -1,5 +1,5 @@
-import { Clapperboard, FileText } from 'lucide-react';
 import { t } from '../strings';
+import { itemIcon } from '../library/itemIcon';
 import { Icon } from '../ui/Icon';
 import type { PreviewFacts } from './previewFacts';
 
@@ -11,7 +11,7 @@ import type { PreviewFacts } from './previewFacts';
 export function DragPreview({ title, type, count }: PreviewFacts) {
   return (
     <div className="dnd-preview" data-testid="drag-preview">
-      <Icon icon={type === 'video' ? Clapperboard : FileText} />
+      <Icon icon={itemIcon(type)} />
       <span className="dnd-preview-title ellipsis">{title}</span>
       {count >= 2 && <span className="dnd-preview-badge num">{t.organize.dnd.badge(count)}</span>}
     </div>

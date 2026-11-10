@@ -2,7 +2,7 @@ import type { OrganizeTag, Tag } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { inChunks } from './membership';
 import { patchSnapshot } from './snapshotCache';
-import { withTagged } from '../tags/organizeCache';
+import { withTagged } from './patch';
 import { withTag } from './snapshotPatch';
 
 /** A tag the user chose in the add field, or the name they typed. */

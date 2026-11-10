@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { newId, nowIso, type StorageMode } from '@learn/domain';
 import {
-  CollectionsRepository, LibraryRepository, ReadingRepository, TagsRepository, migrate, openDatabase,
+  CollectionsRepository, LibraryRepository, ReadingRepository, TagsRepository, TextRepository, migrate, openDatabase,
   type AssetRow, type Db, type NewImportRecord,
 } from '../src/index';
 import { expectLearnError, seedItem } from './fixtures';
@@ -48,6 +48,24 @@ describe('LibraryRepository', () => {
     });
     expect(repo.listItems().map((i) => i.id)).toEqual([rec.item.id]);
     expect(repo.counts()).toMatchObject({ items: 1, assets: 1, revisions: 1 });
+  });
+
+  it('reads an image\'s pixel size from the asset: both known, one missing, and never for a PDF', () => {
+    const imageRec = (sha: string, over: Partial<AssetRow>) => {
+      const rec = record(asset(sha, 'managed', { mime: 'image/png', originalName: 'p.png', ...over }), true, 'p');
+      return { ...rec, item: { ...rec.item, type: 'image' as const } };
+    };
+    const full = imageRec('1'.repeat(64), { width: 4032, height: 3024 });
+    const half = imageRec('2'.repeat(64), { width: 40, height: null });
+    const none = imageRec('3'.repeat(64), {});
+    const pdf = record(asset('4'.repeat(64), 'managed', { width: 5, height: 5 }));
+    for (const r of [full, half, none, pdf]) repo.insertImported(r);
+    expect(repo.getItem(full.item.id)?.imageSize).toEqual({ width: 4032, height: 3024 });
+    expect(repo.getItem(half.item.id)?.imageSize).toBeNull();
+    expect(repo.getItem(none.item.id)?.imageSize).toBeNull();
+    expect(repo.getItem(pdf.item.id)?.imageSize).toBeNull();
+    expect(repo.listItems().find((i) => i.id === full.item.id)?.imageSize).toEqual({ width: 4032, height: 3024 });
+    expect(repo.findAssetsBySha('1'.repeat(64))[0]).toMatchObject({ width: 4032, height: 3024 });
   });
 
   it('rolls back everything when part of the insert fails', () => {
@@ -295,11 +313,22 @@ describe('LibraryRepository: organize fields, metadata, trash, duplicates', () =
     });
     expect(detail.tags).toEqual([{ id: tag.id, name: '중요', color: null, position: null, itemCount: 1 }]);
     expect(detail.collections.map((c) => [c.id, c.itemCount])).toEqual([[live.id, 1]]);
+    expect(detail.text).toEqual({ state: 'pending' });
 
     expectLearnError(() => repo.getItemDetail(newId()), 'NOT_FOUND', '항목을 찾을 수 없습니다.');
     repo.trash([itemId]);
     // The trash view's read-only panel reads it too (M6 Task 6, Q-6b).
     expect(repo.getItemDetail(itemId).item.id).toBe(itemId);
+  });
+
+  it('gives a PDF its body state and anything else null', () => {
+    const pdf = seedItem(db);
+    const video = seedItem(db, { type: 'video' });
+    const image = seedItem(db, { type: 'image' });
+    new TextRepository(db).backfill('2026-11-01T00:00:00.000Z');
+    expect(repo.getItemDetail(pdf.itemId).text).toEqual({ state: 'pending' });
+    expect(repo.getItemDetail(video.itemId).text).toBeNull();
+    expect(repo.getItemDetail(image.itemId).text).toBeNull();
   });
 
   it('trashes and restores items, listing the trash most recently deleted first', () => {

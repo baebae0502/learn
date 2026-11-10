@@ -32,11 +32,22 @@ describe('AnchorsRepository', () => {
     const { revisionId } = seedItem(db);
     const repo = new AnchorsRepository(db);
     const video: SourceAnchor = { kind: 'video', revisionId, startMs: 0, endMs: 10 };
-    const slide: SourceAnchor = { kind: 'slide', revisionId, derivedRevisionId: newId(), slideIndex: 0, quads: [] };
+    const slide: SourceAnchor = { kind: 'slides', revisionId, derivedRevisionId: newId(), slideIndex: 0, quads: [] };
     expect(repo.get(repo.create(video).id)?.anchor).toEqual(video);
     const s = repo.create(slide);
     expect(repo.get(s.id)?.anchor).toEqual(slide);
     expect(db.prepare('SELECT precision FROM anchors WHERE id = ?').get(s.id)).toEqual({ precision: 'region' });
+  });
+
+  it('stores an image anchor as a region without a quote and lists it with its revision', () => {
+    const db = freshDb();
+    const { revisionId } = seedItem(db, { type: 'image' });
+    const repo = new AnchorsRepository(db);
+    const image: SourceAnchor = { kind: 'image', revisionId, precision: 'region', rect: [0.25, 0.5, 0.5, 0.25] };
+    const rec = repo.create(image);
+    expect(repo.get(rec.id)).toEqual({ id: rec.id, anchor: image, status: 'ok', schemaVersion: 2 });
+    expect(repo.listByRevision(revisionId).map((r) => r.anchor)).toEqual([image]);
+    expect(db.prepare('SELECT kind, precision, quote, text_json FROM anchors WHERE id = ?').get(rec.id)).toEqual({ kind: 'image', precision: 'region', quote: null, text_json: null });
   });
 
   it('refuses a span without text and an unknown revision', () => {

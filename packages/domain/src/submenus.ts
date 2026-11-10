@@ -20,7 +20,7 @@ export const SUBMENU_SOURCES: Readonly<Record<SubmenuSource, { menuBar: boolean;
  * A group exists only with its members' handlers (a row without a handler cannot exist): the colour keys' are in R/commands/registry.ts.
  */
 export interface SubmenuSpec {
-  id: 'colorTags' | 'pageColor' | 'scrollMode' | 'spreadMode';
+  id: 'colorTags' | 'pageColor' | 'scrollMode' | 'spreadMode' | 'imageBackground';
   /** Korean, as the menu shows it. */
   label: string;
   /** The members, in menu order. */
@@ -57,6 +57,13 @@ export const SUBMENUS: readonly SubmenuSpec[] = [
     label: '펼침',
     commands: ['reader.spreadNone', 'reader.spreadOdd', 'reader.spreadEven'],
     menu: { menu: 'view', group: 5, order: 5 },
+  },
+  // 배경 ▸ (M7c): the picture's three grounds, last in the same group; checked in the image toolbar's 보기 menu only.
+  {
+    id: 'imageBackground',
+    label: '배경',
+    commands: ['reader.imageBackgroundLight', 'reader.imageBackgroundDark', 'reader.imageBackgroundChecker'],
+    menu: { menu: 'view', group: 5, order: 6 },
   },
 ];
 

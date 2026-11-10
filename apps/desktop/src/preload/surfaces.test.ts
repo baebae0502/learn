@@ -37,7 +37,7 @@ const allowedFor = (kind: WindowKind) =>
     .map(([channel]) => channel.replace(':', '.'));
 /** The push events each window's page may subscribe to. */
 const EVENTS: Record<WindowKind, ReadonlyArray<keyof LearnEventMap>> = {
-  main: ['menuCommand', 'libraryChanged', 'windowState', 'settingsChanged', 'prefsChanged', 'nativeMenu', 'demoShortcut', 'import:progress', 'import:finished', 'item:openRequested', 'recovery:show', 'job:progress'],
+  main: ['menuCommand', 'libraryChanged', 'windowState', 'settingsChanged', 'prefsChanged', 'nativeMenu', 'demoShortcut', 'import:progress', 'import:finished', 'item:openRequested', 'recovery:show', 'job:progress', 'search:progress'],
   // Its own window state, menu-bar menus and prefs; menuCommand and demoShortcut for the demo overlay it can show.
   settings: ['windowState', 'nativeMenu', 'prefsChanged', 'settingsChanged', 'menuCommand', 'demoShortcut'],
   sheet: [],

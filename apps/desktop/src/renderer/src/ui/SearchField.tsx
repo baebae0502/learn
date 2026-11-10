@@ -42,6 +42,11 @@ export function SearchField(props: {
   clearable?: boolean;
   /** Content at the field's end, inside its box (the find bar's count), before the clear button. */
   trailing?: ReactNode;
+  /**
+   * Content at the field's start in the magnifier's place (the library's scope button). A RAC button here must say
+   * `slot={null}`: inside the field, a button is otherwise the field's clear button.
+   */
+  leading?: ReactNode;
 }) {
   return (
     <AriaSearchField
@@ -63,7 +68,7 @@ export function SearchField(props: {
     >
       {({ isEmpty }) => (
         <>
-          <Icon icon={Search} size="sm" />
+          {props.leading ?? <Icon icon={Search} size="sm" />}
           <Input
             ref={props.inputRef}
             className="field-input"

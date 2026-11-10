@@ -33,6 +33,7 @@ const itemMissing = () => new LearnError('NOT_FOUND', '항목을 찾을 수 없�
 function startLocator(type: string): ReadingLocator | null {
   if (type === 'pdf') return { kind: 'pdf', pageIndex: 0 };
   if (type === 'video') return { kind: 'video', timeMs: 0 };
+  if (type === 'image') return { kind: 'image' };
   return null;
 }
 

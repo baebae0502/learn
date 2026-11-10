@@ -203,6 +203,55 @@ export function buildSearchIndex(items: readonly LibraryItem[], texts?: readonly
   return { ...shortPartFor(items, tags), ...longPart(items, texts) };
 }
 
+/** More changed items than this are cheaper to build the index for again than to patch. */
+export const RETAG_LIMIT = 50;
+
+/**
+ * The index with only the tag-name field of the items whose names differ between `prev` and `next` replaced: the other
+ * items' text is sliced from the old strings, and the offsets of the items behind a longer or shorter field move by the
+ * difference. The same index as `buildSearchIndex` with `next`, for a few changed items; null when more than
+ * RETAG_LIMIT changed (build it again).
+ */
+export function retagIndex(index: SearchIndex, prev: TagNames, next: TagNames): SearchIndex | null {
+  const changed = new Set<string>();
+  for (const [id, names] of prev) if (next.get(id) !== names) changed.add(id);
+  for (const [id, names] of next) if (prev.get(id) !== names) changed.add(id);
+  if (changed.size > RETAG_LIMIT) return null;
+  const ks: number[] = [];
+  index.items.forEach((it, k) => {
+    if (changed.has(it.id)) ks.push(k);
+  });
+  if (ks.length === 0) return index;
+  const { short, initials, starts } = index;
+  const shortPieces: string[] = [];
+  const initialPieces: string[] = [];
+  const newStarts = Int32Array.from(starts);
+  const newTitleEnds = Int32Array.from(index.titleEnds);
+  let from = 0;
+  let shift = 0;
+  let k0 = 0;
+  for (const k of ks) {
+    const end = starts[k + 1]! - 1; // the SEP that closes the item
+    const fieldAt = short.lastIndexOf(SEP, end - 1) + 1;
+    const field = foldJoined(clean(next.get(index.items[k]!.id) ?? ''));
+    shortPieces.push(short.slice(from, fieldAt), field);
+    initialPieces.push(initials.slice(from, fieldAt), initialsOf(field));
+    from = end;
+    // Up to this item the shift is the one before it: its own title still ends where it did, only moved by the earlier ones.
+    for (let j = k0; j <= k; j++) {
+      newStarts[j] = starts[j]! + shift;
+      newTitleEnds[j] = index.titleEnds[j]! + shift;
+    }
+    shift += field.length - (end - fieldAt);
+    k0 = k + 1;
+  }
+  shortPieces.push(short.slice(from));
+  initialPieces.push(initials.slice(from));
+  for (let j = k0; j < newStarts.length; j++) newStarts[j] = starts[j]! + shift;
+  for (let j = k0; j < newTitleEnds.length; j++) newTitleEnds[j] = index.titleEnds[j]! + shift;
+  return { ...index, short: shortPieces.join(''), initials: initialPieces.join(''), starts: newStarts, titleEnds: newTitleEnds };
+}
+
 const indexes = new WeakMap<readonly LibraryItem[], { texts: readonly SearchText[] | undefined; tags: TagNames; index: SearchIndex }>();
 /**
  * The index of this list array, these long texts and this tag map, built once and shared: the toolbar count and the table
@@ -212,7 +261,17 @@ const indexes = new WeakMap<readonly LibraryItem[], { texts: readonly SearchText
 export function searchIndexFor(items: readonly LibraryItem[], texts?: readonly SearchText[], tags: TagNames = NO_TAG_NAMES): SearchIndex {
   const hit = indexes.get(items);
   if (hit && hit.texts === texts && hit.tags === tags) return hit.index;
-  const index = timed('search:index', () => buildSearchIndex(items, texts, tags));
+  // The same list and texts with other tag names: swap the changed items' tag field when only a few changed.
+  // One measure either way (a retag that answers null falls through to the full build inside the same one).
+  const made = timed('search:index', () => {
+    const retagged = hit && hit.texts === texts ? retagIndex(hit.index, hit.tags, tags) : null;
+    return { retagged, index: retagged ?? buildSearchIndex(items, texts, tags) };
+  });
+  const { retagged, index } = made;
+  if (retagged) {
+    const { long: _l, longStarts: _s, longItems: _i, ...part } = retagged;
+    shortParts.set(items, { tags, part });
+  }
   indexes.set(items, { texts, tags, index });
   return index;
 }

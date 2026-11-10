@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { app, BrowserWindow, dialog, shell, type IpcMainInvokeEvent, type OpenDialogOptions, type SaveDialogOptions } from 'electron';
 import {
-  Channels, LearnError, commandById, commandMention, emptyInput, getItemsInput, importPathsInput, itemIdInput, itemIdsInput, pickAndImportInput, updateMetadataInput,
+  Channels, LearnError, commandById, commandMention, emptyInput, getItemsInput, importPathsInput, itemIdInput, itemIdsInput, packOrganize, pickAndImportInput, updateMetadataInput,
   type StorageMode,
 } from '@learn/domain';
 import { readOrganizeSnapshot } from '@learn/db';
@@ -16,7 +16,7 @@ import type { Handle, IpcDeps } from './register';
 
 /** The open panels' type filters (import, relink, the library check's 다시 연결…). */
 export const IMPORT_FILTERS: OpenDialogOptions['filters'] = [
-  { name: mainStrings.importFilters.media, extensions: ['pdf', 'mp4', 'm4v', 'mov', 'webm', 'mkv'] },
+  { name: mainStrings.importFilters.media, extensions: ['pdf', 'mp4', 'm4v', 'mov', 'webm', 'mkv', 'png', 'jpg', 'jpeg', 'webp', 'gif', 'avif'] },
   { name: mainStrings.importFilters.all, extensions: ['*'] },
 ];
 
@@ -77,7 +77,7 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
   handle(Channels.library.list, emptyInput, () => deps.getContext().repo.listItems());
   handle(Channels.library.searchTexts, emptyInput, () => deps.getContext().repo.searchTexts());
   // The sidebar's data in one read; main's own handlers announce what changes it (collections, tags, import, trash).
-  handle(Channels.library.organize, emptyInput, () => readOrganizeSnapshot(deps.getContext().db));
+  handle(Channels.library.organize, emptyInput, () => packOrganize(readOrganizeSnapshot(deps.getContext().db)));
   handle(Channels.library.getItems, getItemsInput, ({ ids }) => deps.getContext().repo.getItems(ids));
 
   // Re-checks the file; a changed availability is broadcast (libraryChanged{availability}).

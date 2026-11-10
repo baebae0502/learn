@@ -55,6 +55,34 @@
   .menu .mi[data-disabled] {
     color: var(--text-tertiary);
   }
+  /* A row with a line under its label (the search scope): the check stays on the first line. */
+  .menu .mi.two {
+    height: auto;
+    padding-top: var(--space-4);
+    padding-bottom: var(--space-4);
+    align-items: flex-start;
+    white-space: normal;
+  }
+  .menu .mi.two .check {
+    height: 16px; /* local: the first line's height, where the check sits */
+  }
+  .menu .mi .mi-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  /* Secondary, not tertiary: a description is read, and keeps 4.5:1 on the menu. */
+  .menu .mi .mi-desc {
+    color: var(--text-secondary);
+    font: var(--type-caption);
+  }
+  .menu .mi:is([data-focused], [data-force~='active']) .mi-desc {
+    color: var(--text-on-accent);
+  }
+  /* A line that tells rather than acts (the body index's progress): read as text, not as a disabled action. */
+  .menu .mi.info[data-disabled] {
+    color: var(--text-secondary);
+  }
   /* A row that opens a fly-out: the ▸ sits at the right edge where a shortcut would. */
   .menu .mi .sub-chevron {
     margin-left: auto;

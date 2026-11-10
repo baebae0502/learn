@@ -17,7 +17,7 @@ function sameNames(a: TagNames, b: TagNames): boolean {
 }
 
 /**
- * Each tagged item's tag names, joined by a space, in the model's tag order (spec 7.1): the search index's last short
+ * Each tagged item's tag names, joined by a space, in name order (spec 7.1): the search index's last short
  * field. Only items in the list are in it (the model's `tagItems` counts those). No model yet is no tags.
  */
 export function tagNamesFor(model: OrganizeModel | undefined): TagNames {
@@ -33,7 +33,8 @@ export function tagNamesFor(model: OrganizeModel | undefined): TagNames {
     }
   }
   const built = new Map<string, string>();
-  for (const [id, names] of lists) built.set(id, names.join(' '));
+  // Name order, not the model's: a colour change moves a tag within the model's order but cannot change what a query finds.
+  for (const [id, names] of lists) built.set(id, names.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(' '));
   const result = sameNames(last, built) ? last : built;
   last = result;
   byModel.set(model, result);

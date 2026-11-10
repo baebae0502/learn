@@ -22,6 +22,26 @@ export function snapshotDatabase(db: Db, file: string): void {
   db.prepare('VACUUM INTO ?').run(file);
 }
 
+const record = (db: Db, m: Migration) =>
+  db.prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)').run(m.version, m.name, nowIso());
+
+/** SQLite ignores PRAGMA foreign_keys inside a transaction: it is switched off before, checked, and always switched back on. */
+function runWithForeignKeysOff(db: Db, m: Migration): void {
+  if (db.inTransaction) throw new Error('a foreign-keys-off migration cannot run inside a transaction');
+  db.pragma('foreign_keys = OFF');
+  try {
+    if (db.pragma('foreign_keys', { simple: true }) !== 0) throw new Error('foreign keys are still on');
+    db.transaction(() => {
+      db.exec(m.sql);
+      const broken = db.pragma('foreign_key_check') as unknown[];
+      if (broken.length > 0) throw new Error(`foreign_key_check found ${broken.length} rows`);
+      record(db, m);
+    })();
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
+}
+
 export function migrate(db: Db, opts: { dbFile: string | null; migrations?: readonly Migration[] }): MigrateResult {
   const migrations = [...(opts.migrations ?? MIGRATIONS)].sort((a, b) => a.version - b.version);
   const latest = migrations.at(-1)?.version ?? 0;
@@ -40,10 +60,13 @@ export function migrate(db: Db, opts: { dbFile: string | null; migrations?: read
   let lastApplied = from;
   for (const m of pending) {
     try {
-      db.transaction(() => {
-        db.exec(m.sql);
-        db.prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)').run(m.version, m.name, nowIso());
-      })();
+      if (m.foreignKeysOff) runWithForeignKeysOff(db, m);
+      else {
+        db.transaction(() => {
+          db.exec(m.sql);
+          record(db, m);
+        })();
+      }
       lastApplied = m.version;
     } catch (e) {
       // Names the backup file (it sits next to library.sqlite in the library folder) and the next step.

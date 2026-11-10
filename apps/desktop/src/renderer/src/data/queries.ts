@@ -3,6 +3,7 @@ import type { LibraryItem, Prefs } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { useLearnEvent } from '../events';
 import { carrySearchIndex } from '../library/search';
+import { whenIdle } from '../ui/whenIdle';
 import { createChangeHandler } from './libraryChange';
 import { queryClient } from './query-client';
 
@@ -17,6 +18,8 @@ export const keys = {
   detail: (itemId: string) => ['library', 'detail', itemId] as const,
   /** An item's edited copies (M6 spec 6): under its detail, so whatever reads the detail again reads these too. */
   editedCopies: (itemId: string) => ['library', 'detail', itemId, 'editedCopies'] as const,
+  /** The 읽기 section's position of one item; main's position and opened notices invalidate it (libraryChange.ts). */
+  reading: (itemId: string) => ['reading', itemId] as const,
   panes: ['settings', 'layout.panes'] as const,
   tabs: ['settings', 'ui.tabs'] as const,
   /** The table's library settings (spec §3.1, §3.2): read once, then written optimistically (useLibrarySettings). */
@@ -34,6 +37,12 @@ export const keys = {
   organize: ['library', 'organize'] as const,
   /** The trash view's rows (spec 4.3): read while the trash view shows; under ['library'], so trash, restore and purge notices mark it stale. */
   trash: ['library', 'trash'] as const,
+  /** search:body's answer for one query (spec 5.6): under ['search'], which the body's notices mark stale (libraryChange.ts). */
+  bodySearch: (query: string) => ['search', 'body', query] as const,
+  /** search:pages for one item and query (the item panel's 본문 일치): under ['search'] with the body's other answers. */
+  bodyPages: (itemId: string, query: string) => ['search', 'pages', itemId, query] as const,
+  /** How far the body index is: main's search:progress notices put each new count here. */
+  bodyProgress: ['search', 'progress'] as const,
 };
 
 export const useAppInfo = () => useQuery({ queryKey: keys.info, queryFn: () => unwrap(api().app.info()) });
@@ -82,7 +91,8 @@ export function putItems(client: QueryClient, prev: readonly LibraryItem[], next
   if (held) carrySearchIndex(prev, held);
 }
 
-const onLibraryChanged = createChangeHandler({
+/** The window's reading of what main announces; the tag actions say which changes they made themselves (expectEcho). */
+export const libraryChanges = createChangeHandler({
   cached: () => queryClient.getQueryData<LibraryItem[]>(keys.items),
   refetching: () => queryClient.isFetching({ queryKey: keys.items }) > 0,
   put: (prev, next) => putItems(queryClient, prev, next),
@@ -95,9 +105,19 @@ const onLibraryChanged = createChangeHandler({
     void queryClient.invalidateQueries({ queryKey: keys.detail(itemId) });
   },
   invalidateTexts: () => void queryClient.invalidateQueries({ queryKey: keys.searchTexts }),
+  invalidateDetail: (itemId) => void queryClient.invalidateQueries({ queryKey: keys.detail(itemId) }),
+  invalidateReading: (ids) => {
+    if (ids === null) void queryClient.invalidateQueries({ queryKey: ['reading'] });
+    else for (const id of ids) void queryClient.invalidateQueries({ queryKey: keys.reading(id) });
+  },
+  invalidateBody: () => void queryClient.invalidateQueries({ queryKey: ['search'] }),
+  whenIdle,
+  setTimer: (fn, ms) => setTimeout(fn, ms),
+  clearTimer: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
+  now: () => Date.now(),
 });
 export function useLibrarySync(): void {
-  useLearnEvent('libraryChanged', onLibraryChanged);
+  useLearnEvent('libraryChanged', libraryChanges.onChange);
 }
 
 /** prefsChanged carries the whole new prefs object (any window may have changed them). */

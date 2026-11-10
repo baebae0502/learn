@@ -107,11 +107,17 @@ export type CommandId =
   | 'reader.scrollPage'
   | 'reader.spreadNone'
   | 'reader.spreadOdd'
-  | 'reader.spreadEven';
+  | 'reader.spreadEven'
+  | 'reader.imageBackgroundLight'
+  | 'reader.imageBackgroundDark'
+  | 'reader.imageBackgroundChecker';
 
 /** The colour of a PDF page (settings 'reader.pageColor'): 자동 follows the app theme. */
 export const PAGE_COLORS = ['auto', 'original', 'sepia', 'dark'] as const;
 export type PageColor = (typeof PAGE_COLORS)[number];
+/** The ground behind a picture (settings 'reader.imageBackground'): unset follows the app theme's light or dark. */
+export const IMAGE_BACKGROUNDS = ['light', 'dark', 'checker'] as const;
+export type ImageBackground = (typeof IMAGE_BACKGROUNDS)[number];
 /** What the reader's sidebar lists (settings 'reader.nav'). */
 export const READER_NAVS = ['thumbnails', 'outline'] as const;
 export type ReaderNav = (typeof READER_NAVS)[number];
@@ -186,6 +192,8 @@ export interface CommandSpec {
     scope?: Readonly<Partial<Record<LibraryScope['kind'], string>>>;
     /** By the view shown (P-9): ⌘+ ⌘− ⌘0 size the library's text and zoom the reader's page, one command per key. */
     view?: Readonly<Record<'library' | 'viewer', string>>;
+    /** By what the reader shows: a picture names the fit 창에 맞춤 where a PDF says 한 쪽 전체 보기 (one command keeps one key rule for both). */
+    reader?: Readonly<{ image: string }>;
   };
   /** Label off macOS when the macOS one names a macOS app (Finder). */
   labelOff?: string;
@@ -498,7 +506,8 @@ export const COMMANDS: readonly CommandSpec[] = [
     id: 'view.textReset', label: '기본 글자 크기', stateLabels: { view: { library: '기본 글자 크기', viewer: '실제 크기' } }, accelerator: 'CmdOrCtrl+0',
     menu: { menu: 'view', group: 3, order: 3 }, contexts: ['library', 'viewer'], keywords: ['글자', '기본', '실제 크기', '100%', '배율', 'font', 'reset', 'actual size'],
   },
-  // The reader's own view commands (M7a): they act on the open PDF, so a video or no document greys them (pdfOpen).
+  // The reader's own view commands (M7a): they act on the open PDF, so a video or no document greys them (pdfOpen). The fits
+  // other than the automatic one and the turns act on a drawn picture too (imageOpen).
   // 보기 group 4 is how the page fits, group 5 turns it and colours it.
   {
     id: 'reader.zoomAuto', label: '자동 맞춤', menu: { menu: 'view', group: 4, order: 1 }, contexts: ['viewer'],
@@ -509,8 +518,8 @@ export const COMMANDS: readonly CommandSpec[] = [
     keywords: ['확대', '배율', '너비', '폭', '맞춤', 'zoom', 'width', 'fit'],
   },
   {
-    id: 'reader.zoomPageFit', label: '한 쪽 전체 보기', menu: { menu: 'view', group: 4, order: 3 }, contexts: ['viewer'],
-    keywords: ['확대', '배율', '한 쪽', '쪽 전체', '맞춤', 'zoom', 'page fit', 'whole page'],
+    id: 'reader.zoomPageFit', label: '한 쪽 전체 보기', stateLabels: { reader: { image: '창에 맞춤' } }, menu: { menu: 'view', group: 4, order: 3 }, contexts: ['viewer'],
+    keywords: ['확대', '배율', '한 쪽', '쪽 전체', '맞춤', '창에 맞춤', 'zoom', 'page fit', 'whole page', 'fit to window'],
   },
   {
     id: 'reader.rotateCw', label: '시계 방향으로 회전', accelerator: 'CmdOrCtrl+R', menu: { menu: 'view', group: 5, order: 1 }, contexts: ['viewer'],
@@ -567,6 +576,22 @@ export const COMMANDS: readonly CommandSpec[] = [
       keywords: [group, '보기', '모드', 'scroll', 'spread', ...extra],
     }),
   ),
+  // 배경 ▸ is a group in SUBMENUS like 쪽 색 ▸: the members carry no placement and no key; the palette names each with the group's word.
+  ...(
+    [
+      ['Light', '밝게', ['흰', '하양', 'light', 'white']],
+      ['Dark', '어둡게', ['검정', '다크', '밤', 'dark', 'black']],
+      ['Checker', '체크무늬', ['바둑판', '투명', '격자', 'checker', 'checkerboard', 'transparent']],
+    ] as const
+  ).map(
+    ([name, label, extra]): CommandSpec => ({
+      id: `reader.imageBackground${name}` as CommandId,
+      label,
+      paletteLabel: `배경: ${label}`,
+      contexts: ['viewer'],
+      keywords: ['배경', '그림', '이미지', '바탕', 'background', 'image', ...extra],
+    }),
+  ),
   // 휴지통 비우기… ⇧⌘⌫ (spec 4.5, 11.1): 파일 before ⌘⌫ and the trash view's head; the purge sheet asks first.
   {
     id: 'trash.empty', label: '휴지통 비우기…', accelerator: 'Shift+CmdOrCtrl+Backspace', menu: { menu: 'file', group: 4, order: 1 }, contexts: ['library'],
@@ -610,7 +635,7 @@ export function paletteListed(spec: CommandSpec, ctx: Pick<CommandContextState, 
   return slot === null || hasTagPosition(ctx.tagPositions, slot);
 }
 /** What a state label follows: the pane states and the view's scope, as reported (absent ones name nothing). */
-export type LabelState = Partial<Pick<CommandContextState, 'sidebar' | 'inspector' | 'scope' | 'duplicateGroups' | 'view' | 'selectionCount'>>;
+export type LabelState = Partial<Pick<CommandContextState, 'sidebar' | 'inspector' | 'scope' | 'duplicateGroups' | 'view' | 'selectionCount' | 'imageOpen'>>;
 
 /**
  * The label a menu, tooltip or palette shows: the state label when the command has one and the state is known (`state`
@@ -622,6 +647,7 @@ export function commandLabel(c: CommandSpec, platform: string, state: LabelState
   if (labels?.inspector && state.inspector) return labels.inspector[state.inspector];
   const scoped = labels?.scope && state.scope ? labels.scope[state.scope] : undefined;
   if (scoped !== undefined) return scoped;
+  if (labels?.reader && state.imageOpen === true) return labels.reader.image;
   if (labels?.view && state.view) return labels.view[state.view];
   if (c.countLabel?.selection && state.selectionCount !== undefined && state.selectionCount > 1) return c.countLabel.selection(state.selectionCount);
   if (c.countLabel?.duplicateGroups && state.duplicateGroups !== undefined && state.duplicateGroups > 0) return c.countLabel.duplicateGroups(state.duplicateGroups);
@@ -688,6 +714,11 @@ export interface CommandContextState {
   trashCount: number;
   /** A PDF is open and its pages exist (the reader's view commands and ⌘+ ⌘− ⌘0 there need it): absent in the library, for a video and while a PDF opens. */
   pdfOpen?: boolean;
+  /**
+   * A reader tab with its picture drawn is shown (M7c): ⌘+ ⌘− ⌘0, the two fits and the turns act on it, and the fit is named 창에 맞춤.
+   * Absent in the library, while the picture opens and when it cannot be drawn.
+   */
+  imageOpen?: boolean;
   /** How the open PDF scrolls: 펼침 is off while it is 'horizontal'. Absent with no PDF open. */
   pdfScroll?: ScrollModeName;
   /** The open PDF has a place to go back to / forward to (⌘[ ⌘]): absent otherwise. */
@@ -841,6 +872,10 @@ type Rule = (ctx: CommandContextState, targets: Targets) => boolean;
 /** The colour keys act on the library table's selection (the key map and the palette hand it over). */
 const colorKey: Rule = (c, t) => c.view === 'library' && t.items.length >= 1;
 const pdfOpen: Rule = (c) => c.pdfOpen === true;
+/** The picture's own commands (its background). */
+const imageOpen = (c: CommandContextState): boolean => c.imageOpen === true;
+/** The zoom, the two fits and the turns act on a drawn picture as on a PDF; the rest of the reader's view is the PDF's. */
+const pdfOrImage = (c: CommandContextState): boolean => c.pdfOpen === true || c.imageOpen === true;
 /** A horizontal scroll has no spreads (two pages side by side along a row are hard to read), so the three are off then. */
 const spreadAllowed: Rule = (c) => c.pdfOpen === true && c.pdfScroll !== 'horizontal';
 /** Tab number `n` (1 is the library) exists: reader tabs are numbered from 2. */
@@ -925,16 +960,16 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'file.backup': (c) => (c.libraryCount > 0 || c.trashCount > 0) && c.backupRunning !== true,
   // One restore at a time (a second click would otherwise be refused unseen); other work running first only makes it wait.
   'file.restore': (c) => c.restoreRunning !== true,
-  // The reader zooms with these keys (P-9), and only a PDF with pages has a zoom; the library sizes its text.
-  'view.textBigger': (c) => (c.view === 'viewer' ? c.pdfOpen === true : c.textSize < 15),
-  'view.textSmaller': (c) => (c.view === 'viewer' ? c.pdfOpen === true : c.textSize > 12),
-  'view.textReset': (c) => (c.view === 'viewer' ? c.pdfOpen === true : c.textSize !== 13),
-  // The reader's view commands act on the open PDF.
+  // The reader zooms with these keys (P-9), and only a PDF with pages or a drawn picture has a zoom; the library sizes its text.
+  'view.textBigger': (c) => (c.view === 'viewer' ? pdfOrImage(c) : c.textSize < 15),
+  'view.textSmaller': (c) => (c.view === 'viewer' ? pdfOrImage(c) : c.textSize > 12),
+  'view.textReset': (c) => (c.view === 'viewer' ? pdfOrImage(c) : c.textSize !== 13),
+  // The reader's view commands act on the open PDF; the fits and the turns on a picture too.
   'reader.zoomAuto': pdfOpen,
-  'reader.zoomPageWidth': pdfOpen,
-  'reader.zoomPageFit': pdfOpen,
-  'reader.rotateCw': pdfOpen,
-  'reader.rotateCcw': pdfOpen,
+  'reader.zoomPageWidth': pdfOrImage,
+  'reader.zoomPageFit': pdfOrImage,
+  'reader.rotateCw': pdfOrImage,
+  'reader.rotateCcw': pdfOrImage,
   'reader.goToPage': pdfOpen,
   'nav.historyBack': (c) => c.pdfOpen === true && c.historyBack === true,
   'nav.historyForward': (c) => c.pdfOpen === true && c.historyForward === true,
@@ -942,6 +977,9 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'reader.pageColorOriginal': pdfOpen,
   'reader.pageColorSepia': pdfOpen,
   'reader.pageColorDark': pdfOpen,
+  'reader.imageBackgroundLight': imageOpen,
+  'reader.imageBackgroundDark': imageOpen,
+  'reader.imageBackgroundChecker': imageOpen,
   'reader.scrollVertical': pdfOpen,
   'reader.scrollHorizontal': pdfOpen,
   'reader.scrollPage': pdfOpen,

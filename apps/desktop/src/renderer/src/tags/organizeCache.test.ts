@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TAG_COLORS, type OrganizeSnapshot, type OrganizeTag } from '@learn/domain';
-import { withTagColor, withTagMerged, withTagRemoved, withTagRenamed, withTagged } from './organizeCache';
+import { withTagColor, withTagMerged, withTagRemoved, withTagRenamed } from './organizeCache';
 
 const tag = (id: string, name: string, position: number | null = null): OrganizeTag => ({ id, name, color: position === null ? null : TAG_COLORS[position - 1]!.id, position });
 const BASE: OrganizeSnapshot = {
@@ -46,17 +46,10 @@ describe('the organize snapshot patched before the notice brings the real one (t
     expect(byId(next, 'b')).toEqual(byId(BASE, 'b'));
     expect(withTagMerged(BASE, 'c', 'a').tagged).toEqual({ a: ['i1', 'i2'], b: ['i2', 'i3'] }); // nothing to move
   });
-  it('puts a tag on items or takes it off, keeping only the keys that have items (Q-2)', () => {
-    expect(withTagged(BASE, 'c', ['i1', 'i1', 'i4'], true).tagged.c).toEqual(['i1', 'i4']);
-    expect(withTagged(BASE, 'a', ['i3'], true).tagged.a).toEqual(['i1', 'i2', 'i3']);
-    expect(withTagged(BASE, 'a', ['i1'], false).tagged.a).toEqual(['i2']);
-    expect('a' in withTagged(BASE, 'a', ['i1', 'i2', 'i9'], false).tagged).toBe(false);
-  });
   it('never changes the snapshot it was given', () => {
     withTagColor(BASE, 'b', 'yellow', 1);
     withTagMerged(BASE, 'a', 'b');
     withTagRemoved(BASE, 'a');
-    withTagged(BASE, 'a', ['i1'], false);
     expect(JSON.stringify(BASE)).toBe(frozen);
   });
 });

@@ -9,6 +9,13 @@
     --bg-content-alt: light-dark(oklch(98.4% 0.0015 250), oklch(22.8% 0.004 250));
     --bg-raised: light-dark(oklch(100% 0 0), oklch(30% 0.005 250));
     --bg-sunken: light-dark(oklch(93.2% 0.004 250), oklch(17.5% 0.004 250));
+    --image-bg-light: light-dark(oklch(93.2% 0.004 250), oklch(93.2% 0.004 250));
+    --image-bg-dark: light-dark(oklch(17.5% 0.004 250), oklch(17.5% 0.004 250));
+    --image-checker-a: light-dark(oklch(80% 0 0), oklch(80% 0 0));
+    --image-checker-b: light-dark(oklch(92% 0 0), oklch(92% 0 0));
+    --image-focus-light: light-dark(oklch(57% 0.096 190), oklch(57% 0.096 190));
+    --image-focus-dark: light-dark(oklch(72% 0.11 190), oklch(72% 0.11 190));
+    --image-focus-checker: light-dark(oklch(48% 0.08 190), oklch(48% 0.08 190));
     --bg-field: light-dark(oklch(100% 0 0), oklch(100% 0 0 / 0.055));
     --bg-control: light-dark(oklch(100% 0 0), oklch(100% 0 0 / 0.1));
     --bg-control-selected: light-dark(oklch(100% 0 0), oklch(100% 0 0 / 0.2));

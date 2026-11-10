@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
-import { Clapperboard, FileText, LibraryBig, X } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { LibraryBig, X } from 'lucide-react';
 import { acceleratorLabel, commandById, commandLabel, type CommandId } from '@learn/domain';
 import { unwrap, api } from '../api';
 import { useCommands } from '../commands/CommandProvider';
@@ -8,6 +9,7 @@ import { currentPlatform } from '../ui/platform';
 import { showToast } from '../ui/toasts';
 import { useTabReorder } from './useTabReorder';
 import { readerWindowTitle } from '../viewers/readerTitle';
+import { tabId, tabPanelId, useHasTabPanel } from './tabPanels';
 import { useTabItem } from './useTabItem';
 import { useShell } from '../state/shell-store';
 import type { TabId } from '../state/tabs';
@@ -15,6 +17,7 @@ import { afterEditing } from '../inspector/editGuard';
 import { t } from '../strings';
 import { cx } from '../ui/cx';
 import { Icon } from '../ui/Icon';
+import { itemIcon } from '../library/itemIcon';
 import { SidebarToggle } from './SidebarToggle';
 import { useSidebarHidden } from './useSidebar';
 
@@ -180,7 +183,7 @@ function ActiveTitle({ itemId }: { itemId: string }) {
 function ReaderTab({ itemId, selected, onChoose, onClose, onMenu }: { itemId: string; selected: boolean; onChoose(): void; onClose(): void; onMenu(e: MouseEvent): void }) {
   const { item } = useTabItem(itemId);
   const title = item?.title ?? '';
-  return <Tab id={itemId} selected={selected} title={title} icon={item?.type === 'video' ? Clapperboard : FileText} onChoose={onChoose} onClose={onClose} onMenu={onMenu} />;
+  return <Tab id={itemId} selected={selected} title={title} icon={itemIcon(item?.type ?? 'pdf')} onChoose={onChoose} onClose={onClose} onMenu={onMenu} />;
 }
 
 /** 탭 닫기 ⌘W: the command's name and its key as this platform spells it. */
@@ -189,8 +192,9 @@ function closeHint(): string {
   return `${commandLabel(c, currentPlatform())} ${acceleratorLabel(c.accelerator!, currentPlatform())}`;
 }
 
-function Tab(props: { id: string; selected: boolean; title: string; icon: typeof FileText; home?: boolean; onChoose(): void; onClose?(): void; onMenu?(e: MouseEvent): void }) {
+function Tab(props: { id: string; selected: boolean; title: string; icon: LucideIcon; home?: boolean; onChoose(): void; onClose?(): void; onMenu?(e: MouseEvent): void }) {
   const { id, selected, title, home } = props;
+  const hasPanel = useHasTabPanel(id);
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget) return;
     if (e.key === 'Enter' || e.key === ' ') {
@@ -203,7 +207,9 @@ function Tab(props: { id: string; selected: boolean; title: string; icon: typeof
   return (
     <div className={cx('tab-item', home && 'home', selected && 'is-active')} onContextMenu={props.onMenu}>
       <div
+        id={tabId(id)}
         role="tab"
+        aria-controls={hasPanel ? tabPanelId(id) : undefined}
         className="tab"
         data-testid="tab"
         data-item-id={id}

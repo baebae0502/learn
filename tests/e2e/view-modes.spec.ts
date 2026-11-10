@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, closeReaderTab, importPaths, launch, menuItemEnabled, openItem, rowByTitle, runMenuCommand, setPdfZoom } from './helpers';
+import { FIXTURES, closeReaderTab, importPaths, launch, menuItemEnabled, openItem, rowByTitle, runMenuCommand, setPdfZoom, settled } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf'); // 100 pages, "See page 50." on page 1
 const SAMPLE = path.join(FIXTURES, 'sample.pdf'); // 3 pages
@@ -41,6 +41,18 @@ async function choose(page: Page, submenu: 'scroll' | 'spread', name: string) {
   await page.getByTestId(`pdf-${submenu}-menu`).click();
   await page.getByRole('menuitemradio', { name }).click();
   await menuClosed(page);
+}
+
+/** The stored locator of the item with this title (what a save has reached main with), or null before there is one. */
+async function savedLocator(page: Page, title: string) {
+  return page.evaluate(async (t) => {
+    const listed = await window.learn.library.list();
+    const item = listed.ok ? listed.data.find((i) => i.title === t) : undefined;
+    if (!item) return null;
+    const r = await window.learn.reader.getPosition({ itemId: item.id });
+    const locator = r.ok ? r.data?.locator : undefined;
+    return locator?.kind === 'pdf' ? locator : null;
+  }, title);
 }
 
 /** A page's box in the stage's scroll box (offset plus border, the numbers placement.ts works in). */
@@ -189,8 +201,10 @@ test('a page at a time: one page in the stage, PageDown at its end turns the pag
     // The page is taller than the stage: PageDown scrolls inside it first, then turns.
     let guard = 0;
     while ((await field(page).inputValue()) === '1' && guard++ < 12) {
+      const before = await scroller(page).evaluate((el) => el.scrollTop);
       await page.keyboard.press('PageDown');
-      await page.waitForTimeout(60);
+      // Each press scrolls the page or turns it: the next one is sent once the stage has moved.
+      await expect.poll(async () => (await scroller(page).evaluate((el) => el.scrollTop)) !== before || (await field(page).inputValue()) !== '1').toBe(true);
     }
     await expect(field(page)).toHaveValue('2');
     expect(guard).toBeGreaterThan(1);
@@ -205,7 +219,8 @@ test('a page at a time: one page in the stage, PageDown at its end turns the pag
     await scroller(page).hover();
     await page.mouse.wheel(0, 600);
     await page.mouse.wheel(0, 600);
-    await page.waitForTimeout(300);
+    // PageDown turned the page above (the field showed it): a turn by the wheel would show there too, after the wheel's events were handled.
+    await settled(page);
     await expect(field(page)).toHaveValue('1');
   } finally {
     await app.close();
@@ -261,14 +276,15 @@ test('the modes are remembered for each item: the same mode and page after a res
     await field(page).fill('4');
     await field(page).press('Enter');
     await expect(field(page)).toHaveValue('4');
-    await page.waitForTimeout(600); // past the 300 ms save debounce
+    await expect.poll(async () => (await savedLocator(page, 'paper-100'))?.pageIndex).toBe(3);
+    await expect.poll(async () => (await savedLocator(page, 'paper-100'))?.scroll).toBe('horizontal');
     await closeReaderTab(page);
     await openItem(page, 'sample');
     await ready(page);
     await expect(viewer(page)).toHaveAttribute('data-scroll', 'vertical'); // another item has its own
     await choose(page, 'spread', '홀수 쪽부터');
     await expect(viewer(page)).toHaveAttribute('data-spread', 'odd');
-    await page.waitForTimeout(600);
+    await expect.poll(async () => (await savedLocator(page, 'sample'))?.spread).toBe('odd');
     await app.close();
 
     ({ app, page } = await launch(lib, ud));
@@ -294,7 +310,10 @@ test('progress is not 100 % just because a page at a time fits the stage', async
     await openPaper(page);
     await choose(page, 'scroll', '한 쪽씩');
     await runMenuCommand(app, 'reader.zoomPageFit');
-    await page.waitForTimeout(600);
+    await expect(viewer(page)).toHaveAttribute('data-zoom', 'page-fit');
+    // The save of the page-at-a-time flow (it carries the page count) is the one whose progress is read.
+    await expect.poll(async () => (await savedLocator(page, 'paper-100'))?.scroll).toBe('page');
+    await expect.poll(async () => (await savedLocator(page, 'paper-100'))?.pages).toBe(100);
     const r = await page.evaluate(() => window.learn.library.list());
     if (!r.ok) throw new Error('list failed');
     expect(r.data.find((i) => i.title === 'paper-100')!.progress).toBeLessThan(0.1);
@@ -322,7 +341,7 @@ test('a page at a time fits the whole page with 12 above and below, and a page a
     expect(stage.scrollHeight).toBe(stage.height); // nothing to scroll: the whole page is in the stage
     await choose(page, 'spread', '짝수 쪽부터');
     await expect(viewer(page)).toHaveAttribute('data-spread', 'even');
-    await page.waitForTimeout(600);
+    await expect.poll(async () => (await savedLocator(page, 'paper-100'))?.spread).toBe('even');
     await app.close();
     ({ app, page } = await launch(lib, ud));
     await reader(page, 'paper-100');
@@ -429,7 +448,13 @@ test('leaving a page at a time keeps the page: page 50 comes back as page 50 wit
     await expect(viewer(page)).toHaveAttribute('data-scroll', 'vertical');
     await expect(field(page)).toHaveValue('50');
     await expect.poll(async () => Math.round((await box(page, 50)).top - (await scroller(page).evaluate((el) => el.scrollTop)))).toBe(12);
-    await page.waitForTimeout(600);
+    // Page 50 was saved in a page at a time; the save after leaving it names the vertical flow (absent is vertical).
+    await expect
+      .poll(async () => {
+        const saved = await savedLocator(page, 'paper-100');
+        return saved !== null && (saved.scroll ?? 'vertical') === 'vertical' && saved.pageIndex === 49;
+      })
+      .toBe(true);
     const listed = await page.evaluate(() => window.learn.library.list());
     if (!listed.ok) throw new Error('list failed');
     const item = listed.data.find((i) => i.title === 'paper-100')!;

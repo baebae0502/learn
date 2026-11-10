@@ -133,7 +133,7 @@ export function colorTagGroup(spec: SubmenuSpec, commands: readonly CommandSpec[
 }
 
 /**
- * 쪽 색 ▸ (P-14), 스크롤 ▸ and 펼침 ▸: the members of a reader group, each row its command. The native menu shows no mark: which
+ * 쪽 색 ▸ (P-14), 스크롤 ▸, 펼침 ▸ and 배경 ▸: the members of a reader group, each row its command. The native menu shows no mark: which
  * value is in force is checked in the reader's own 보기 menu, which knows the setting (the menu bar is told only the context).
  */
 export function plainGroup(spec: SubmenuSpec, commands: readonly CommandSpec[], input: SubmenuInput): SubmenuEntry | null {
@@ -154,6 +154,7 @@ export function groupEntry(spec: SubmenuSpec, commands: readonly CommandSpec[], 
     case 'pageColor':
     case 'scrollMode':
     case 'spreadMode':
+    case 'imageBackground':
       return plainGroup(spec, commands, input);
   }
 }
@@ -189,6 +190,7 @@ export function menuNeedsOrganize(commands: readonly CommandSpec[], submenus: re
       case 'pageColor': // reads nothing from the library
       case 'scrollMode':
       case 'spreadMode':
+      case 'imageBackground':
         return false;
     }
   };

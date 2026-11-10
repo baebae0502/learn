@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, ROOT, closeSheet, drag, dropSource, expectWindow, importPaths, launch, runMenuCommand, seedRows } from '../e2e/helpers';
+import { FIXTURES, ROOT, closeSheet, drag, dropSource, expectWindow, importPaths, ipcCalls, launch, renderCounts, runMenuCommand, seedBodyText, seedRows, sheetPrepared, watchRenders } from '../e2e/helpers';
 import { writeJson } from './capture';
 import { stallCause, summarizeLongFrames, type LongFrame, type Mark } from './long-frames';
 import { coldFirstOpens, openTimer } from './open-latency';
@@ -37,7 +37,7 @@ test('cold start to app-ready, 5 launches, and the renderer bundle', { tag: '@pe
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-perf-'));
     try {
       const t0 = Date.now();
-      const s = await launch(path.join(tmp, 'library'), path.join(tmp, 'userdata'));
+      const s = await launch(path.join(tmp, 'library'), path.join(tmp, 'userdata'), { env: { LEARN_TEXT_EXTRACTION: 'run' } });
       const wall = Date.now() - t0;
       try {
         const appReadyAt = Number(await s.page.getByTestId('app-ready').getAttribute('data-at'));
@@ -98,10 +98,19 @@ test('opening the ⌘/ sheet and the settings window: menu command → window sh
     const sheetMs: number[] = [];
     const settingsMs: number[] = [];
     for (let i = 0; i < OPENS; i++) {
+      // Each ⌘/ once main has made the next sheet window ahead (a second after the last one closed): the open a user meets.
+      await expect.poll(() => sheetPrepared(s.app), { message: 'the ⌘/ sheet window made ahead' }).toBe(true);
       const sheet = await expectWindow(s.app, 'sheet', () => click('app.shortcuts'));
       sheetMs.push(await elapsed());
       await closeSheet(sheet, 'Escape');
-      await s.page.waitForTimeout(300);
+    }
+    // The old cadence: ⌘/ 300 ms after the last close, inside PREPARE_AGAIN_MS, so the sheet makes its own window. Reported only.
+    const quickMs: number[] = [];
+    for (let i = 0; i < OPENS; i++) {
+      await s.page.waitForTimeout(300); // the cadence measured, counted from the last close (for the first, the steady series')
+      const sheet = await expectWindow(s.app, 'sheet', () => click('app.shortcuts'));
+      quickMs.push(await elapsed());
+      await closeSheet(sheet, 'Escape');
     }
     for (let i = 0; i < OPENS; i++) {
       const settings = await expectWindow(s.app, 'settings', () => click('app.settings'));
@@ -110,13 +119,14 @@ test('opening the ⌘/ sheet and the settings window: menu command → window sh
       await s.page.waitForTimeout(300);
     }
     const result = {
-      runsMs: { sheet: sheetMs, settings: settingsMs },
-      medianMs: { sheet: median(sheetMs), settings: median(settingsMs) },
+      runsMs: { sheet: sheetMs, sheetQuickReopen: quickMs, settings: settingsMs },
+      medianMs: { sheet: median(sheetMs), sheetQuickReopen: median(quickMs), settings: median(settingsMs) },
       // The first open in a new session (report, not tune: checklist 7.1): the settings window shows the one main prepared.
       coldFirstMs: { runs: cold, median: { sheet: median(cold.sheet), settings: median(cold.settings) } },
-      // The first open in this session: the sheet is made (sheets are never prepared), the settings window was prepared.
+      // The first open in this session: the ⌘/ sheet shows in the window main made ahead (as each one here), the settings
+      // window was prepared.
       firstOpenMs: { sheet: sheetMs[0]!, settings: settingsMs[0]! },
-      // Targets, reported: the ⌘/ sheet's median, and the settings window's first open of a new session.
+      // Targets, reported: the ⌘/ sheet's median (sheet = steady state, the window made ahead is ready; sheetQuickReopen = a reopen 300 ms after a close, its own window, not gated), and the settings window's first open of a new session.
       targetMs: 250,
       firstOpenTargetMs: { settings: 300 },
       memory,
@@ -361,6 +371,41 @@ test('a drop of 8 files into an empty library: drop → overlay gone → import 
 });
 
 /** spec 9, ms. Linux CI fails beyond twice each; every other run reports. */
+/**
+ * A CDP performance trace around a stretch of the page's work: the time the main thread spent per kind of event, the
+ * costliest first, to name what a slow scroll is spent on. Null where the trace cannot be taken.
+ */
+async function startTrace(page: Page): Promise<{ stop(): Promise<Array<{ name: string; ms: number; count: number }> | null> }> {
+  try {
+    const cdp = await page.context().newCDPSession(page);
+    const events: Array<{ name?: string; dur?: number; ph?: string }> = [];
+    cdp.on('Tracing.dataCollected', (e: { value: typeof events }) => events.push(...e.value));
+    await cdp.send('Tracing.start', { categories: 'devtools.timeline,disabled-by-default-devtools.timeline', transferMode: 'ReportEvents' });
+    return {
+      async stop() {
+        try {
+          const done = new Promise<void>((resolve) => cdp.once('Tracing.tracingComplete', () => resolve()));
+          await cdp.send('Tracing.end');
+          await done;
+          const byName = new Map<string, { ms: number; count: number }>();
+          for (const e of events) {
+            if (e.ph !== 'X' || e.dur === undefined || e.name === undefined) continue;
+            const cur = byName.get(e.name) ?? { ms: 0, count: 0 };
+            cur.ms += e.dur / 1000;
+            cur.count += 1;
+            byName.set(e.name, cur);
+          }
+          return [...byName].map(([name, v]) => ({ name, ms: Math.round(v.ms * 10) / 10, count: v.count })).sort((a, b) => b.ms - a.ms).slice(0, 15);
+        } catch {
+          return null;
+        }
+      },
+    };
+  } catch {
+    return { stop: async () => null };
+  }
+}
+
 const LIBRARY_BUDGET_MS = { listIpc: 150, firstPaint: 500, inputToPaintP95: 50, paletteInputToPaintP95: 50, searchP95: 300, scrollFrameP95: 16.7, sortToPaint: 100, inspectorToPaint: 100 } as const;
 const LIBRARY_ITEMS = 10_000;
 /** Each single-shot timing five times (spec 9: five or more). */
@@ -520,6 +565,11 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
     await page.waitForTimeout(500);
     const inputToPaintMs: number[] = [];
     let unpainted = 0;
+    // A body answer's redraw is marked learn:table:body-painted (LibraryView), so it is never an input's paint. The inputs
+    // with such a redraw between them and their own paint are counted: read as one mark, they were timed by the answer.
+    let answerFirst = 0;
+    const answerPaintsBetween = (t0: number, t1: number) =>
+      page.evaluate(([t0, t1]) => (window as unknown as { __learnPerfLog: PerfLog }).__learnPerfLog.marks.filter((m) => m.name === 'learn:table:body-painted' && m.at > t0 && m.at < t1).length, [t0, t1] as const);
     const timeInput = async (act: () => Promise<void>) => {
       const before = await inputCount();
       await act();
@@ -527,7 +577,10 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       const t0 = await page.evaluate((i) => (window as unknown as { __learnPerfLog: PerfLog }).__learnPerfLog.inputs[i]!, before);
       const painted = await paintedAfter(t0);
       if (painted === null) unpainted++;
-      else inputToPaintMs.push(Math.round(painted - t0));
+      else {
+        inputToPaintMs.push(Math.round(painted - t0));
+        if ((await answerPaintsBetween(t0, painted)) > 0) answerFirst++;
+      }
     };
     // The quick search measures of the timed inputs only: the warm-up query above is left out.
     const measuresBefore = (await page.evaluate(() => (window as unknown as { __learnPerfLog: PerfLog }).__learnPerfLog.measures)).filter((m) => m.name === 'learn:search').length;
@@ -577,6 +630,8 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
 
     // Scroll: the scroller is the table's own scroll view (the rows placed by the virtualizer, the header above it), 40 px every
     // frame for 150 frames.
+    await watchRenders(page);
+    const trace = await startTrace(page);
     const scroll = await page.evaluate(async () => {
       const target = document.querySelector<HTMLElement>('[data-testid="library-scroller"]')!;
       if (target.scrollHeight <= target.clientHeight + 1) throw new Error('the table does not scroll');
@@ -595,8 +650,13 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       });
       return { deltas: deltas.slice(2), scrolledTo: Math.round(target.scrollTop) };
     });
+    const scrollTrace = await trace.stop();
+    const scrollRenders = await renderCounts(page);
     expect(scroll.scrolledTo, 'the table scrolled').toBeGreaterThan(0);
     const frameMs = scroll.deltas.map(tenth);
+    // 150 frames of 40 px: a row renders when it comes into the range, and twice (react-aria's drag and drop hooks set state
+    // as they mount); the rows that stay in the range do not render again, which would be thousands of renders.
+    expect(scrollRenders['LibraryRow'] ?? 0, 'rows rendered while scrolling: only the ones that came into the range').toBeLessThanOrEqual(2 * (scroll.scrolledTo / 28 + 20));
 
     // Sort: a press on a column header's sort button → the first frame with the re-sorted rows. The button's onClick sorts
     // (a button's click() runs it, unlike a row's), the settings write is optimistic.
@@ -644,6 +704,53 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       inspectorToPaintMs.push(Math.round(ms));
     }
 
+    // 정보와 본문 (M7c spec 13, P6): the same inputs with the PDF body searched too, each timed to the frame that paints the
+    // metadata matches. Last, so the PDFs added for it change nothing timed above: 300 of them with body text whose Korean
+    // words the seeded titles share (세포, 신호, 효소 …), so the body search finds rows. After each word the body's own
+    // search goes out (200 ms after the last key) before the word is erased: its answer comes in among the timed erasures.
+    const bodyDocs = 300;
+    // Each build is one measure in the log (timed() keeps only the last one on the timeline).
+    const indexBuilds = () => page.evaluate(() => (window as unknown as { __learnPerfLog: PerfLog }).__learnPerfLog.measures.filter((m) => m.name === 'learn:search:index').length);
+    const indexesBefore = await indexBuilds();
+    await seedBodyText(s.app, { docs: bodyDocs, pages: 12, chars: 4000, seed: 42 });
+    await expect.poll(() => shownTotal(page), { timeout: 30_000 }).toBe(organize.fixture.n + bodyDocs);
+    await expect.poll(indexBuilds, { timeout: 15_000, message: 'the search index of the longer list was built at an idle moment' }).toBeGreaterThan(indexesBefore);
+    await page.getByTestId('search-scope').click();
+    await page.getByRole('menuitemradio', { name: '정보와 본문', exact: true }).click();
+    const field = page.getByTestId('search-field').locator('input');
+    await expect(field).toHaveAttribute('placeholder', '제목, 저자, 태그, 본문 검색');
+    await runMenuCommand(s.app, 'library.find');
+    await expect(field).toBeFocused();
+    const bodyCalls = async () => (await ipcCalls(s.app))['search:body'] ?? 0;
+    // The first body search reads the page text from disk: not timed. Its answer adds the body matches, a frame of its own.
+    const warm = await bodyCalls();
+    const paintsSince = (t0: number, name: string) =>
+      page.evaluate(([t0, name]) => (window as unknown as { __learnPerfLog: PerfLog }).__learnPerfLog.marks.filter((m) => m.name === name && m.at > t0).length, [t0, name] as const);
+    const warmFrom = await page.evaluate(() => performance.now());
+    await page.keyboard.insertText('세포');
+    await expect.poll(bodyCalls, { message: 'the warm-up query went to search:body' }).toBeGreaterThan(warm);
+    await expect.poll(() => paintsSince(warmFrom, 'learn:table:painted'), { message: 'the metadata matches were drawn' }).toBeGreaterThanOrEqual(1);
+    await expect.poll(() => paintsSince(warmFrom, 'learn:table:body-painted'), { message: 'the body matches (every PDF added has 세포) were drawn' }).toBeGreaterThanOrEqual(1);
+    await page.keyboard.press('Backspace');
+    await page.keyboard.press('Backspace');
+    await expect(field).toHaveValue('');
+    const fulltextMs: number[] = [];
+    const inputsBefore = inputToPaintMs.length;
+    const unpaintedBefore = unpainted;
+    const answerFirstMetadata = answerFirst;
+    const callsBefore = await bodyCalls();
+    for (const step of [...steps, ...extra.tag]) {
+      for (const ch of step.chars) await timeInput(() => page.keyboard.insertText(ch));
+      const sent = await bodyCalls();
+      await expect.poll(bodyCalls, { message: `the body was searched for ${step.chars.join('')}` }).toBeGreaterThan(sent);
+      for (let i = 0; i < step.chars.length; i++) await timeInput(() => page.keyboard.press('Backspace'));
+    }
+    fulltextMs.push(...inputToPaintMs.splice(inputsBefore));
+    const bodySearches = (await bodyCalls()) - callsBefore;
+    const answerFirstFulltext = answerFirst - answerFirstMetadata;
+    expect(unpainted - unpaintedBefore, 'every search input in 정보와 본문 re-drew the rows').toBe(0);
+    expect(fulltextMs.length, 'enough inputs in 정보와 본문 for a p95').toBeGreaterThanOrEqual(20);
+
     const result = {
       items: listed.count,
       runs: LIBRARY_RUNS,
@@ -652,11 +759,12 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       listIpcMs: { runs: listIpcMs, median: median(listIpcMs), m4BaselineMs: M4_LIST_IPC_MS, vsM4Ms: median(listIpcMs) - M4_LIST_IPC_MS },
       organizeFixture: { collections: organize.fixture.spec.collections, tags: organize.fixture.spec.tags, memberships: organize.fixture.spec.memberships, assignments: organize.fixture.spec.assignments, duplicateGroups: organize.fixture.spec.duplicateGroups },
       firstPaintMs: { runs: firstPaintMs, median: median(firstPaintMs) },
-      inputToPaintMs: { inputs: inputToPaintMs.length, groups: [...steps, ...extra.tag].map((x) => x.group), runs: inputToPaintMs, median: median(inputToPaintMs), p95: percentile(inputToPaintMs, 95) },
+      inputToPaintMs: { answerPaintBeforeOwn: answerFirstMetadata, inputs: inputToPaintMs.length, groups: [...steps, ...extra.tag].map((x) => x.group), runs: inputToPaintMs, median: median(inputToPaintMs), p95: percentile(inputToPaintMs, 95) },
+      inputToPaintFulltextMs: { scope: 'fulltext', bodyDocs, bodySearches, answerPaintBeforeOwn: answerFirstFulltext, inputs: fulltextMs.length, runs: fulltextMs, median: median(fulltextMs), p95: percentile(fulltextMs, 95) },
       searchMs: { runs: searchMs, p95: percentile(searchMs, 95) },
       searchTextsPayload,
       paletteInputToPaintMs: { inputs: paletteMs.length, runs: paletteMs, median: median(paletteMs), p95: percentile(paletteMs, 95) },
-      scrollFrameMs: { frames: frameMs.length, p95: percentile(frameMs, 95), max: Math.max(...frameMs), scrolledPx: scroll.scrolledTo },
+      scrollFrameMs: { frames: frameMs.length, p95: percentile(frameMs, 95), max: Math.max(...frameMs), scrolledPx: scroll.scrolledTo, rowRenders: scrollRenders['LibraryRow'] ?? 0, trace: scrollTrace },
       sortToPaintMs: { columns: SORT_COLUMNS, runs: sortToPaintMs, median: median(sortToPaintMs), max: Math.max(...sortToPaintMs) },
       inspectorToPaintMs: { panel, forcedShown, runs: inspectorToPaintMs, median: median(inspectorToPaintMs), max: Math.max(...inspectorToPaintMs) },
       platform: `${process.platform}-${process.arch}`,
@@ -667,7 +775,7 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
     console.log(
       '[measure] library',
       JSON.stringify({
-        list: result.listIpcMs.median, firstPaint: result.firstPaintMs.median, inputP95: result.inputToPaintMs.p95, searchP95: result.searchMs.p95,
+        list: result.listIpcMs.median, firstPaint: result.firstPaintMs.median, inputP95: result.inputToPaintMs.p95, inputFulltextP95: result.inputToPaintFulltextMs.p95, answerPaintBeforeOwn: result.inputToPaintFulltextMs.answerPaintBeforeOwn, searchP95: result.searchMs.p95,
         paletteP95: result.paletteInputToPaintMs.p95, textsBytes: result.searchTextsPayload.bytes,
         scrollP95: result.scrollFrameMs.p95, sort: result.sortToPaintMs.median, inspector: result.inspectorToPaintMs.median,
       }),
@@ -681,6 +789,7 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       gate(result.listIpcMs.median, LIBRARY_BUDGET_MS.listIpc, 'library.list of 10,000 items, median');
       gate(result.firstPaintMs.median, LIBRARY_BUDGET_MS.firstPaint, 'list arrived → first rows painted, median');
       gate(result.inputToPaintMs.p95, LIBRARY_BUDGET_MS.inputToPaintP95, 'search input → rows painted, p95');
+      gate(result.inputToPaintFulltextMs.p95, LIBRARY_BUDGET_MS.inputToPaintP95, 'search input in 정보와 본문 → metadata rows painted, p95');
       gate(result.paletteInputToPaintMs.p95, LIBRARY_BUDGET_MS.paletteInputToPaintP95, 'palette input → rows painted, p95');
       gate(result.searchMs.p95, LIBRARY_BUDGET_MS.searchP95, 'metadata search, p95');
       gate(result.scrollFrameMs.p95, LIBRARY_BUDGET_MS.scrollFrameP95, 'scroll frame interval, p95');

@@ -9,6 +9,7 @@ export const drop = {
   files: (n: number) => `파일 ${n}개`,
   pdf: 'PDF',
   video: '동영상',
+  image: '이미지',
   other: '기타',
   copyTitle: '사본으로 가져오기',
   // A line per sentence (.dm-text is pre-line); the link card's one sentence wraps where it must.

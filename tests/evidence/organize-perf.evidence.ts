@@ -8,6 +8,7 @@
 // taken in the capture phase on the window, so nothing of ours runs before the clock starts.
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { organizeWireBytes, unpackOrganize } from '../../packages/domain/src/organize';
 import { FIXTURES, createCollection, importPaths, launch, recordedPopupTimes, rowAt, seedRows, stubContextMenu } from '../e2e/helpers';
 import { writeJson } from './capture';
 import { limitFailures } from './budget';
@@ -189,8 +190,11 @@ test('10,000 items with the organise fixture: organise IPC, view switch, tag fil
         out.push(performance.now() - t0);
       }
       const r = await window.learn.library.organize();
-      return { out, bytes: r.ok ? new TextEncoder().encode(JSON.stringify(r.data)).length : 0 };
+      return { out, wire: r.ok ? r.data : null };
     }, RUNS);
+    if (!organise.wire) throw new Error('library.organize failed');
+    const organiseBytes = organizeWireBytes(organise.wire);
+    expect(organiseBytes, "the organise answer stays under 800,000 bytes").toBeLessThanOrEqual(800_000);
 
     // 3. View switches: three top-level collections and the special views, twice around; none reads anything from main.
     const [all, rootA, rootB, rootC, unfiled, duplicates] = [
@@ -261,10 +265,11 @@ test('10,000 items with the organise fixture: organise IPC, view switch, tag fil
       const on = k % 2 === 0;
       (on ? allAdd : allRemove).push(await key({ dots: { tagId: tag0, on } }));
       if (k === 0) {
-        const tagged = await page.evaluate(async (tagId) => {
+        const wire = await page.evaluate(async () => {
           const r = await window.learn.library.organize();
-          return r.ok ? (r.data.tagged[tagId]?.length ?? 0) : -1;
-        }, tag0);
+          return r.ok ? r.data : null;
+        });
+        const tagged = wire ? (unpackOrganize(wire).tagged[tag0]?.length ?? 0) : -1;
         expect(tagged, 'the first press tagged every item').toBe(n);
       }
     }
@@ -342,8 +347,8 @@ test('10,000 items with the organise fixture: organise IPC, view switch, tag fil
     // read only now: the check's own snapshot requests must not count as the drops'
     const members = await page.evaluate(async () => {
       const r = await window.learn.library.organize();
-      return r.ok ? r.data.members : {};
-    });
+      return r.ok ? r.data : null;
+    }).then((wire) => (wire ? unpackOrganize(wire).members : {}));
     for (const id of targets) expect([...(members[id] ?? [])].sort(), 'the drop filed exactly the 100 selected rows').toEqual(org.ids.slice(0, DROP_ROWS).sort());
 
     // Results.
@@ -353,7 +358,7 @@ test('10,000 items with the organise fixture: organise IPC, view switch, tag fil
       runs: RUNS,
       budgetMs: ORGANIZE_BUDGET_MS,
       linuxCiLimitMs: Object.fromEntries(Object.entries(ORGANIZE_BUDGET_MS).map(([k, v]) => [k, 2 * v])),
-      organizeIpcMs: { ...summary(organise.out), bytes: organise.bytes },
+      organizeIpcMs: { ...summary(organise.out), bytes: organiseBytes },
       scopeSwitchMs: { views: switchMs.map((x) => ({ view: x.view, ms: tenth(x.ms) })), ...summary(switchMs.map((x) => x.ms)) },
       tagFilterMs: { on: summary(filterOn), off: summary(filterOff), median: tenth(median([...filterOn, ...filterOff])) },
       keyOneSelectedMs: { add: summary(oneAdd), remove: summary(oneRemove) },
@@ -367,7 +372,7 @@ test('10,000 items with the organise fixture: organise IPC, view switch, tag fil
     console.log(
       '[measure] organize',
       JSON.stringify({
-        ipc: result.organizeIpcMs.median, bytes: organise.bytes, scope: result.scopeSwitchMs.median, filter: result.tagFilterMs.median,
+        ipc: result.organizeIpcMs.median, bytes: organiseBytes, scope: result.scopeSwitchMs.median, filter: result.tagFilterMs.median,
         key1: [result.keyOneSelectedMs.add.median, result.keyOneSelectedMs.remove.median], keyAll: [result.keyAllSelectedMs.add.median, result.keyAllSelectedMs.remove.median],
         drop: result.dropMs.median, menu: result.contextMenuMs.median,
       }),

@@ -20,11 +20,25 @@ const snapshot = (over: Partial<OrganizeSnapshot> = {}): OrganizeSnapshot => ({
 });
 
 describe('the search index\'s tag field (spec 7.1)', () => {
-  it('lists each tagged item\'s tag names joined by a space, in the model\'s tag order, and nothing for an item without a tag or one that left the list', () => {
+  it('lists each tagged item\'s tag names joined by a space, in name order, and nothing for an item without a tag or one that left the list', () => {
     const names = tagNamesFor(buildOrganizeModel(snapshot(), ITEMS));
-    expect([...names]).toEqual([['i1', '중요 G 단백질'], ['i2', '중요']]);
+    expect([...names]).toEqual([['i1', 'G 단백질 중요'], ['i2', '중요']]);
     expect(names.has('i3')).toBe(false);
     expect(names.has('ghost')).toBe(false);
+  });
+
+  it('is the same map when only the colours (and so the model\'s tag order) of two tags change', () => {
+    const named = (a: [string | null, number | null], b: [string | null, number | null]) =>
+      snapshot({
+        tags: [
+          { id: 't1', name: '중요', color: a[0] as 'yellow' | null, position: a[1] },
+          { id: 't2', name: 'G 단백질', color: b[0] as 'red' | null, position: b[1] },
+        ].sort((x, y) => (x.position ?? 99) - (y.position ?? 99)),
+      });
+    const before = tagNamesFor(buildOrganizeModel(named(['yellow', 1], [null, null]), ITEMS));
+    const swapped = tagNamesFor(buildOrganizeModel(named([null, null], ['red', 1]), ITEMS));
+    expect(buildOrganizeModel(named([null, null], ['red', 1]), ITEMS).tags[0]!.id).toBe('t2'); // the model's order did change
+    expect(swapped).toBe(before);
   });
 
   it('is empty before the snapshot has come', () => {

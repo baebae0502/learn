@@ -19,10 +19,11 @@ import { usePosition, type LatestPosition } from '../usePosition';
 import { parsePage } from './parsePage';
 import { PasswordPrompt } from './PasswordPrompt';
 import { FindBar } from './FindBar';
+import { dispatchFind } from './findControl';
 import { useFind } from './findStore';
 import { furthestPageSeen, type PageSpan } from './furthestPage';
 import { PdfDocumentView } from './PdfDocumentView';
-import { useReader } from './readerStore';
+import { keepsPendingJump, useReader, type PendingJump } from './readerStore';
 import { canGoBack, canGoForward } from './history';
 import { useReaderScope, useReaderShown } from '../readerScope';
 import { pageStepAction, SCREEN_STEP, stageKeyAction } from './stageKeys';
@@ -54,6 +55,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
   const ready = pdf?.ready === true && handle !== null;
   const findOpen = useFind((s) => s.open);
   const history = useReader((s) => s.history);
+  const pendingJump = useReader((s) => s.pendingJump);
   const { run } = useCommands();
   const locked = open.status === 'password';
   const broken = open.status === 'failed' || viewFailed;
@@ -165,6 +167,22 @@ export function PdfReader({ item }: { item: LibraryItem }) {
     return () => bus.off('updateviewarea', onArea);
   }, [ready, handle, pos.update]);
 
+  // A document that cannot be shown drops the page a 본문 일치 row left, also one left while this notice is up.
+  useEffect(() => {
+    if (pendingJump && !keepsPendingJump(open.status, viewFailed)) scope.reader.getState().setPendingJump(null);
+  }, [pendingJump, open.status, viewFailed]);
+
+  /**
+   * A 본문 일치 row's page is shown: the find bar opens on its query and searches, and pdf.js starts at the current page, so its
+   * first match is on this one. Taken once.
+   */
+  const showMatch = (j: PendingJump) => {
+    scope.reader.getState().setPendingJump(null);
+    scope.find.getState().openBar(j.query);
+    const bus = handle?.eventBus();
+    if (bus) dispatchFind(bus, j.query, '');
+  };
+
   // The restore waits for both the pages and the stored position, and is applied once; saves start from the place it reached.
   // Only while the tab is shown. `stageSettled` is set in a frame and put back by the effect above only after the tab is hidden, and
   // React draws an update still waiting (the frame's) with the hide's own: the render that hides the tab can be the one that settles
@@ -173,16 +191,27 @@ export function PdfReader({ item }: { item: LibraryItem }) {
   useEffect(() => {
     if (!shown || !ready || !pdf?.sized || !stageSettled || !pos.loaded || restored || !handle) return;
     const saved = pos.saved?.locator.kind === 'pdf' ? pos.saved.locator : undefined;
-    const index = restorePageIndex(pos.saved?.locator, pdf.pagesCount);
+    // A 본문 일치 row opened this reader: it is placed at that page (in the saved zoom, rotation and modes), never first at the saved place.
+    const jump = scope.reader.getState().pendingJump;
+    const index = jump ? restorePageIndex({ kind: 'pdf', pageIndex: jump.pageIndex }, pdf.pagesCount) : restorePageIndex(pos.saved?.locator, pdf.pagesCount);
     place.current = null;
     // restore() ends in viewer.update(), which dispatches updateviewarea at once (pdf.js 6.4.299), so `place` is the real place here.
     // Were it not (no visible page), the saver would start from a page-only locator and the first report would write one full row.
-    handle.restore(saved, index);
+    handle.restore(saved, index, jump ? 'page' : 'saved');
     const start = place.current as LatestPosition | null;
     pos.markRestored(start?.locator ?? { kind: 'pdf', pageIndex: index });
     restoredRef.current = true;
     setRestored(true);
+    if (jump) showMatch(jump);
   }, [shown, ready, stageSettled, pos.loaded, pos.saved, pos.markRestored, restored, pdf, handle]);
+
+  // A row of 본문 일치 for a reader already placed: a jump (recorded for back, as the page field's), then the find bar. Only while
+  // shown and settled, as the restore: pdf.js cannot scroll a hidden stage.
+  useEffect(() => {
+    if (!pendingJump || !shown || !restored || !stageSettled || !handle) return;
+    handle.jumpToPage(pendingJump.pageIndex + 1);
+    showMatch(pendingJump);
+  }, [pendingJump, shown, restored, stageSettled, handle]);
 
   // A final state (design-spec 6): no reader controls that cannot work, only the notice.
   if (open.status === 'failed' || viewFailed) return <PdfErrorNotice item={item} />;

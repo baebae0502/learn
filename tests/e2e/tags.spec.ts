@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, addToCollection, closeSheet, confirmCalls, createCollection, createTag, expectDisabledReason, expectWindow, holdOpenDialog, importPaths, launch, makeTags, menuSnapshot, openItem, organizeSnapshot,
+  FIXTURES, addToCollection, closeSheet, confirmCalls, createCollection, createTag, expectDisabledReason, expectWindow, holdOpenDialog, importPaths, ipcCalls, launch, quietLibraryCalls, makeTags, menuSnapshot, openItem, organizeSnapshot,
   recordedPopupPoints, recordedPopups, releaseOpenDialog, rowByTitle, runMenuCommand, runPalette, selectRows, setTagColor, stubConfirm, stubContextMenu, tagChip, tokenColor, type MenuNode,
 } from './helpers';
 import { expectNoSeriousA11y } from './a11y';
@@ -670,6 +670,34 @@ test('axe: the tag selector, its menu open and a chip being renamed, light and d
       await expectNoSeriousA11y(page, `tag chip being renamed, ${theme}`);
       await page.keyboard.press('Escape');
     }
+  } finally {
+    await app.close();
+  }
+});
+
+test('key 1 patches the snapshot: no library:organize read follows', async ({}, testInfo) => {
+  const { app, page } = await start(testInfo);
+  try {
+    const [tag] = await makeTags(page, [{ name: '중요', slot: 1 }]);
+    await rowByTitle(page, 'sample').click();
+    const organizeReads = async () => (await quietLibraryCalls(app))['library:organize'] ?? 0;
+    const base = await organizeReads();
+    // positive control: a rename is read again from main, once
+    expect((await page.evaluate((input) => window.learn.tags.rename(input), { tagId: tag!, name: '아주 중요' })).ok).toBe(true);
+    await expect.poll(async () => (await ipcCalls(app))['library:organize'] ?? 0).toBe(base + 1);
+    const afterRename = await organizeReads();
+    expect(afterRename).toBe(base + 1);
+    // the key puts the tag on the item (its dot shows), and nothing is read from main for it
+    const toggles = async () => (await ipcCalls(app))['tags:togglePosition'] ?? 0;
+    const before = await toggles();
+    await page.keyboard.press('1');
+    await expect(rowByTitle(page, 'sample').locator('.tag-dots i')).toHaveCount(1);
+    expect(await toggles()).toBe(before + 1);
+    expect(await organizeReads()).toBe(afterRename);
+    // and the key taking it off again is as quiet
+    await page.keyboard.press('1');
+    await expect(rowByTitle(page, 'sample').locator('.tag-dots i')).toHaveCount(0);
+    expect(await organizeReads()).toBe(afterRename);
   } finally {
     await app.close();
   }

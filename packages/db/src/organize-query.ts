@@ -21,6 +21,22 @@ function groupItems(rows: ReadonlyArray<readonly [string, string]>): Record<stri
 }
 
 /**
+ * What the menu bar's submenus list: the collections and the tags, as `readOrganizeSnapshot` has them, and nothing of the
+ * memberships, assignments, duplicates or trash count. Cheap enough to read on every menu rebuild at ten thousand items.
+ */
+export function readMenuOrganize(db: Db): OrganizeSnapshot {
+  return db.transaction((): OrganizeSnapshot => {
+    const collections: OrganizeCollection[] = (
+      db.prepare('SELECT id, name, parent_id, created_at FROM collections WHERE deleted_at IS NULL ORDER BY created_at, rowid').all() as CollectionRow[]
+    ).map((r) => ({ id: r.id, name: r.name, parentId: r.parent_id, createdAt: r.created_at }));
+    const tags: OrganizeTag[] = (db.prepare(`SELECT t.id, t.name, t.color, t.position FROM tags t ${TAG_ORDER}`).all() as TagRow[]).map((r) => ({
+      id: r.id, name: r.name, color: isTagColor(r.color) ? r.color : null, position: r.position,
+    }));
+    return { collections, tags, members: {}, tagged: {}, duplicates: [], trashCount: 0 };
+  })();
+}
+
+/**
  * The sidebar's data in one read: live collections, every tag, the direct memberships and the tag assignments of
  * non-trashed items, the groups of non-trashed items that share a file, and the trash view's row count. One
  * transaction, so the six parts describe the same moment even while main writes between two statements of a lazier

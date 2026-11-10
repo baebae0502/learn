@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { newId } from '@learn/domain';
-import { CollectionsRepository, LibraryRepository, TagsRepository, readOrganizeSnapshot, trashCount, type Db } from '../src/index';
+import { CollectionsRepository, LibraryRepository, TagsRepository, TextRepository, readOrganizeSnapshot, trashCount, type Db } from '../src/index';
 import { freshDb, seedItem } from './fixtures';
 
 let db: Db;
@@ -239,5 +239,31 @@ describe('emptyTrash', () => {
     expect(repo.listItems().map((i) => i.id)).toEqual([live.itemId]);
     expect(collections.list().map((c) => c.id)).toEqual([keep]);
     expect(repo.emptyTrash()).toEqual({ itemIds: [], collectionIds: [], assets: [] });
+  });
+});
+
+describe('page texts at a purge', () => {
+  const pageCount = (sha: string) => count('SELECT COUNT(*) AS n FROM page_texts WHERE sha256 = ?', sha);
+  const put = (sha: string) => db.prepare('INSERT INTO page_texts (sha256, page_index, text) VALUES (?, 0, ?)').run(sha, '현미경 사진');
+
+  it('removes the page texts of the last asset of a sha, and keeps them while another asset of it stays', () => {
+    const shared = seedItem(db, { sha: 'a'.repeat(64) });
+    const other = seedItem(db, { sha: 'a'.repeat(64), mode: 'linked' }); // a second asset row of the same bytes
+    const alone = seedItem(db, { sha: 'b'.repeat(64) });
+    put(shared.asset.sha256);
+    put(alone.asset.sha256);
+    expect(pageCount('a'.repeat(64))).toBe(1); // positive control
+
+    repo.trash([shared.itemId, alone.itemId]);
+    repo.purge({ itemIds: [shared.itemId], collectionIds: [] });
+    expect(pageCount('a'.repeat(64))).toBe(1); // the linked asset row still holds the sha
+    repo.purge({ itemIds: [alone.itemId], collectionIds: [] });
+    expect(pageCount('b'.repeat(64))).toBe(0);
+    expect(count(`SELECT count(*) AS n FROM page_texts_fts WHERE page_texts_fts MATCH '"현미경"'`)).toBe(1);
+    repo.trash([other.itemId]);
+    repo.purge({ itemIds: [other.itemId], collectionIds: [] });
+    expect(pageCount('a'.repeat(64))).toBe(0);
+    expect(count(`SELECT count(*) AS n FROM page_texts_fts WHERE page_texts_fts MATCH '"현미경"'`)).toBe(0);
+    expect(new TextRepository(db).pageCount('a'.repeat(64))).toBe(0);
   });
 });

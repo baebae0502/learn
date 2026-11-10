@@ -148,6 +148,20 @@ describe('색 태그 ▸ (a group of commands)', () => {
   });
 });
 
+describe('배경 ▸ (the picture reader\'s background)', () => {
+  const BACKGROUND = SUBMENUS.find((s) => s.id === 'imageBackground')!;
+  const group = (over: Partial<SubmenuInput> = {}) => groupEntry(BACKGROUND, COMMANDS, input({ organize: null, ...over }))!;
+  it('lists the three backgrounds in order, each its own command, with no mark and without reading the library', () => {
+    expect(group().id).toBe('submenu.imageBackground');
+    expect(group().label).toBe('배경');
+    expect(rows(group().submenu).map((r) => [r.id, r.label])).toEqual([
+      ['reader.imageBackgroundLight', '밝게'], ['reader.imageBackgroundDark', '어둡게'], ['reader.imageBackgroundChecker', '체크무늬'],
+    ]);
+    expect(rows(group().submenu).every((r) => r.checked === undefined && r.type === undefined)).toBe(true);
+    expect(menuNeedsOrganize([], [BACKGROUND], 'menu')).toBe(false);
+  });
+});
+
 describe('쪽 색 ▸ (the reader\'s page colours)', () => {
   const PAGE_COLOR = SUBMENUS.find((s) => s.id === 'pageColor')!;
   const group = (over: Partial<SubmenuInput> = {}) => plainGroup(PAGE_COLOR, COMMANDS, input({ organize: null, ...over }))!;

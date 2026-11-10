@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { expect, type Locator, type Page } from '@playwright/test';
-import { ROOT, launch, mainWindow, type Session } from '../helpers';
+import { expect, type ElectronApplication, type Locator, type Page } from '@playwright/test';
+import { ROOT, importQueueState, launch, mainWindow, textExtraction, textIdle, type Session } from '../helpers';
 
 /** @2x captures for the design critic (same size as docs/design/renders, 2880×1800). Not committed. */
 export const TOUR_DIR = path.join(ROOT, 'test-results', 'tour');
@@ -21,7 +21,46 @@ export async function launchTour(dir: string, env: Record<string, string> = {}):
     w.setPosition(0, 0);
   });
   await expect.poll(() => s.page.evaluate(() => [innerWidth, innerHeight].join('x'))).toBe('1440x900');
+  tourApps.set(s.page, s.app);
   return s;
+}
+
+const tourApps = new WeakMap<Page, ElectronApplication>();
+
+/**
+ * Every PDF in this tour window's library has had its body read: the pictures show a library a little after its imports, whose
+ * done index says nothing. The reading, held under E2E, runs at once from the first call (a window with no library has none).
+ */
+export async function bodyIndexDone(page: Page): Promise<void> {
+  const app = tourApps.get(page);
+  if (!app) return;
+  await textExtraction(app, 'now');
+  await textIdle(app);
+}
+
+/** Per tour window: how many import runs main had reported when an import that reads no bodies itself began (importStarting). */
+const unread = new WeakMap<Page, number>();
+const importRuns = (app: ElectronApplication) =>
+  app.evaluate(() => (globalThis as unknown as { __learnTest: { importReports(): unknown[] } }).__learnTest.importReports().length);
+
+/** An import that does not wait for its PDFs' bodies begins in this window (the menu's import, a drop): see readEndedImports. */
+export async function importStarting(page: Page): Promise<void> {
+  const app = tourApps.get(page);
+  if (app && !unread.has(page)) unread.set(page, await importRuns(app));
+}
+
+/**
+ * Before a picture: the PDFs of an import that has ended since importStarting have had their body read, as importPaths' have (a
+ * done index says nothing). A run still going — held, asking about a duplicate, waiting for another job — is the picture's own
+ * subject and is left as it is; its reading comes at the first picture after it ends.
+ */
+export async function readEndedImports(page: Page): Promise<void> {
+  const app = tourApps.get(page);
+  const since = unread.get(page);
+  if (!app || since === undefined) return;
+  if ((await importRuns(app)) <= since || (await importQueueState(app)).state !== 'idle') return;
+  unread.delete(page);
+  await bodyIndexDone(page);
 }
 
 /**
@@ -60,8 +99,12 @@ export async function settle(page: Page, park = true): Promise<void> {
  * Optional @2x capture for the critic (LEARN_TOUR_2X=1) + committed 1x baseline (Linux). The @2x shot comes first:
  * a state that differs from its baseline still reaches the critic (R-2). Critic captures run without updating; the
  * baselines are updated by the 1x run only (README).
+ * `keepPointer`: the pointer stays where the scene left it. A keyboard ring on a react-aria item (a ListBox, GridList or Menu row,
+ * the image stage) needs it, with the pointer parked before the keys: a pointer move after them makes the modality the pointer's,
+ * and the item drawn again later (a query settling) loses its ring.
  */
 export async function shoot(page: Page, name: string, opts: { mask?: Locator[]; keepPointer?: boolean; style?: string } = {}): Promise<void> {
+  await readEndedImports(page);
   if (TOUR_2X) await capture2x(page, name, opts.keepPointer !== true);
   await settle(page, opts.keepPointer !== true);
   // Tight on purpose: at most 300 pixels may differ by more than the default per-pixel threshold (0.2), so a moved

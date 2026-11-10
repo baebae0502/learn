@@ -1,3 +1,5 @@
+import type { ItemType } from '@learn/domain';
+
 /** The window's tabs: the library first and always there, then one reader tab per item. Pure; the shell store holds the state. */
 export type TabId = 'library' | string;
 
@@ -109,7 +111,7 @@ export function mountedTabs(s: TabsState, limit: number = MOUNTED_MAX): string[]
 /** What a reader tab last showed of its item: its name and kind, kept in the saved session so the strip is whole in its first frame. */
 export interface KnownTabItem {
   title: string;
-  type: 'pdf' | 'video';
+  type: ItemType;
 }
 export type KnownTabItems = Readonly<Record<string, KnownTabItem>>;
 

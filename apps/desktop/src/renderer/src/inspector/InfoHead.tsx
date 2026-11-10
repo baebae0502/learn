@@ -1,4 +1,4 @@
-import { Clapperboard, FileText, FolderSearch } from 'lucide-react';
+import { FolderSearch } from 'lucide-react';
 import { commandById, commandLabel, type CommandId, type LibraryItem } from '@learn/domain';
 import { ItemMarks } from '../library/ItemMarks';
 import { useCommands } from '../commands/CommandProvider';
@@ -8,6 +8,8 @@ import { t } from '../strings';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { currentPlatform } from '../ui/platform';
+import { ImagePreview } from './ImagePreview';
+import { itemIcon } from '../library/itemIcon';
 import { useFileFacts } from './useFileFacts';
 import { RestoreButton, TrashNote } from './TrashInfo';
 
@@ -18,7 +20,7 @@ import { RestoreButton, TrashNote } from './TrashInfo';
  * with 열기; Finder에서 보기 stays in place, disabled with the reason. While the item is being edited 열기 is secondary.
  * A trashed item (the trash view, read-only): 복원 is the head's one action, the trash line under it.
  */
-export function InfoHead({ item, probe = true, trashedAt, inReader = false }: { item: LibraryItem; probe?: boolean; trashedAt?: string; inReader?: boolean }) {
+export function InfoHead({ item, probe = true, preview = true, trashedAt, inReader = false }: { item: LibraryItem; probe?: boolean; preview?: boolean; trashedAt?: string; inReader?: boolean }) {
   const { env, run, isEnabled } = useCommands();
   const facts = useFileFacts(item, probe);
   const platform = currentPlatform();
@@ -27,15 +29,20 @@ export function InfoHead({ item, probe = true, trashedAt, inReader = false }: { 
   // The form's 저장 is the panel's one primary button while the editor is open.
   const editing = useLibrary((s) => s.editingId === item.id);
   const relinkFirst = item.availability === 'missing' && item.storageMode === 'linked';
+  // An image's kind line carries its pixel size, which the library already knows (no probe).
   const kind =
     item.type === 'pdf'
       ? [t.library.type.pdf, facts.pages === undefined ? '' : t.inspector.pages(facts.pages)]
-      : [t.library.type.video, facts.durationMs === undefined ? '' : formatDuration(facts.durationMs)];
+      : item.type === 'image'
+        ? [t.inspector.imageKind(item.imageSize?.width, item.imageSize?.height)]
+        : [t.library.type.video, facts.durationMs === undefined ? '' : formatDuration(facts.durationMs)];
   const byline = [item.creators.join(', '), item.year === null ? '' : String(item.year)].filter(Boolean).join(' · ');
   return (
     <header className="item-head" data-testid="inspector-head">
+      {/* One image on show in the library: its picture leads the head. Not in the trash, the reader or a several-item selection. */}
+      {item.type === 'image' && preview && !inReader && trashedAt === undefined && <ImagePreview item={item} />}
       <div className="kind" data-testid="inspector-kind">
-        <Icon icon={item.type === 'video' ? Clapperboard : FileText} size="sm" />
+        <Icon icon={itemIcon(item.type)} size="sm" />
         <span className="num">{kind.filter(Boolean).join(' · ')}</span>
       </div>
       <h2>

@@ -6,7 +6,7 @@ import type {
   AppInfo, Collection, DuplicateGroup, EditedCopy, ItemDetail, KeepOneResult, LibraryItem, PurgedRows, SearchText, Tag, TrashView,
 } from './library';
 import { itemMetadataSchema } from './metadata';
-import type { OrganizeSnapshot } from './organize';
+import type { OrganizeWire } from './organize';
 import { SCROLL_MODES, readingLocatorSchema, type ReadingPosition } from './reading';
 import type { Result } from './result';
 import type { Prefs } from './settings';
@@ -37,6 +37,10 @@ export const importPathsInput = z.object({
 }).strict();
 export const itemIdInput = z.object({ itemId: z.uuid() });
 export const emptyInput = z.object({}).strict().optional();
+
+/** Body search: the query as typed (words are split in main); a page list wants a query to look for. */
+export const bodySearchInput = z.object({ query: z.string().normalize('NFC').max(200) }).strict();
+export const bodyPagesInput = z.object({ itemId: z.uuid(), query: z.string().normalize('NFC').min(1).max(200) }).strict();
 
 export const itemIdsInput = z.object({ itemIds: z.array(z.uuid()).min(1).max(5000) });
 /**
@@ -148,6 +152,8 @@ export const commandContextInput = z
     trashCount: contextCount,
     /** A PDF is open with its pages: the reader's view commands and its ⌘+ ⌘− ⌘0 need it; absent otherwise. */
     pdfOpen: z.boolean().optional(),
+    /** A reader tab with its picture drawn is shown: the zoom, the two fits and the turns act on it; absent otherwise. */
+    imageOpen: z.boolean().optional(),
     /** How the open PDF scrolls: the spread commands are off while horizontal; absent otherwise. */
     pdfScroll: z.enum(SCROLL_MODES).optional(),
     /** The open PDF can go back / forward in its history (⌘[ ⌘]); absent otherwise. */
@@ -333,7 +339,7 @@ export interface LearnApi {
     /** Abstracts and memos of the items that have one (quick search reads them from its first query on). */
     searchTexts(): Promise<Result<SearchText[]>>;
     /** Collections, tags, memberships, tag assignments and duplicate groups in one read (the sidebar's data). */
-    organize(): Promise<Result<OrganizeSnapshot>>;
+    organize(): Promise<Result<OrganizeWire>>;
     /** The non-trashed items among `ids`, once each in the order asked; unknown and trashed ids are skipped. */
     getItems(input: GetItemsInput): Promise<Result<LibraryItem[]>>;
     /** The copies another app saved beside the item's read-only copy, newest first (spec 6); [] when there are none. */
@@ -365,7 +371,7 @@ export interface LearnApi {
     remove(input: TagIdInput): Promise<Result<void>>;
     assign(input: TagItemsInput): Promise<Result<number>>;
     unassign(input: TagItemsInput): Promise<Result<number>>;
-    togglePosition(input: TogglePositionInput): Promise<Result<{ tagId: string; assigned: boolean } | null>>;
+    togglePosition(input: TogglePositionInput): Promise<Result<{ tagId: string; assigned: boolean; itemIds: string[] } | null>>;
   };
   settings: {
     get(input: SettingGetInput): Promise<Result<unknown>>;
@@ -386,6 +392,14 @@ export interface LearnApi {
     /** The stored position, or null. A pure read. */
     getPosition(input: ItemIdInput): Promise<Result<ReadingPosition | null>>;
     savePosition(input: SavePositionInput): Promise<Result<void>>;
+  };
+  search: {
+    /** The items with a page that holds every word. A newer request of the window stops the older one: it answers CANCELLED. */
+    body(input: z.input<typeof bodySearchInput>): Promise<Result<{ itemIds: string[]; searched: boolean }>>;
+    /** The matching pages of one PDF item in page order, a snippet each (matches between the private-use marks), and how many match in all. */
+    pages(input: z.input<typeof bodyPagesInput>): Promise<Result<{ pages: Array<{ pageIndex: number; snippet: string }>; total: number }>>;
+    /** How many PDFs outside the trash have been read for their text. */
+    progress(): Promise<Result<{ done: number; total: number }>>;
   };
   backup: {
     /** 백업 만들기…: main asks for a folder over the calling window and puts the backup on its work line (spec 8.1). */

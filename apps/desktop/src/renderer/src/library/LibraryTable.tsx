@@ -1,5 +1,5 @@
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { Check, ChevronDown, ChevronUp, Clapperboard, FileText, Folder } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Folder } from 'lucide-react';
 import {
   memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
   type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode, type WheelEvent,
@@ -14,6 +14,7 @@ import { highlight } from '../palette/highlight';
 import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
 import { cx } from '../ui/cx';
+import { countRender } from '../ui/renderCount';
 import { Icon } from '../ui/Icon';
 import { ProgressBar } from '../ui/ProgressBar';
 import { isNavigationKey, lastInput } from '../ui/inputModality';
@@ -25,13 +26,14 @@ import { useNow } from '../useNow';
 import { columnTemplates, defaultColumns, fixedWidths, progressShown, toggleColumn, tradeWidths, visibleColumns, withWidths } from './columns';
 import { useRowDnd } from '../dnd/rowDnd';
 import { gridKey } from './gridKeys';
-import { wheelSteps } from './columnDrag';
+import { emptyHeadStep, wheelSteps } from './columnDrag';
 import { useColumnReorder } from './useColumnReorder';
 import { TagDots } from '../tags/TagDots';
 import { tagsDescription } from '../tags/dotTags';
 import { KeptMark, LinkMark, StatusFlags } from './ItemMarks';
 import type { DuplicateMarks } from '../organize/duplicates';
 import { inOrder, reduceSelection, rowOrder, type SelectAction, type SelectionState } from './selectionModel';
+import { itemIcon } from './itemIcon';
 import { useRevealRow } from './tableDom';
 import { firstDirection, type LibrarySort, type LibrarySortColumn } from './sort';
 
@@ -143,7 +145,7 @@ function ProgressCell({ progress }: { progress: number | null }) {
 function TitleCell({ item, match, tags, kept }: { item: LibraryItem; match: Match | null; tags: readonly OrganizeTag[]; kept: boolean }) {
   return (
     <>
-      <Icon icon={item.type === 'video' ? Clapperboard : FileText} />
+      <Icon icon={itemIcon(item.type)} />
       <span className="item-title ellipsis" title={item.title}>
         {highlight(item.title, match)}
       </span>
@@ -182,12 +184,29 @@ interface ItemRowProps {
   groupStart: boolean;
 }
 
+const sameMatch = (a: Match | null, b: Match | null): boolean => a === b || (a !== null && b !== null && a.start === b.start && a.end === b.end && a.kind === b.kind);
+const sameTags = (a: readonly OrganizeTag[], b: readonly OrganizeTag[]): boolean => a === b || (a.length === b.length && a.every((x, k) => x === b[k]));
+
+/**
+ * Whether a row would draw what it drew: its item object, its place, whether it is selected, ringed or the tab stop, the
+ * columns shown (and so the density's heights, which move `top`), the day (for the dates), the title match, the tags and
+ * the duplicate marks. A new array or object with the same content (a tag list, a match) is the same row.
+ */
+function sameRow(a: ItemRowProps, b: ItemRowProps): boolean {
+  return (
+    a.item === b.item && a.index === b.index && a.top === b.top && a.selected === b.selected && a.tabStop === b.tabStop && a.ring === b.ring &&
+    a.columns === b.columns && a.now === b.now && a.dragIdsOf === b.dragIdsOf && a.draggable === b.draggable && a.kept === b.kept &&
+    a.groupStart === b.groupStart && sameMatch(a.match, b.match) && sameTags(a.tags, b.tags)
+  );
+}
+
 /**
  * One row (spec §3.4): it redraws only when its item, its place or its state changed — a re-read list redraws the rows
  * whose items changed, a click the two rows whose selection changed. Widths are not a prop: the grid tracks come from
  * the table's CSS variables, so a column drag redraws no row.
  */
 const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, ring, columns, now, match, tags, dragIdsOf, draggable, kept, groupStart }: ItemRowProps) {
+  countRender('LibraryRow');
   const last = columns.length - 1;
   const rowRef = useRef<HTMLDivElement>(null);
   const { rowProps, isDropTarget } = useRowDnd(rowRef, item.id, dragIdsOf, draggable);
@@ -241,7 +260,7 @@ const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, rin
       )}
     </div>
   );
-});
+}, sameRow);
 
 interface CollectionRowProps {
   collection: TrashedCollection;
@@ -393,10 +412,17 @@ export function LibraryTable(props: LibraryTableProps) {
   const onScrollerScroll = useCallback(() => {
     if (headClip.current && scroller.current) headClip.current.scrollLeft = scroller.current.scrollLeft;
   }, []);
-  // A wheel or sweep over the header, which no longer scrolls, goes to the body.
+  // A wheel or sweep over the header, which no longer scrolls, goes to the body. An empty table (no results) has no body to
+  // move: the header strip moves sideways itself, so the columns past the view stay within reach. It stays overflow: hidden,
+  // so it never becomes a scroll region of its own (a keyboard stop in Chromium, a region without a tab stop for axe).
   const onHeadWheel = useCallback((e: WheelEvent<HTMLDivElement>) => {
     const view = scroller.current;
-    if (!view) return;
+    const strip = headClip.current;
+    if (!view || !strip) return;
+    if (view.hasAttribute('data-empty')) {
+      strip.scrollLeft += emptyHeadStep(e, { width: strip.clientWidth, height: strip.clientHeight });
+      return;
+    }
     const step = wheelSteps(e, { width: view.clientWidth, height: view.clientHeight });
     view.scrollBy(step.x, step.y);
   }, []);
@@ -650,6 +676,10 @@ export function LibraryTable(props: LibraryTableProps) {
 
   const items = virtualizer.getVirtualItems();
   const showEmpty = count === 0 && props.empty !== undefined && props.empty !== null;
+  // The rows are back: the header, which may have been moved on its own while the table was empty, goes back over their columns.
+  useLayoutEffect(() => {
+    if (!showEmpty && headClip.current && scroller.current) headClip.current.scrollLeft = scroller.current.scrollLeft;
+  }, [showEmpty]);
   const vars = { '--head-cols': tracks.head, '--row-cols': tracks.row, '--table-min-width': `${tracks.minWidth}px` } as CSSProperties;
   return (
     <div

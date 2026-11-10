@@ -1,7 +1,7 @@
 import { createContext, useContext, useSyncExternalStore, type ReactNode } from 'react';
 import { useStore, type StoreApi } from 'zustand';
 import { createFindStore, type FindStore } from './pdf/findStore';
-import { createReaderStore, type ReaderStore } from './pdf/readerStore';
+import { createReaderStore, type ImageState, type ReaderStore } from './pdf/readerStore';
 import { readWindowParams } from '../ui/platform';
 import { createSelectionStore, type SelectionStore } from '../translation/useSelectionText';
 import { createTranslationStore, type TranslationStore } from '../translation/store';
@@ -17,10 +17,14 @@ export interface ReaderScope {
   readonly selection: StoreApi<SelectionStore>;
   readonly translation: StoreApi<TranslationStore>;
   readonly pageField: { current: HTMLInputElement | null };
+  /** The picture point at the image stage's centre (0–1), kept by the image reader as it moves; not state, so a scroll re-renders nothing. */
+  readonly imageCentre: { current: { cx: number; cy: number } | null };
 }
 
 export function createReaderScope(id: string): ReaderScope {
-  return { id, reader: createReaderStore(), find: createFindStore(), selection: createSelectionStore(), translation: createTranslationStore(), pageField: { current: null } };
+  return {
+    id, reader: createReaderStore(), find: createFindStore(), selection: createSelectionStore(), translation: createTranslationStore(), pageField: { current: null }, imageCentre: { current: null },
+  };
 }
 
 /**
@@ -44,6 +48,8 @@ export const readerScopes = (() => {
       if (active === scope) setActiveReaderScope(null);
     },
     ids: (): string[] => [...all.keys()],
+    /** The scope of a tab already open, without making one. */
+    peek: (id: string): ReaderScope | null => all.get(id) ?? null,
   };
 })();
 
@@ -149,10 +155,31 @@ export function learnReaderHook(): { getState(): ReaderStore; subscribe(fn: () =
   };
 }
 
+/** What a test reads of a picture: its state, whose it is, and the point at the stage's centre. */
+export type LearnImageState = ImageState & { itemId: string; cx: number; cy: number };
+
+/** E2E only: the image reader of the active tab, or of the tab `itemId` (a hidden one too); null where no picture is open. */
+export function learnImageHook(): { getState(itemId?: string): LearnImageState | null } {
+  return {
+    getState: (itemId) => {
+      const scope = itemId === undefined ? currentScope() : readerScopes.peek(itemId);
+      const image = scope?.reader.getState().image;
+      if (!scope || !image) return null;
+      const centre = scope.imageCentre.current ?? { cx: 0.5, cy: 0.5 };
+      return { ...image, itemId: scope.id, cx: centre.cx, cy: centre.cy };
+    },
+  };
+}
+
 declare global {
   interface Window {
     /** E2E only (the page's address carries e2e=1 in an unpackaged test run): lets tests drive the active reader's handle. */
     __learnReader?: ReturnType<typeof learnReaderHook>;
+    /** E2E only: what the image reader shows. */
+    __learnImage?: ReturnType<typeof learnImageHook>;
   }
 }
-if (typeof window !== 'undefined' && readWindowParams(window.location.search).e2e) window.__learnReader = learnReaderHook();
+if (typeof window !== 'undefined' && readWindowParams(window.location.search).e2e) {
+  window.__learnReader = learnReaderHook();
+  window.__learnImage = learnImageHook();
+}

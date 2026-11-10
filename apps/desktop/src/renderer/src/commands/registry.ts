@@ -1,7 +1,7 @@
 import { COMMANDS, isCommandAvailable, type CommandArgs, type CommandContextState, type CommandId, type CommandTargetInfo, type PickedCommand } from '@learn/domain/commands';
-import type { PageColor, ScrollModeName, SpreadModeName, StorageMode } from '@learn/domain';
+import type { ImageBackground, PageColor, ScrollModeName, SpreadModeName, StorageMode } from '@learn/domain';
 import type { TextSize, TextSizeUpdate } from '../settings/textSize';
-import type { ReaderNav, ZoomValue } from '../viewers/pdf/readerStore';
+import type { PendingJump, ReaderNav, ZoomValue } from '../viewers/pdf/readerStore';
 
 /** What the main window can do now: its command context plus the handlers. Rebuilt every render; later tasks add handlers. */
 export interface CommandEnv extends CommandContextState {
@@ -36,6 +36,8 @@ export interface CommandEnv extends CommandContextState {
   back(): void;
   /** ↩, a double-click and ⌘↩: one tab per item (the first one's shown unless `background`); eleven or more ask first. */
   openItems(itemIds: readonly string[], opts?: { background?: boolean }): void;
+  /** A 본문 일치 row (M7c spec 5.8): item.open's way to the item's tab (an open edit asked first), its reader at that page with the find bar on the query. */
+  openAtPage(itemId: string, at: PendingJump): void;
   /** ⌘W and the tab menu: the reader tab of this item, or the shown one (the library's tab closes the window). */
   closeTab(itemId?: string): void;
   /** ⇧⌘T. */
@@ -98,6 +100,8 @@ export interface CommandEnv extends CommandContextState {
   rotate(delta: 90 | -90): void;
   /** 쪽 색: saved as the reader's setting. */
   setPageColor(color: PageColor): void;
+  /** 배경: saved as the reader's setting (one for the library). */
+  setImageBackground(bg: ImageBackground): void;
   /** 스크롤 ▸ and 펼침 ▸: how the open PDF flows, and whether its pages pair up (the reader remembers both per item). */
   setScroll(mode: ScrollModeName): void;
   setSpread(mode: SpreadModeName): void;
@@ -272,6 +276,9 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'reader.pageColorOriginal': (env) => env.setPageColor('original'),
   'reader.pageColorSepia': (env) => env.setPageColor('sepia'),
   'reader.pageColorDark': (env) => env.setPageColor('dark'),
+  'reader.imageBackgroundLight': (env) => env.setImageBackground('light'),
+  'reader.imageBackgroundDark': (env) => env.setImageBackground('dark'),
+  'reader.imageBackgroundChecker': (env) => env.setImageBackground('checker'),
   'reader.scrollVertical': (env) => env.setScroll('vertical'),
   'reader.scrollHorizontal': (env) => env.setScroll('horizontal'),
   'reader.scrollPage': (env) => env.setScroll('page'),
@@ -308,6 +315,7 @@ export function contextOf(env: CommandEnv): CommandContextState {
     columnsShown: env.columnsShown,
     trashCount: env.trashCount,
     ...(env.pdfOpen ? { pdfOpen: true } : {}),
+    ...(env.imageOpen ? { imageOpen: true } : {}),
     ...(env.pdfOpen && env.pdfScroll ? { pdfScroll: env.pdfScroll } : {}),
     ...(env.historyBack ? { historyBack: true } : {}),
     ...(env.historyForward ? { historyForward: true } : {}),

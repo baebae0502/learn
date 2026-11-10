@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { LearnError } from '@learn/domain';
 import {
-  CollectionsRepository, LATEST_SCHEMA_VERSION, LibraryRepository, MIGRATIONS, TagsRepository, currentVersion, migrate, openDatabase,
+  AnchorsRepository, CollectionsRepository, LATEST_SCHEMA_VERSION, LibraryRepository, MIGRATIONS, TagsRepository, currentVersion, migrate, openDatabase,
   type AssetRow, type Db,
 } from '../src/index';
 import { newId, nowIso } from '@learn/domain';
@@ -39,7 +39,8 @@ describe('migrate', () => {
   it('creates the latest schema on an empty database', () => {
     const { db, file } = tempDb();
     expect(migrate(db, { dbFile: file })).toEqual({ from: 0, to: LATEST_SCHEMA_VERSION, backupFile: null });
-    expect(LATEST_SCHEMA_VERSION).toBe(3);
+    expect(LATEST_SCHEMA_VERSION).toBe(4);
+    expect(tables(db)).toContain('page_texts');
     expect(tables(db)).toContain('reading_positions');
     expect(tables(db)).toContain('translation_cache');
     const idx = (db.prepare(`SELECT name FROM sqlite_master WHERE type = 'index'`).all() as { name: string }[]).map((r) => r.name);
@@ -102,20 +103,24 @@ describe('migrate', () => {
   });
 });
 
+/** Written with SQL, not the repository: these seeds go into schemas older than the one the repository writes (v4 added the asset's size). */
 function seedItem(repo: LibraryRepository, n: number): { itemId: string; revisionId: string } {
+  const db = (repo as unknown as { db: Db }).db;
   const now = nowIso();
   const sha = String(n).repeat(64);
-  const a: AssetRow = {
-    id: newId(), sha256: sha, storageMode: 'managed', relativePath: `assets/${sha.slice(0, 2)}/${sha}`, externalPath: null,
-    originalName: `f${n}.pdf`, mime: 'application/pdf', size: 10, availability: 'available', createdAt: now, checkedAt: now,
-  };
+  const assetId = newId();
   const itemId = newId();
   const revisionId = newId();
-  repo.insertImported({
-    item: { id: itemId, type: 'pdf', title: `t${n}`, createdAt: now }, asset: a, assetIsNew: true,
-    revision: { id: revisionId, createdAt: now },
-    job: { id: newId(), kind: 'extract', dedupeKey: `extract:${sha}:text-v0`, payload: { sha256: sha } },
-  });
+  db.transaction(() => {
+    db.prepare(`INSERT INTO assets (id, sha256, storage_mode, relative_path, external_path, original_name, mime, size, availability, created_at, checked_at)
+                VALUES (?, ?, 'managed', ?, NULL, ?, 'application/pdf', 10, 'available', ?, ?)`)
+      .run(assetId, sha, `assets/${sha.slice(0, 2)}/${sha}`, `f${n}.pdf`, now, now);
+    db.prepare(`INSERT INTO items (id, type, title, metadata_json, created_at, updated_at) VALUES (?, 'pdf', ?, '{}', ?, ?)`).run(itemId, `t${n}`, now, now);
+    db.prepare(`INSERT INTO item_assets (item_id, asset_id, role) VALUES (?, ?, 'original')`).run(itemId, assetId);
+    db.prepare(`INSERT INTO source_revisions (id, asset_id, hash, parent_revision_id, renderer_version, created_at) VALUES (?, ?, ?, NULL, NULL, ?)`).run(revisionId, assetId, sha, now);
+    db.prepare(`INSERT INTO jobs (id, kind, dedupe_key, state, attempts, payload_json, created_at, updated_at) VALUES (?, 'extract', ?, 'queued', 0, ?, ?, ?)`)
+      .run(newId(), `extract:${sha}:text-v0`, JSON.stringify({ sha256: sha }), now, now);
+  })();
   return { itemId, revisionId };
 }
 
@@ -249,7 +254,7 @@ describe('migration v3 (anchors-translation)', () => {
     db.prepare(`INSERT INTO anchors (id, revision_id, kind, locator_json, quote, schema_version) VALUES ('a1', ?, 'pdf', '{}', 'q', 1)`).run(revisionId);
     db.prepare(`INSERT INTO annotations (id, anchor_id, type, body_json, operation_id, created_at, updated_at) VALUES ('n1', 'a1', 'highlight', '{}', 'op', 'now', 'now')`).run();
 
-    expect(migrate(db, { dbFile: file })).toEqual({ from: 2, to: 3, backupFile: `${file}.pre-v3.bak` });
+    expect(migrate(db, { dbFile: file })).toEqual({ from: 2, to: 4, backupFile: `${file}.pre-v3.bak` });
     expect(db.prepare(`SELECT id, precision, text_json, quote FROM anchors`).all()).toEqual([{ id: 'a1', precision: 'span', text_json: null, quote: 'q' }]);
     expect(db.pragma('foreign_key_check')).toEqual([]);
     expect(tables(db)).toContain('translation_cache');
@@ -257,5 +262,108 @@ describe('migration v3 (anchors-translation)', () => {
     const snap = openDatabase(`${file}.pre-v3.bak`);
     dbs.push(snap);
     expect(currentVersion(snap)).toBe(2);
+  });
+});
+
+describe('migration v4 (images-text)', () => {
+  const v3 = MIGRATIONS.filter((m) => m.version <= 3);
+  const rows = (db: Db, table: string) => db.prepare(`SELECT rowid AS _rowid, * FROM ${table} ORDER BY rowid`).all() as Record<string, unknown>[];
+  const SAME = ['items', 'item_assets', 'source_revisions', 'collections', 'collection_items', 'tags', 'item_tags', 'reading_positions', 'annotations'];
+
+  function seedV3(db: Db) {
+    const repo = new LibraryRepository(db);
+    const pdf = seedItem(repo, 1); // a text-v0 extract job comes with it
+    const video = seedItem(repo, 2);
+    db.prepare(`UPDATE items SET type = 'video' WHERE id = ?`).run(video.itemId);
+    const trashed = seedItem(repo, 3);
+    db.prepare(`UPDATE items SET deleted_at = '2026-11-01T00:00:00.000Z' WHERE id = ?`).run(trashed.itemId);
+    db.prepare(`INSERT INTO collections (id, name, parent_id, created_at) VALUES ('c1', '강의', NULL, 'now')`).run();
+    db.prepare(`INSERT INTO collection_items (collection_id, item_id) VALUES ('c1', ?)`).run(pdf.itemId);
+    db.prepare(`INSERT INTO tags (id, name) VALUES ('t1', 'm')`).run();
+    db.prepare(`INSERT INTO item_tags (item_id, tag_id) VALUES (?, 't1')`).run(trashed.itemId);
+    db.prepare(`INSERT INTO reading_positions (item_id, revision_id, locator_json, progress, updated_at) VALUES (?, ?, '{"kind":"pdf","pageIndex":3}', 0.5, 'now')`).run(pdf.itemId, pdf.revisionId);
+    const anchor = db.prepare(`INSERT INTO anchors (id, revision_id, kind, locator_json, quote, schema_version, precision, text_json) VALUES (?, ?, ?, ?, ?, 2, ?, ?)`);
+    anchor.run('a-pdf', pdf.revisionId, 'pdf', JSON.stringify({ kind: 'pdf', revisionId: pdf.revisionId, precision: 'span', pageIndex: 0, quads: [[0, 0, 1, 0, 0, 1, 1, 1]], coordinateSpace: 'pdf-user-space' }), 'q', 'span', JSON.stringify({ quote: { exact: 'q', prefix: '', suffix: '' } }));
+    anchor.run('a-slide', pdf.revisionId, 'slide', JSON.stringify({ kind: 'slide', revisionId: pdf.revisionId, derivedRevisionId: pdf.revisionId, slideIndex: 0, quads: [] }), null, 'region', null);
+    anchor.run('a-bad', pdf.revisionId, 'slide', 'not json', null, 'region', null);
+    db.prepare(`INSERT INTO annotations (id, anchor_id, type, body_json, operation_id, created_at, updated_at) VALUES ('n1', 'a-slide', 'highlight', '{}', 'op', 'now', 'now')`).run();
+    db.prepare(`INSERT INTO jobs (id, kind, dedupe_key, state, payload_json, created_at, updated_at) VALUES ('j-other', 'backup', 'backup:x', 'done', '{}', 'now', 'now')`).run();
+    return { pdf };
+  }
+
+  it('upgrades a real v3 library: every row and rowid kept, foreign keys whole and on, slide → slides, text-v0 jobs gone, a v3 snapshot', () => {
+    const { db, file } = tempDb();
+    migrate(db, { dbFile: file, migrations: v3 });
+    const { pdf } = seedV3(db);
+    const before = Object.fromEntries([...SAME, 'assets', 'anchors'].map((t) => [t, rows(db, t)]));
+    expect(migrate(db, { dbFile: file })).toEqual({ from: 3, to: 4, backupFile: `${file}.pre-v4.bak` });
+    for (const t of SAME) expect(rows(db, t), t).toEqual(before[t]);
+    expect(rows(db, 'assets')).toEqual(before.assets!.map((r) => ({ ...r, width: null, height: null })));
+    expect(rows(db, 'anchors')).toEqual(before.anchors!.map((r) =>
+      r.kind !== 'slide' ? r : { ...r, kind: 'slides', locator_json: r.id === 'a-bad' ? r.locator_json : JSON.stringify({ ...JSON.parse(String(r.locator_json)), kind: 'slides' }) }));
+    expect(db.pragma('foreign_key_check')).toEqual([]);
+    expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
+    const parents = (t: string) => (db.pragma(`foreign_key_list(${t})`) as { table: string }[]).map((r) => r.table);
+    for (const t of ['item_assets', 'collection_items', 'item_tags', 'reading_positions']) expect(parents(t), t).toContain('items');
+    expect(parents('annotations')).toEqual(['anchors']);
+    const indexes = (db.prepare(`SELECT name FROM sqlite_master WHERE type = 'index'`).pluck().all() as string[]);
+    expect(indexes).toEqual(expect.arrayContaining(['items_deleted_at', 'anchors_revision']));
+    db.prepare(`UPDATE items SET type = 'image' WHERE id = ?`).run(pdf.itemId);
+    expect(() => db.prepare(`UPDATE anchors SET kind = 'slide' WHERE id = 'a-slide'`).run()).toThrow(/CHECK/);
+    expect(new AnchorsRepository(db).get('a-slide')?.anchor.kind).toBe('slides');
+    expect(db.prepare('SELECT id FROM jobs').pluck().all()).toEqual(['j-other']);
+    const snap = openDatabase(`${file}.pre-v4.bak`);
+    dbs.push(snap);
+    expect(currentVersion(snap)).toBe(3);
+  });
+
+  it('a foreign-keys-off migration that leaves an orphan is rolled back, and foreign keys are on again', () => {
+    const { db, file } = tempDb();
+    migrate(db, { dbFile: file, migrations: v3 });
+    seedItem(new LibraryRepository(db), 1);
+    const orphan = [...v3, { version: 4, name: 'orphan', sql: 'DELETE FROM items;', foreignKeysOff: true as const }];
+    expect(() => migrate(db, { dbFile: file, migrations: orphan })).toThrow(/^v4 업데이트에 실패했습니다\. 데이터베이스는 v3 상태입니다\./);
+    expect(currentVersion(db)).toBe(3);
+    expect(db.prepare('SELECT COUNT(*) FROM items').pluck().get()).toBe(1);
+    expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
+  });
+
+  it('refuses to run inside a transaction', () => {
+    const { db } = tempDb();
+    migrate(db, { dbFile: null, migrations: v3 });
+    expect(() => db.transaction(() => migrate(db, { dbFile: null }))()).toThrow(/^v4 업데이트에 실패했습니다\. 데이터베이스는 v3 상태입니다\./);
+    expect(currentVersion(db)).toBe(3);
+    expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
+  });
+
+  it('10,000 items rebuild within a second', () => {
+    const { db } = tempDb();
+    migrate(db, { dbFile: null, migrations: v3 });
+    const repo = new LibraryRepository(db);
+    const { itemId, revisionId } = seedItem(repo, 1);
+    const assetId = db.prepare('SELECT asset_id FROM item_assets WHERE item_id = ?').pluck().get(itemId) as string;
+    const now = nowIso();
+    repo.insertItemsForAsset(Array.from({ length: 10_000 }, (_, i) => ({
+      id: newId(), type: 'pdf' as const, title: `n${i}`, createdAt: now, metadataJson: '{}', assetId, revisionId,
+    })));
+    const t0 = performance.now();
+    migrate(db, { dbFile: null });
+    const ms = performance.now() - t0;
+    console.log('[measure] migrate-004', ms);
+    expect(ms).toBeLessThan(1000);
+    expect(db.prepare('SELECT COUNT(*) FROM items').pluck().get()).toBe(10_001);
+  });
+
+  it('the FTS triggers index, update and delete', () => {
+    const { db } = tempDb();
+    migrate(db, { dbFile: null });
+    const hits = (q: string) => db.prepare('SELECT rowid FROM page_texts_fts WHERE page_texts_fts MATCH ?').all(`"${q}"`);
+    db.prepare(`INSERT INTO page_texts (sha256, page_index, text) VALUES (?, 0, '현미경 관찰 기록')`).run('a'.repeat(64));
+    expect(hits('현미경')).toHaveLength(1);
+    db.prepare('UPDATE page_texts SET text = ?').run('망원경 관찰 기록');
+    expect(hits('현미경')).toHaveLength(0);
+    expect(hits('망원경')).toHaveLength(1);
+    db.prepare('DELETE FROM page_texts').run();
+    expect(hits('망원경')).toHaveLength(0);
   });
 });

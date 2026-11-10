@@ -5,12 +5,22 @@ const f = (type: string) => ({ kind: 'file', type });
 
 describe('drop summary (design-spec 6 드롭 오버레이)', () => {
   it('counts files by kind', () => {
-    expect(summarizeDrop([f('application/pdf'), f('application/pdf'), f('video/mp4'), { kind: 'string', type: 'text/uri-list' }])).toEqual({ files: 3, pdf: 2, video: 1, other: 0 });
+    expect(summarizeDrop([f('application/pdf'), f('application/pdf'), f('video/mp4'), { kind: 'string', type: 'text/uri-list' }])).toEqual({ files: 3, pdf: 2, video: 1, image: 0, other: 0 });
+  });
+  it('counts the five raster formats as images; other image types (HEIC, SVG) are other', () => {
+    const png = f('image/png');
+    expect(summarizeDrop([f('application/pdf'), png, f('image/jpeg'), f('image/webp'), f('image/gif'), f('image/avif')])).toEqual({ files: 6, pdf: 1, video: 0, image: 5, other: 0 });
+    expect(summarizeDrop([png, f('image/heic'), f('image/svg+xml')])).toEqual({ files: 3, pdf: 0, video: 0, image: 1, other: 2 });
+  });
+  it('writes "파일 3개(PDF 1 · 이미지 2)"', () => {
+    expect(dropSummaryText({ files: 3, pdf: 1, video: 0, image: 2, other: 0 })).toBe('파일 3개(PDF 1 · 이미지 2)');
+    expect(dropSummaryText({ files: 4, pdf: 1, video: 1, image: 1, other: 1 })).toBe('파일 4개(PDF 1 · 동영상 1 · 이미지 1 · 기타 1)');
+    expect(dropSummaryText({ files: 2, pdf: 0, video: 0, image: 0, other: 2 })).toBe('파일 2개');
   });
   it('writes "파일 3개(PDF 2 · 동영상 1)" and names other files only next to known kinds', () => {
-    expect(dropSummaryText({ files: 3, pdf: 2, video: 1, other: 0 })).toBe('파일 3개(PDF 2 · 동영상 1)');
-    expect(dropSummaryText({ files: 4, pdf: 2, video: 1, other: 1 })).toBe('파일 4개(PDF 2 · 동영상 1 · 기타 1)');
-    expect(dropSummaryText({ files: 2, pdf: 0, video: 0, other: 2 })).toBe('파일 2개');
+    expect(dropSummaryText({ files: 3, pdf: 2, video: 1, image: 0, other: 0 })).toBe('파일 3개(PDF 2 · 동영상 1)');
+    expect(dropSummaryText({ files: 4, pdf: 2, video: 1, image: 0, other: 1 })).toBe('파일 4개(PDF 2 · 동영상 1 · 기타 1)');
+    expect(dropSummaryText({ files: 2, pdf: 0, video: 0, image: 0, other: 2 })).toBe('파일 2개');
   });
 });
 
@@ -40,12 +50,12 @@ describe('window drop target (design-spec 7.2: copy, ⌥ = link)', () => {
     const { target, last, entered } = setup();
     const content = el();
     target.enter(drag({ target: content, files: [file('a.pdf'), file('b.mp4', 'video/mp4')] }));
-    expect(last()).toEqual({ link: false, summary: { files: 2, pdf: 1, video: 1, other: 0 } });
+    expect(last()).toEqual({ link: false, summary: { files: 2, pdf: 1, video: 1, image: 0, other: 0 } });
     // Moving onto the overlay (a new element) is not a new drag.
     target.enter(drag({ target: el() }));
     target.leave(drag({ target: content }));
     expect(entered).toHaveBeenCalledTimes(1);
-    expect(last()).toEqual({ link: false, summary: { files: 2, pdf: 1, video: 1, other: 0 } });
+    expect(last()).toEqual({ link: false, summary: { files: 2, pdf: 1, video: 1, image: 0, other: 0 } });
   });
 
   it('⌥ held at the start, or pressed and released on the way, switches the mode at once', () => {
@@ -88,7 +98,7 @@ describe('window drop target (design-spec 7.2: copy, ⌥ = link)', () => {
   it('a dragover without a dragenter (enabled during the drag) still shows the overlay', () => {
     const { target, last, entered } = setup();
     target.over(drag({ target: el(), altKey: true }));
-    expect(last()).toEqual({ link: true, summary: { files: 1, pdf: 1, video: 0, other: 0 } });
+    expect(last()).toEqual({ link: true, summary: { files: 1, pdf: 1, video: 0, image: 0, other: 0 } });
     expect(entered).toHaveBeenCalledTimes(1);
   });
 

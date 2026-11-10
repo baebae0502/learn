@@ -151,6 +151,13 @@ const VIEW = (platform: NodeJS.Platform): Shape => ({
         { id: 'reader.spreadEven', label: '짝수 쪽부터' },
       ],
     },
+    {
+      id: 'submenu.imageBackground', label: '배경', submenu: [
+        { id: 'reader.imageBackgroundLight', label: '밝게' },
+        { id: 'reader.imageBackgroundDark', label: '어둡게' },
+        { id: 'reader.imageBackgroundChecker', label: '체크무늬' },
+      ],
+    },
     SEP,
     // macOS: our item names what it will do (Apple Korean); elsewhere the neutral role item.
     platform === 'darwin' ? { id: 'menu.view.fullScreen', label: '전체 화면 시작', accelerator: 'Ctrl+Cmd+F' } : { label: '전체 화면', role: 'togglefullscreen' },
@@ -259,7 +266,7 @@ describe('buildAppMenu', () => {
 
   it('places each registry command with a menu exactly once, with its label and accelerator', () => {
     const items = walk(build('darwin'));
-    const groupRows = SUBMENUS.filter((s) => s.id !== 'colorTags').flatMap((s) => s.commands); // rows of 쪽 색 ▸, 스크롤 ▸ and 펼침 ▸, which need nothing from the library
+    const groupRows = SUBMENUS.filter((s) => s.id !== 'colorTags').flatMap((s) => s.commands); // rows of 쪽 색 ▸, 스크롤 ▸, 펼침 ▸ and 배경 ▸, which need nothing from the library
     for (const c of COMMANDS) {
       const found = items.filter((i) => i.id === c.id);
       expect(found, c.id).toHaveLength((c.menu && c.submenu !== 'collections') || groupRows.includes(c.id) ? 1 : 0); // 컬렉션에 추가 ▸ has no row here without the library read for the menu bar (organize is null), so its head is left out too
@@ -430,6 +437,20 @@ describe('both panes\' state labels and the menu bar\'s item commands (P-2, P-3)
     expect(menuLabelsChanged(base, next({ blocked: true, textSize: 15 }))).toBe(false);
     expect(menuLabelsChanged(base, next({ pdfOpen: true }))).toBe(false);
   });
+  it('relabels when a picture is drawn or goes, and carries that in the label state (한 쪽 전체 보기 is 창에 맞춤 for a picture)', () => {
+    const reader = next({ view: 'viewer', inspector: undefined });
+    expect(menuLabelState(next({ view: 'viewer', inspector: undefined, imageOpen: true }))).toEqual({ sidebar: 'shown', scope: 'all', view: 'viewer', imageOpen: true });
+    expect(menuLabelState(reader)).toEqual({ sidebar: 'shown', scope: 'all', view: 'viewer' });
+    expect(menuLabelsChanged(reader, { ...reader, imageOpen: true })).toBe(true);
+    expect(menuLabelsChanged({ ...reader, imageOpen: true }, reader)).toBe(true);
+    expect(menuLabelsChanged(menuLabelState({ ...reader, imageOpen: true }), menuLabelState({ ...reader, imageOpen: true }))).toBe(false);
+    const fit = commandById('reader.zoomPageFit');
+    const template = buildAppMenu({ isDev: false, platform: 'darwin', commands: [fit], enabled: ALL, onCommand: vi.fn(), labels: menuLabelState({ ...reader, imageOpen: true }) });
+    const byId = byIdOf(template);
+    expect(byId.get('reader.zoomPageFit')?.label).toBe('창에 맞춤');
+    applyMenuLabels({ getMenuItemById: (id: string) => byId.get(id) ?? null }, 'darwin', menuLabelState(reader), [fit]);
+    expect(byId.get('reader.zoomPageFit')?.label).toBe('한 쪽 전체 보기');
+  });
   it('builds and relabels each toggle from its own pane state, in place', () => {
     const template = buildAppMenu({ isDev: false, platform: 'darwin', commands: toggles, enabled: ALL, onCommand: vi.fn(), labels: { sidebar: 'shown', inspector: 'hidden' } });
     const byId = byIdOf(template);
@@ -555,7 +576,7 @@ describe('in-place enabled toggle (the menu is built once; reports only flip ena
   it('looks up only commands placed in the menu bar, and skips ids the menu does not have', () => {
     const asked: string[] = [];
     applyMenuEnabled({ getMenuItemById: (id) => (asked.push(id), null) }, ALL, cmds);
-    expect(asked).toEqual(['file.importManaged', 'file.importLinked', 'file.importLinked#1', 'submenu.colorTags', 'submenu.pageColor', 'submenu.scrollMode', 'submenu.spreadMode']); // each group's head is placed in its menu too
+    expect(asked).toEqual(['file.importManaged', 'file.importLinked', 'file.importLinked#1', 'submenu.colorTags', 'submenu.pageColor', 'submenu.scrollMode', 'submenu.spreadMode', 'submenu.imageBackground']); // each group's head is placed in its menu too
   });
 });
 

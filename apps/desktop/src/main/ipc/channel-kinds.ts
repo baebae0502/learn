@@ -86,6 +86,10 @@ export const CHANNEL_KINDS: Readonly<Record<Channel, readonly WindowKind[]>> = {
   'reader:getPosition': MAIN,
   'reader:savePosition': MAIN,
 
+  'search:body': MAIN,
+  'search:pages': MAIN,
+  'search:progress': MAIN,
+
   'translation:translate': MAIN,
   'translation:cancel': MAIN,
 

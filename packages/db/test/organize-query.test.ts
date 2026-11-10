@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { CollectionsRepository, LibraryRepository, TagsRepository, readOrganizeSnapshot, type Db } from '../src/index';
+import { CollectionsRepository, LibraryRepository, TagsRepository, readMenuOrganize, readOrganizeSnapshot, type Db } from '../src/index';
 import { freshDb, seedItem } from './fixtures';
 
 let db: Db;
@@ -105,5 +105,20 @@ describe('readOrganizeSnapshot', () => {
     expect(readOrganizeSnapshot(db)).toMatchObject({ members: {}, tagged: {} });
     library.restore([itemId]);
     expect(readOrganizeSnapshot(db)).toMatchObject({ members: { [c.id]: [itemId] }, tagged: { [t.id]: [itemId] } });
+  });
+});
+
+describe('readMenuOrganize', () => {
+  it('has the collections and tags of the full snapshot and nothing else', () => {
+    const a = collections.create({ name: 'A' });
+    collections.create({ name: 'B', parentId: a.id });
+    const t = tags.create('x');
+    tags.setColor(t.id, 'red', 1);
+    const { itemId } = seedItem(db);
+    collections.addItems(a.id, [itemId]);
+    tags.assign(t.id, [itemId]);
+    const full = readOrganizeSnapshot(db);
+    expect(readMenuOrganize(db)).toEqual({ collections: full.collections, tags: full.tags, members: {}, tagged: {}, duplicates: [], trashCount: 0 });
+    expect(full.members).not.toEqual({});
   });
 });

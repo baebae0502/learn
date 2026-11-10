@@ -22,11 +22,20 @@ class FakeWindow extends EventEmitter {
   contentSize: [number, number];
   position: [number, number] | null = null;
   url = '';
-  readonly webContents: EventEmitter & { id: number; executeJavaScript(script: string): Promise<unknown>; isDestroyed(): boolean };
+  readonly #contents: EventEmitter & { id: number; executeJavaScript(script: string): Promise<unknown>; isDestroyed(): boolean };
+  /** As Electron's: a closed window's properties can no longer be read ("Object has been destroyed"), in its 'closed' too. */
+  get webContents(): FakeWindow['contents'] {
+    if (this.destroyed) throw new TypeError('Object has been destroyed');
+    return this.#contents;
+  }
+  /** The window's contents, read the way a test may after it closed. */
+  get contents() {
+    return this.#contents;
+  }
   constructor(readonly options: { width: number; height: number; parent: unknown; modal: boolean; frame: boolean }) {
     super();
     this.contentSize = [options.width, options.height];
-    const contents = new EventEmitter() as FakeWindow['webContents'];
+    const contents = new EventEmitter() as FakeWindow['contents'];
     contents.id = FakeWindow.nextId++;
     contents.isDestroyed = () => this.destroyed;
     // contentHeight polls in the page; fontsReady waits for document.fonts; markSized sets a flag.
@@ -35,7 +44,7 @@ class FakeWindow extends EventEmitter {
       if (script.includes('ResizeObserver')) return new Promise((resolve) => FakeWindow.followers.push(resolve));
       return script.includes('getBoundingClientRect') ? FakeWindow.pageHeight : script.includes('document.fonts') ? FakeWindow.fontsReady : undefined;
     };
-    this.webContents = contents;
+    this.#contents = contents;
     FakeWindow.all.push(this);
   }
   isDestroyed = () => this.destroyed;
@@ -47,7 +56,14 @@ class FakeWindow extends EventEmitter {
     this.url = url;
     if (url.includes('fail')) throw new Error('ERR_FAILED (-2) loading url'); // as Electron rejects a failed load
   };
+  /** As Electron's close(): 'close', then the window goes and 'closed' comes with it destroyed. */
   close = () => {
+    if (this.destroyed) return;
+    this.emit('close');
+    this.destroy();
+  };
+  /** As Electron's destroy(), and its closing of a child window with its parent: no 'close', only 'closed'. */
+  destroy = () => {
     if (this.destroyed) return;
     this.destroyed = true;
     this.emit('closed');
@@ -56,7 +72,7 @@ class FakeWindow extends EventEmitter {
 
 vi.mock('electron', () => ({ BrowserWindow: FakeWindow, nativeTheme: { shouldUseDarkColors: false } }));
 
-const { createSheetHost, FOLLOWING_SHEETS, followedHeight, SHEET_SHOW_TIMEOUT_MS, SHEET_TOP, UNRESPONSIVE_GRACE_MS, sheetHeightKey, shortcutsDigest } = await import('./sheets');
+const { createSheetHost, FOLLOWING_SHEETS, PREPARE_AGAIN_MS, followedHeight, SHEET_SHOW_TIMEOUT_MS, SHEET_TOP, UNRESPONSIVE_GRACE_MS, sheetHeightKey, shortcutsDigest } = await import('./sheets');
 
 type FakeParent = BrowserWindow & { focus: ReturnType<typeof vi.fn>; height: number };
 /** A parent window whose height a test may change (then emit 'resize'). */
@@ -64,7 +80,21 @@ const parent = (id = 1, height = 900): FakeParent => {
   const p = Object.assign(new EventEmitter(), { id, height, isDestroyed: () => false, focus: vi.fn() });
   return Object.assign(p, { getContentBounds: () => ({ x: 100, y: 50, width: 1440, height: p.height }) }) as unknown as FakeParent;
 };
-const contentsOf = (w: FakeWindow) => w.webContents as unknown as WebContents;
+/**
+ * As Electron closes a window: its child windows go first (destroyed: 'closed' and no 'close'), then the window itself is
+ * destroyed — its properties throw from then on, in its own 'closed' too — and says 'closed'.
+ */
+function closeParent(p: FakeParent): void {
+  for (const w of FakeWindow.all) if (w.options.parent === p) w.destroy();
+  const gone = () => {
+    throw new TypeError('Object has been destroyed');
+  };
+  Object.defineProperty(p, 'id', { get: gone });
+  Object.assign(p, { isDestroyed: () => true, getContentBounds: gone });
+  p.emit('closed');
+}
+/** A window's contents as an IPC event hands them over: the object outlives its window (a closed sheet's page is a stranger). */
+const contentsOf = (w: FakeWindow) => w.contents as unknown as WebContents;
 const tick = () => new Promise((r) => setTimeout(r, 0));
 /** Lets the host measure, size and show the newest window. */
 async function ready(w: FakeWindow): Promise<void> {
@@ -106,7 +136,7 @@ describe('sheet host', () => {
     expect(w.contentSize).toEqual([780, 200]);
     expect(w.position).toEqual([100 + (1440 - 780) / 2, 50 + SHEET_TOP]);
     expect(w.shown).toBe(true);
-    expect(h.payloadFor(contentsOf(w))).toEqual({ kind: 'shortcuts' });
+    await expect(h.payloadFor(contentsOf(w))).resolves.toEqual({ kind: 'shortcuts' });
     expect(p.focus).not.toHaveBeenCalled();
     h.resolve(contentsOf(w), { kind: 'shortcuts' });
     await expect(result).resolves.toEqual({ kind: 'shortcuts' });
@@ -186,7 +216,7 @@ describe('sheet host', () => {
   it('answers only an open sheet: anyone else is PERMISSION_DENIED, a result of the wrong kind VALIDATION_FAILED', async () => {
     const h = host();
     const stranger = { id: 999 } as unknown as WebContents;
-    expect(() => h.payloadFor(stranger)).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
+    await expect(h.payloadFor(stranger)).rejects.toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
     expect(() => h.resolve(stranger, { kind: 'shortcuts' })).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
     const result = h.open(parent(), { kind: 'shortcuts' });
     await tick(); // the window is created once nothing else is showing over this parent
@@ -195,7 +225,7 @@ describe('sheet host', () => {
     w.close();
     await expect(result).resolves.toBeNull();
     // Closed: its contents are a stranger now.
-    expect(() => h.payloadFor(contentsOf(w))).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
+    await expect(h.payloadFor(contentsOf(w))).rejects.toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
   });
 
   it('settles with null when the window closes without an answer, or its page fails to load or crashes', async () => {
@@ -598,7 +628,7 @@ describe('the library check sheet: acts while open (P-17), capped at the parent 
     expect(await first).toMatchObject({ items: 5 });
     expect(await second).toMatchObject({ items: 7 });
     expect(order).toEqual(['start cleanStaging', 'end', 'start revive', 'end']);
-    expect(h.payloadFor(contentsOf(w))).toMatchObject({ items: 7 });
+    await expect(h.payloadFor(contentsOf(w))).resolves.toMatchObject({ items: 7 });
   });
 
   it('refuses an action for another kind, a kind with no handler, and a window that is not an open sheet', async () => {
@@ -610,5 +640,203 @@ describe('the library check sheet: acts while open (P-17), capped at the parent 
     await expect(h.act(contentsOf(keys), { kind: 'libraryCheck', act: 'cleanStaging' })).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
     await expect(h.act(contentsOf(check), { kind: 'libraryCheck', act: 'cleanStaging' })).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
     await expect(h.act({ id: 999 } as unknown as WebContents, { kind: 'libraryCheck', act: 'cleanStaging' })).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+  });
+});
+
+describe('the ⌘/ sheet window made ahead (P7)', () => {
+  const host = () => createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=sheet', platform: 'linux' });
+  const settled = () => new Promise((r) => setTimeout(r, 0));
+  /** The prepared window with its page loaded (the real one fires did-finish-load once the document is in). */
+  function preparedWindow(h: ReturnType<typeof host>, p: FakeParent): FakeWindow {
+    h.prepare(p);
+    const w = FakeWindow.all[0]!;
+    w.webContents.emit('did-finish-load');
+    return w;
+  }
+
+  it('makes one hidden window that loads the sheet page, and holds its payload until a sheet opens in it', async () => {
+    const h = host();
+    const p = parent();
+    h.prepare(p);
+    h.prepare(p); // one per parent
+    expect(FakeWindow.all).toHaveLength(1);
+    const w = FakeWindow.all[0]!;
+    expect(w.options).toMatchObject({ width: 780, modal: true });
+    expect(w.url).toBe('learn://app/index.html?window=sheet');
+    expect(w.shown).toBe(false);
+    expect(windowKindOf(w.webContents.id)).toBe('sheet');
+    let answered = false;
+    void h.payloadFor(contentsOf(w)).then(() => (answered = true));
+    await settled();
+    expect(answered).toBe(false);
+  });
+
+  it('shows the prepared window for the ⌘/ sheet instead of a new one, and releases the payload only then; measuring starts after that', async () => {
+    const h = host();
+    const p = parent();
+    const w = preparedWindow(h, p);
+    let payload: unknown;
+    void h.payloadFor(contentsOf(w)).then((x) => (payload = x));
+    await settled();
+    expect(payload).toBeUndefined();
+    expect(FakeWindow.scripts.filter((x) => x.includes('getBoundingClientRect'))).toHaveLength(0);
+    const result = h.open(p, { kind: 'shortcuts' });
+    for (let i = 0; i < 8 && !w.shown; i++) await settled();
+    expect(FakeWindow.all).toHaveLength(1);
+    expect(payload).toEqual({ kind: 'shortcuts' });
+    expect(FakeWindow.scripts.filter((x) => x.includes('getBoundingClientRect')).length).toBeGreaterThan(0);
+    expect(w.shown).toBe(true);
+    expect(w.contentSize).toEqual([780, 200]);
+    expect(w.position).toEqual([100 + (1440 - 780) / 2, 50 + SHEET_TOP]);
+    await expect(h.payloadFor(contentsOf(w))).resolves.toEqual({ kind: 'shortcuts' }); // a reloaded page asks again
+    h.resolve(contentsOf(w), { kind: 'shortcuts' });
+    await expect(result).resolves.toEqual({ kind: 'shortcuts' });
+    expect(w.destroyed).toBe(true);
+    expect(p.focus).toHaveBeenCalledTimes(1);
+  });
+
+  it('is not used by another kind of sheet, nor before its page has loaded', async () => {
+    const h = host();
+    const p = parent();
+    h.prepare(p);
+    const ahead = FakeWindow.all[0]!;
+    void h.open(p, { kind: 'shortcuts' }); // page not loaded yet
+    await settled();
+    expect(FakeWindow.all).toHaveLength(2);
+    expect(FakeWindow.all[1]).not.toBe(ahead);
+    FakeWindow.all[1]!.close();
+    ahead.webContents.emit('did-finish-load');
+    void h.open(p, { kind: 'duplicate', name: 'a.pdf', existing: 'b.pdf', count: 1 } as never);
+    await settled();
+    expect(FakeWindow.all).toHaveLength(3);
+    expect(ahead.shown).toBe(false);
+    expect(ahead.destroyed).toBe(false);
+  });
+
+  it('makes the next one a second after the sheet closes, and not after discardPrepared', async () => {
+    vi.useFakeTimers();
+    const h = host();
+    const p = parent();
+    const w = preparedWindow(h, p);
+    const result = h.open(p, { kind: 'shortcuts' });
+    await vi.advanceTimersByTimeAsync(10);
+    h.resolve(contentsOf(w), { kind: 'shortcuts' });
+    await result;
+    expect(FakeWindow.all).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(PREPARE_AGAIN_MS - 1);
+    expect(FakeWindow.all).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(FakeWindow.all).toHaveLength(2);
+    const next = FakeWindow.all[1]!;
+    expect(next.shown).toBe(false);
+    // the window is closing: the stock goes, and no new one comes
+    h.discardPrepared(p);
+    expect(next.destroyed).toBe(true);
+    const again = h.open(p, { kind: 'shortcuts' });
+    await vi.advanceTimersByTimeAsync(10);
+    FakeWindow.all[2]!.webContents.emit('dom-ready');
+    FakeWindow.all[2]!.emit('ready-to-show');
+    await vi.advanceTimersByTimeAsync(10);
+    h.resolve(contentsOf(FakeWindow.all[2]!), { kind: 'shortcuts' });
+    await again;
+    await vi.advanceTimersByTimeAsync(PREPARE_AGAIN_MS * 2);
+    expect(FakeWindow.all).toHaveLength(3);
+  });
+
+  // Electron throws on any read of a window that has closed, in its own 'closed' too; uncaught in main, that error opens
+  // Electron's error box, which holds main for good (gtk_dialog_run on Linux): the main window's closing did not quit
+  // the app, and after a ⌘/ sheet in the window made ahead closed, main answered nothing more.
+  it('reads nothing of the window made ahead once it has closed unused, and the page\'s request for its payload ends with it', async () => {
+    const h = host();
+    const p = parent();
+    const w = preparedWindow(h, p);
+    let answered: unknown;
+    void h.payloadFor(contentsOf(w)).then((x) => (answered = x));
+    expect(() => w.close()).not.toThrow();
+    expect(() => w.webContents).toThrow('Object has been destroyed'); // positive control: the fake is as strict as Electron
+    await settled();
+    expect(answered).toEqual({ kind: 'shortcuts' });
+    void h.open(p, { kind: 'shortcuts' }); // the next ⌘/ makes its own
+    await settled();
+    expect(FakeWindow.all).toHaveLength(2);
+  });
+
+  it('a ⌘/ sheet in the window made ahead tells its parent it closed (the menu bar is let go) and reads nothing of the closed window', async () => {
+    vi.useFakeTimers();
+    const onSheetShown = vi.fn();
+    const onSheetClosed = vi.fn();
+    const h = createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=sheet', platform: 'linux', onSheetShown, onSheetClosed });
+    const p = parent();
+    const w = preparedWindow(h, p);
+    const result = h.open(p, { kind: 'shortcuts' });
+    await vi.advanceTimersByTimeAsync(10);
+    expect(w.shown).toBe(true);
+    expect(onSheetShown).toHaveBeenCalledTimes(1);
+    expect(() => h.resolve(contentsOf(w), { kind: 'shortcuts' })).not.toThrow();
+    await expect(result).resolves.toEqual({ kind: 'shortcuts' });
+    expect(w.destroyed).toBe(true);
+    expect(onSheetClosed).toHaveBeenCalledTimes(1);
+    expect(onSheetClosed).toHaveBeenCalledWith(p);
+    await vi.advanceTimersByTimeAsync(PREPARE_AGAIN_MS);
+    expect(FakeWindow.all).toHaveLength(2); // and the next one is made
+  });
+
+  it('goes with its parent, which main then lets go of in the parent\'s own closed (its id unreadable): nothing throws and none is made again', async () => {
+    vi.useFakeTimers();
+    const h = host();
+    const p = parent();
+    const w = preparedWindow(h, p);
+    const result = h.open(p, { kind: 'shortcuts' });
+    await vi.advanceTimersByTimeAsync(10);
+    h.resolve(contentsOf(w), { kind: 'shortcuts' });
+    await result;
+    await vi.advanceTimersByTimeAsync(PREPARE_AGAIN_MS);
+    const next = FakeWindow.all[1]!;
+    next.webContents.emit('did-finish-load');
+    void h.open(p, { kind: 'duplicate', name: 'a.pdf', existing: 'b.pdf', count: 1 } as never); // a sheet over it, made ahead of nothing
+    await vi.advanceTimersByTimeAsync(10);
+    expect(() => closeParent(p)).not.toThrow();
+    expect(() => p.id).toThrow('Object has been destroyed'); // positive control: the parent is as unreadable as Electron's
+    expect(next.destroyed).toBe(true);
+    expect(() => h.discardPrepared(p)).not.toThrow();
+    await vi.advanceTimersByTimeAsync(PREPARE_AGAIN_MS * 2);
+    expect(FakeWindow.all).toHaveLength(3);
+    expect(FakeWindow.all.every((x) => x.destroyed)).toBe(true);
+  });
+
+  it('is made at the height a ⌘/ sheet measured before (the library\'s: the view the next ⌘/ comes from is not known yet), capped to the room', async () => {
+    vi.useFakeTimers();
+    const h = createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=sheet', platform: 'linux', staticKey: (x) => (x.kind === 'shortcuts' ? `k|${x.view ?? 'library'}` : null) });
+    const p = parent();
+    FakeWindow.pageHeight = 743;
+    const w = preparedWindow(h, p);
+    expect(w.options.height).toBe(900 - SHEET_TOP - 16); // nothing measured yet: as tall as the room
+    const result = h.open(p, { kind: 'shortcuts' });
+    await vi.advanceTimersByTimeAsync(10);
+    h.resolve(contentsOf(w), { kind: 'shortcuts' });
+    await result;
+    await vi.advanceTimersByTimeAsync(PREPARE_AGAIN_MS);
+    expect(FakeWindow.all[1]!.options.height).toBe(743);
+    // The parent got shorter: the next is made at the room it leaves.
+    const again = h.open(p, { kind: 'shortcuts' });
+    FakeWindow.all[1]!.webContents.emit('did-finish-load');
+    await vi.advanceTimersByTimeAsync(10);
+    h.resolve(contentsOf(FakeWindow.all[1]!), { kind: 'shortcuts' });
+    await again;
+    p.height = 500;
+    await vi.advanceTimersByTimeAsync(PREPARE_AGAIN_MS);
+    expect(FakeWindow.all[2]!.options.height).toBe(500 - SHEET_TOP - 16);
+  });
+
+  it('drops a prepared window whose page failed, and the next ⌘/ makes its own', async () => {
+    const h = host();
+    const p = parent();
+    h.prepare(p);
+    const ahead = FakeWindow.all[0]!;
+    ahead.webContents.emit('did-fail-load', {}, -2, 'ERR_FAILED', 'u', true);
+    expect(ahead.destroyed).toBe(true);
+    void h.open(p, { kind: 'shortcuts' });
+    await settled();
+    expect(FakeWindow.all).toHaveLength(2);
   });
 });

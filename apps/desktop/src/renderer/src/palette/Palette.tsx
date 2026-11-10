@@ -1,6 +1,6 @@
 import { useId, useLayoutEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
-import { Clapperboard, FileText, Folder, ListFilter, Search } from 'lucide-react';
+import { Folder, ListFilter, Search } from 'lucide-react';
 import { Dialog, Modal, ModalOverlay } from 'react-aria-components';
 import { COMMANDS, commandById, commandMention, inPalette, paletteLabel, paletteListed, type CommandId, type CommandSpec, type LibraryItem } from '@learn/domain';
 import { useCommands } from '../commands/CommandProvider';
@@ -24,6 +24,7 @@ import { rankCollections, type RankedCollection } from './collections';
 import { highlight } from './highlight';
 import { initialsExample, itemMeta, itemMetaMatch, rankItems, type RankedItem } from './items';
 import { rankCommands, type RankedCommand } from './rank';
+import { itemIcon } from '../library/itemIcon';
 import { usePaletteRecent } from './recent';
 import { searchLibrary, showCollection } from './searchRow';
 
@@ -118,8 +119,9 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
   usePaintMark('palette:painted', query);
   /** 설정 as the hints name it: ㅅㅈ → 설정, when no title gives an example. */
   const settingsName = commandMention(commandById('app.settings'), platform);
-  // The labels follow the pane states and the view (사이드바 가리기 / 사이드바 보기; ⌘⌫ is 영구 삭제… in the trash), as the menu bar's.
-  const state = { sidebar: env.sidebar, inspector: env.inspector, scope: env.scope, duplicateGroups: env.duplicateGroups, view: env.view };
+  // The labels follow the pane states, the view and a drawn picture (사이드바 가리기 / 사이드바 보기; ⌘⌫ is 영구 삭제… in the trash; the
+  // fit is 창에 맞춤 for a picture), as the menu bar's.
+  const state = { sidebar: env.sidebar, inspector: env.inspector, scope: env.scope, duplicateGroups: env.duplicateGroups, view: env.view, imageOpen: env.imageOpen };
   // Item commands (Finder에서 보기, 기본 앱으로 열기, 사본 내보내기… and 정보 편집) are judged and run on the table
   // selection, which only the library view shows. Judged once per env rather than on every keystroke: a selection can
   // hold every row (⌘A).
@@ -280,7 +282,7 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
       const { item, match } = row.ranked;
       return option(row, index, { 'data-testid': 'palette-result', 'data-item-id': item.id }, (
         <>
-          <Icon icon={item.type === 'video' ? Clapperboard : FileText} />
+          <Icon icon={itemIcon(item.type)} />
           <span className="p-title ellipsis">{highlight(item.title, match)}</span>
           <span className="p-meta">
             {/* Only on a row whose title did not match: the author or the year that brought it in is marked instead. */}

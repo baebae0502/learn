@@ -153,6 +153,17 @@ describe('startLibraryCheck (P-18: once the window exists, in the background)', 
     expect(ctx.check).toMatchObject({ staging: { count: 1 }, actionable: true });
     expect(ctx.db.prepare(`SELECT state FROM jobs`).pluck().get()).toBe('interrupted');
   });
+  it('tells the body-text scheduler the first check ended (P-29): before the gate is looked at, and also when the check threw', async () => {
+    const ctx = await library();
+    const order: string[] = [];
+    await startLibraryCheck(ctx, { announce: () => {}, requestAuto: () => {}, gate: gate({ busy: () => (order.push('gate'), false) }), onChecked: () => void order.push('checked') });
+    expect(order).toEqual(['checked', 'gate']);
+    const broken = await library();
+    broken.db.close();
+    const onChecked = vi.fn();
+    await expect(startLibraryCheck(broken, { announce: () => {}, requestAuto: () => {}, gate: gate(), onChecked })).rejects.toThrow();
+    expect(onChecked).toHaveBeenCalledTimes(1);
+  });
   it('does not ask for the list the user was shown last, nor for a missing linked original alone — which it announces', async () => {
     const ctx = await library();
     put(path.join(ctx.layout.stagingDir, 'dead.part'), 10);

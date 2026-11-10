@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { columnsMask, commandById, commandLabel, commandMention, tagPositionsMask, type AppInfo, type LibraryItem, type Prefs, type Result, type StorageMode } from '@learn/domain';
 import { ApiError, api, unwrap } from '../api';
 import { CommandProvider } from '../commands/CommandProvider';
@@ -27,6 +27,7 @@ import { startEditing } from '../inspector/startEditing';
 import { KeepAllDuplicatesButton } from '../library/KeepAllDuplicatesButton';
 import { ImportMenuButton } from '../library/ImportMenuButton';
 import { LibrarySearch, focusQuickSearch } from '../library/LibrarySearch';
+import { useBodyProgressSync } from '../library/useBodySearch';
 import { LibraryLoading } from '../library/LibraryLoading';
 import { LibraryView } from '../library/LibraryView';
 import { ListFailed } from '../library/ListFailed';
@@ -37,6 +38,7 @@ import { restoreRefused, useRestoreJob } from '../jobs/restoreJob';
 import { importBusy, importBusyTotal, useJobProgress } from '../jobs/jobProgress';
 import { useLibrarySettings } from '../library/useLibrarySettings';
 import { LibraryToolbar } from '../library/LibraryToolbar';
+import { ScopeViewProvider } from '../library/ScopeViewContext';
 import { useScopeView } from '../library/useScopeView';
 import { Palette, openPalette } from '../palette/Palette';
 import { createTextSizeSetter } from '../settings/textSize';
@@ -68,6 +70,7 @@ import { TagSelector } from '../tags/TagSelector';
 import { useLibrary } from '../state/library-store';
 import { useShell } from '../state/shell-store';
 import { TabBar } from '../shell/TabBar';
+import { tabId, tabPanelId, useTabPanelsMounted } from '../shell/tabPanels';
 import { useTabKind } from '../shell/useTabItem';
 import { t } from '../strings';
 import { currentPlatform, readWindowParams } from '../ui/platform';
@@ -77,7 +80,7 @@ import { countRender } from '../ui/renderCount';
 import { Toasts, showToast } from '../ui/toasts';
 import { ReaderSidebar } from '../viewers/pdf/ReaderSidebar';
 import { readerActions } from '../viewers/pdf/readerActions';
-import { useReader } from '../viewers/pdf/readerStore';
+import { useReader, type PendingJump } from '../viewers/pdf/readerStore';
 import { canGoBack, canGoForward } from '../viewers/pdf/history';
 import { reopenSelection, useSelection } from '../translation/useSelectionText';
 import { ReaderTabs } from '../viewers/ReaderTabs';
@@ -106,6 +109,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   useApplyPrefs();
   useWindowState();
   useLibrarySync();
+  useBodyProgressSync();
   const scopeReady = useRestoreView();
   usePanePersistence();
   useTabsPersistence();
@@ -372,6 +376,8 @@ export function MainWindow(_props: { info: AppInfo }) {
   const showsTable = view.kind === 'library' && (tableShown || listPending);
   // A PDF with its pages shown: the reader's view commands and its zoom keys are on only then.
   const pdfOpen = useReader((s) => s.pdf?.ready === true);
+  // A picture drawn in the shown reader tab: its zoom, fits and turns are on only then (the store is the shown tab's).
+  const imageDrawn = useReader((s) => s.image?.status === 'shown');
   const pdfScroll = useReader((s) => s.pdf?.scroll);
   const historyBack = useReader((s) => canGoBack(s.history));
   const historyForward = useReader((s) => canGoForward(s.history));
@@ -406,6 +412,15 @@ export function MainWindow(_props: { info: AppInfo }) {
       })
       .catch(actionFailed);
   }, []);
+  /**
+   * A 본문 일치 row (spec 5.8): item.open's way — an open 정보 편집 is asked first, then the tab rules. The reader of the item's tab
+   * is told the page and the query before the tab shows, so a new reader is placed there and one already placed jumps. A
+   * refused edit leaves nothing behind.
+   */
+  const openAtPage = useCallback((itemId: string, at: PendingJump) => afterEditing(() => {
+    readerScopes.get(itemId).reader.getState().setPendingJump(at);
+    useShell.getState().openTabs([itemId]);
+  }), []);
   /** 라이브러리에서 보기: the library tab, the row selected and brought into view; a view that hides it gives way to 내 라이브러리. */
   const revealInLibrary = useCallback((itemId: string) => afterEditing(() => {
     const library = useLibrary.getState();
@@ -431,6 +446,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     restoreRunning,
     held,
     ...(pdfOpen ? { pdfOpen: true } : {}),
+    ...(imageDrawn && viewKind === 'reader' ? { imageOpen: true } : {}),
     ...(pdfOpen && pdfScroll ? { pdfScroll } : {}),
     ...(pdfOpen && historyBack ? { historyBack: true } : {}),
     ...(pdfOpen && historyForward ? { historyForward: true } : {}),
@@ -490,6 +506,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     clearTagFilter: () => useLibrary.getState().clearTagFilter(),
     back: () => afterEditing(() => selectTab('library')),
     openItems: (itemIds, opts) => openItems(itemIds, opts?.background === true),
+    openAtPage,
     closeTab: (itemId) => {
       const shell = useShell.getState();
       const id = itemId ?? shell.tabs.active;
@@ -546,7 +563,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, pdfOpen, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, pdfOpen, imageDrawn, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAtPage, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);
@@ -673,6 +690,7 @@ export function MainWindow(_props: { info: AppInfo }) {
 
   return (
     <CommandProvider env={env}>
+      <ScopeViewProvider view={scopeView}>
       <Shell
         sidebar={view.kind === 'reader' ? <ReaderSidebar key={view.itemId} /> : <LibrarySidebar onFilesDrop={onDrop} />}
         sidebarFoot={showsTable ? <TagSelector /> : undefined}
@@ -691,12 +709,26 @@ export function MainWindow(_props: { info: AppInfo }) {
           </>
         }
       >
-        {view.kind === 'library' && library}
+        {view.kind === 'library' && <LibraryPanel tabs={tabsOpen}>{library}</LibraryPanel>}
         <ReaderTabs />
       </Shell>
+      </ScopeViewProvider>
       {(items.isSuccess || items.isError) && scopeReady && sidebarReady && <div data-testid="app-ready" data-at={readyAt.current} hidden />}
       <ImportQueueMarker />
     </CommandProvider>
+  );
+}
+
+/**
+ * The library's content: the panel of the library tab while reader tabs exist. The box is always there (the strip appearing or going
+ * must not move the list under it to another parent, which would drop its scroll and focus); only its panel attributes come and go.
+ */
+function LibraryPanel({ tabs, children }: { tabs: boolean; children: ReactNode }) {
+  useTabPanelsMounted('library', tabs ? ['library'] : []);
+  return (
+    <div className="tab-panel" id={tabs ? tabPanelId('library') : undefined} role={tabs ? 'tabpanel' : undefined} aria-labelledby={tabs ? tabId('library') : undefined} data-testid="library-panel">
+      {children}
+    </div>
   );
 }
 

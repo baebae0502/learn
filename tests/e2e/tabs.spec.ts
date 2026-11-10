@@ -3,9 +3,10 @@ import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
   FIXTURES, backFromReader, confirmCalls, createCollection, addToCollection, hardKill, importPaths, launch, libraryTab, mainWindow, menuItemEnabled, openItem, readerTab, recordedPopupPoints, recordedPopups,
-  holdOpenDialog, releaseOpenDialog, rowByTitle, runMenuCommand, runPalette, selectRows, showItemPanel, stubConfirm, stubContextMenu, trashItems, windowKinds,
+  holdOpenDialog, releaseOpenDialog, quiet, rowByTitle, runMenuCommand, runPalette, selectRows, settled, sheetReleased, showItemPanel, stubConfirm, stubContextMenu, trashItems, windowKinds,
 } from './helpers';
 import { holdReplies } from './dnd-helpers';
+import { expectNoSeriousA11y } from './a11y';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf'); // 100 pages
 const PAGE = 7;
@@ -64,6 +65,52 @@ for (const how of ['a graceful quit', 'a hard kill'] as const) {
       // No library flash: the window opens straight on the reader, at the page it was left on.
       await expect(page.getByTestId('pdf-page-field')).toHaveValue(String(PAGE));
       await expect(page.getByTestId('library-table')).toHaveCount(0);
+    } finally {
+      if (!closed) await app.close().catch(() => {});
+    }
+  });
+}
+
+for (const frame of ['held', 'let through'] as const) {
+  test(`a graceful quit right after a page turn keeps the page (the frame after the turn ${frame})`, async ({}, testInfo) => {
+    const lib = testInfo.outputPath('library');
+    const ud = testInfo.outputPath('userdata');
+    let { app, page } = await launch(lib, ud);
+    let closed = false;
+    try {
+      await importPaths(page, [PAPER]);
+      await openItem(page, 'paper-100');
+      await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', /.*/);
+      // The restore's own scroll has been reported: no report asked for before the turn is still waiting for its frame.
+      await quiet(page);
+      const inTurn = await page.evaluate(
+        ({ target, hold }) => {
+          type Bus = { on(name: string, fn: () => void): void };
+          const w = window as unknown as { __areaReports: number; __learnReader: { getState(): { handle: { goToPage(n: number): void; eventBus(): Bus } } } };
+          const { handle } = w.__learnReader.getState();
+          w.__areaReports = 0;
+          handle.eventBus().on('updateviewarea', () => void w.__areaReports++);
+          // pdf.js reports a scroll from a requestAnimationFrame. Held, no frame comes between the turn and the quit, as on a slow runner.
+          if (hold) window.requestAnimationFrame = (() => 0) as typeof window.requestAnimationFrame;
+          handle.goToPage(target);
+          return w.__areaReports;
+        },
+        { target: PAGE, hold: frame === 'held' },
+      );
+      await expect(page.getByTestId('pdf-page-field')).toHaveValue(String(PAGE));
+      if (frame === 'held') {
+        // The turn is reported in its own task: what the reader saves never waits for a frame.
+        expect.soft(inTurn).toBeGreaterThan(0);
+      } else {
+        // Positive control: the frame's report comes, then the quit. The turn's own report is already counted in `inTurn`, so
+        // only a count past it is the frame's.
+        await expect.poll(() => page.evaluate(() => (window as unknown as { __areaReports: number }).__areaReports)).toBeGreaterThan(inTurn);
+      }
+      await app.close();
+      closed = true;
+      ({ app, page } = await launch(lib, ud));
+      closed = false;
+      await expect(page.getByTestId('pdf-page-field')).toHaveValue(String(PAGE));
     } finally {
       if (!closed) await app.close().catch(() => {});
     }
@@ -175,6 +222,71 @@ test('opening items makes tabs; the library tab switches back and forth', async 
   }
 });
 
+test('tabs and panels are linked: a tab points at its mounted panel, a panel is named by its tab, the library content is a panel', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const items = await importPaths(page, pdfCopies(testInfo.outputPath('src'), 5));
+    const titles = ['doc-01', 'doc-02', 'doc-03', 'doc-04', 'doc-05'];
+    for (const [i, title] of titles.entries()) {
+      if (i > 0) await libraryTab(page).click();
+      await openItem(page, title);
+      await expect(page.getByTestId('pdf-page-field')).toBeVisible();
+      await expect(page.locator(`[data-testid="tab-panel"][data-item-id="${items[i]!.id}"]`)).toHaveAttribute('data-active', 'true');
+    }
+    // Five readers and a cap of four: the first reader's panel is gone, and its tab points at nothing.
+    await expect(panels(page)).toHaveCount(4);
+    await expect(readerTab(page, items[0]!.id)).not.toHaveAttribute('aria-controls', /.*/);
+    for (const item of items.slice(1)) {
+      const tab = readerTab(page, item.id);
+      await expect(tab).toHaveAttribute('id', `tab-${item.id}`);
+      await expect(tab).toHaveAttribute('aria-controls', `tabpanel-${item.id}`);
+      const panel = page.locator(`#tabpanel-${item.id}`);
+      await expect(panel).toHaveAttribute('data-item-id', item.id);
+      await expect(panel).toHaveAttribute('role', 'tabpanel');
+      await expect(panel).toHaveAttribute('aria-labelledby', `tab-${item.id}`);
+      await expect(panel).not.toHaveAttribute('aria-label', /.*/);
+    }
+    // The library's content leaves the page while a reader is shown, and its tab stops pointing at it.
+    await expect(page.locator('#tabpanel-library')).toHaveCount(0);
+    await expect(libraryTab(page)).not.toHaveAttribute('aria-controls', /.*/);
+    await libraryTab(page).click();
+    await expect(page.getByTestId('library-table')).toBeVisible();
+    await expect(libraryTab(page)).toHaveAttribute('id', 'tab-library');
+    await expect(libraryTab(page)).toHaveAttribute('aria-controls', 'tabpanel-library');
+    const library = page.locator('#tabpanel-library');
+    await expect(library).toHaveAttribute('role', 'tabpanel');
+    await expect(library).toHaveAttribute('aria-labelledby', 'tab-library');
+    await expect(library.getByTestId('library-table')).toBeVisible();
+    await expect(page.getByRole('tabpanel', { name: '라이브러리' })).toHaveCount(1);
+    await expect(page.getByRole('tabpanel', { name: 'doc-02', includeHidden: true })).toHaveAttribute('data-item-id', items[1]!.id);
+    await expectNoSeriousA11y(page, 'tab strip with panels');
+  } finally {
+    await app.close();
+  }
+});
+
+test('the tab strip appearing over the shown library keeps the list where it was: its scroll and its focus', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, pdfCopies(testInfo.outputPath('src'), 60));
+    const scroller = page.getByTestId('library-scroller');
+    await expect(page.getByTestId('tab-bar')).toHaveCount(0);
+    await page.getByTestId('item-row').first().click();
+    await scroller.evaluate((el) => (el.scrollTop = 400));
+    await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBe(400);
+    const focusInTable = () => page.evaluate(() => document.querySelector('[data-testid="library-table"]')?.contains(document.activeElement) === true);
+    expect(await focusInTable()).toBe(true);
+    await runMenuCommand(app, 'item.openInBackground'); // the strip appears; the library stays shown
+    await expect(page.getByTestId('tab-bar')).toBeVisible();
+    await expect.poll(() => activeTab(page)).toBe('library');
+    await expect(page.locator('#tabpanel-library')).toHaveAttribute('role', 'tabpanel');
+    expect(await scroller.evaluate((el) => el.scrollTop)).toBe(400);
+    expect(await focusInTable()).toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
 test('a kept tab comes back at once, with its find bar and place', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
@@ -210,8 +322,9 @@ test('a kept tab comes back at once, with its find bar and place', async ({}, te
     await expect(page.getByTestId('pdf-page-field')).toHaveValue('30');
     expect((await reader(page))!.pageNumber).toBe(30);
     await expect(page.locator('[data-testid="pdf-viewer"][data-mark="kept"]')).toHaveCount(1);
-    // The scroll stood where it was: no jump back to the first page afterwards either.
-    await page.waitForTimeout(600);
+    // The scroll stood where it was: no jump back to the first page afterwards either. The place is applied late, so the stage is
+    // waited on until it has stopped scrolling and changing; the page field showed 30 above, so a jump would show in it.
+    await quiet(page);
     await expect(page.getByTestId('pdf-page-field')).toHaveValue('30');
   } finally {
     await app.close();
@@ -263,20 +376,30 @@ test('a hidden tab does not refit while the window changes size', async ({}, tes
       w.__scaled = 0;
       w.__learnReader.getState().handle.eventBus().on('scalechanging', () => void (w.__scaled = (w.__scaled ?? 0) + 1));
     });
+    const scaled = () => page.evaluate(() => (window as unknown as { __scaled: number }).__scaled);
+    // The path first: shown, the reader refits when the window grows, and the counter sees it.
+    await win.evaluate((w) => w.setContentSize(1280, w.getContentSize()[1]!));
+    await expect.poll(scaled).toBeGreaterThan(0);
+    await win.evaluate((w) => w.setContentSize(1024, w.getContentSize()[1]!));
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBeLessThan(1100);
+    await quiet(page);
+    const shown = await scaled();
+
     await libraryTab(page).click();
     await openItem(page, 'doc-01');
     await expect(page.getByTestId('pdf-page-field')).toBeVisible();
     await win.evaluate((w) => w.setContentSize(1280, w.getContentSize()[1]!));
     await expect.poll(() => page.evaluate(() => innerWidth)).toBeGreaterThan(1200);
-    await page.waitForTimeout(500);
-    const scaled = () => page.evaluate(() => (window as unknown as { __scaled: number }).__scaled);
-    expect(await scaled()).toBe(0);
+    // Hidden, the same window change refits nothing; the other reader is shown and has settled meanwhile.
+    await quiet(page, '[data-testid="tab-panel"][data-active="true"]');
+    await settled(page);
+    expect(await scaled()).toBe(shown);
 
     await readerTab(page, a!.id).click();
     await expect(readerTab(page, a!.id)).toHaveAttribute('aria-selected', 'true');
-    await expect.poll(scaled).toBe(1);
-    await page.waitForTimeout(500);
-    expect(await scaled()).toBe(1);
+    await expect.poll(scaled).toBe(shown + 1);
+    await settled(page);
+    expect(await scaled()).toBe(shown + 1);
   } finally {
     await app.close();
   }
@@ -476,23 +599,29 @@ test('↩ on several selected rows opens a tab each and shows the first one; the
 test('eleven items ask first; cancelling opens nothing, confirming opens them all', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
-    await importPaths(page, pdfCopies(testInfo.outputPath('src'), 11));
-    await rowByTitle(page, 'doc-01').click();
-    await page.keyboard.press('ControlOrMeta+a');
-    await stubConfirm(app, 'cancel');
+    await importPaths(page, pdfCopies(testInfo.outputPath('src'), 22));
+    const first = Array.from({ length: 11 }, (_, i) => `doc-${String(i + 1).padStart(2, '0')}`);
+    // Confirming opens them all (the path first); eleven are asked about once.
+    await rowByTitle(page, first[0]!).click();
+    await rowByTitle(page, first[10]!).click({ modifiers: ['Shift'] });
+    await stubConfirm(app, 'confirm');
     await runMenuCommand(app, 'item.openInBackground');
     await expect.poll(async () => (await confirmCalls(app)).length).toBe(1);
     expect((await confirmCalls(app))[0]).toMatchObject({ message: '자료 11개를 탭으로 열겠습니까?', buttons: ['열기', '취소'] });
-    await page.waitForTimeout(300);
-    await expect(page.getByTestId('tab-bar')).toHaveCount(0);
-
-    await stubConfirm(app, 'confirm');
-    await expect.poll(() => page.evaluate(() => window.learn.ui.windowState().then((r) => (r.ok ? r.data.sheetOpen : null)))).toBe(false);
-    await runMenuCommand(app, 'item.openInBackground');
     await expect(page.locator('[data-testid="tab"]')).toHaveCount(12);
     await expect.poll(() => activeTab(page)).toBe('library');
-    // Ten do not ask.
+    await sheetReleased(page);
     expect((await confirmCalls(app)).length).toBe(1);
+
+    // The next eleven are asked about and cancelled: nothing is opened by that.
+    await rowByTitle(page, 'doc-12').click();
+    await rowByTitle(page, 'doc-22').click({ modifiers: ['Shift'] });
+    await stubConfirm(app, 'cancel');
+    await runMenuCommand(app, 'item.openInBackground');
+    await expect.poll(async () => (await confirmCalls(app)).length).toBe(1);
+    await sheetReleased(page);
+    await settled(page);
+    await expect(page.locator('[data-testid="tab"]')).toHaveCount(12);
   } finally {
     await app.close();
   }
@@ -593,7 +722,8 @@ test('a tab menu opens at the pointer without choosing the tab; 다른 탭 닫�
     await expect.poll(() => activeTab(page)).toBe(c);
     // The library tab has no menu.
     await libraryTab(page).click({ button: 'right' });
-    await page.waitForTimeout(200);
+    // A menu would be asked of main on that click; the reader tabs' menus above were recorded the same way.
+    await settled(page);
     expect((await recordedPopups(app)).length).toBe(1);
 
     // 탭 닫기 on a tab that is not shown closes that one.
@@ -685,7 +815,7 @@ test('dragging a reader tab reorders it; the library tab cannot be passed; esc p
     await page.mouse.move(own.x + own.width / 2, own.y + own.height / 2, { steps: 4 });
     await page.mouse.up();
     await expect(page.locator('.tab-item.is-dragging')).toHaveCount(0);
-    await page.waitForTimeout(100);
+    await settled(page);
     await expect.poll(() => activeTab(page)).toBe(c);
     await expect.poll(() => order(page)).toEqual(['library', b, c, a]);
     expect(await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('.tab-item')].every((e) => e.style.transform === ''))).toBe(true);
@@ -926,7 +1056,8 @@ test('an open 정보 편집 is asked before the shown tab changes or closes: val
     await expect(readerTab(page, a)).toHaveAttribute('aria-selected', 'false');
     // The same for the keyboard's way (⌃⇥) and for closing the shown tab with the strip's mark: a tab behind the shown one closes freely.
     await runMenuCommand(app, 'tab.next');
-    await page.waitForTimeout(300);
+    // The guard held the tab above (the unsaved notice); it holds it for the key's way too.
+    await settled(page);
     await expect(libraryTab(page)).toHaveAttribute('aria-selected', 'true');
     await page.getByTestId('editor-discard').click();
     await expect(page.getByTestId('info-editor')).toHaveCount(0);
@@ -983,17 +1114,21 @@ test('closing a tab never mounts an evicted reader: it is not opened again and k
       const r = await page.evaluate((x) => window.learn.library.detail({ itemId: x }), id('doc-01'));
       return r.ok ? r.data.item.openedAt : null;
     };
+    // doc-01 was stamped when it was opened, before four more tabs were opened and the reader was evicted: a mount now stamps a later time.
     const before = await openedAt();
-    await page.waitForTimeout(50);
     await runMenuCommand(app, 'tab.close'); // the shown doc-05
     await expect(readerTab(page, id('doc-05'))).toHaveCount(0);
     await expect(panels(page)).toHaveCount(3);
     await expect(page.locator(`[data-testid="tab-panel"][data-item-id="${id('doc-01')}"]`)).toHaveCount(0);
-    await page.waitForTimeout(600);
+    // The close builds no reader for doc-01, so its opened date stays: checked once the page has stopped changing and main has answered
+    // after the close (a mount and its stamp would be in by then), and the same stamp is seen to move below when the tab is shown.
+    await quiet(page, 'body');
+    await settled(page);
     expect(await openedAt()).toBe(before);
-    // Shown, it is mounted again, as now.
+    // Shown, it is mounted again, as now, and stamped.
     await readerTab(page, id('doc-01')).click();
     await expect(page.locator(`[data-testid="tab-panel"][data-item-id="${id('doc-01')}"]`)).toHaveAttribute('data-active', 'true');
+    await expect.poll(openedAt).not.toBe(before);
   } finally {
     await app.close();
   }
@@ -1049,7 +1184,7 @@ test('a relaunch names every tab in its first frame, and the sidebar segment nev
           title: t.querySelector('.title')?.textContent ?? '',
           icon: t.querySelector('svg')?.getAttribute('class')?.match(/lucide-[a-z-]+/)?.[0] ?? '',
         }));
-        const labels = [...document.querySelectorAll<HTMLElement>('[data-testid="tab-panel"]')].map((p) => p.getAttribute('aria-label') ?? '');
+        const labels = [...document.querySelectorAll<HTMLElement>('[data-testid="tab-panel"]')].map((p) => document.getElementById(p.getAttribute('aria-labelledby') ?? '')?.textContent?.trim() ?? '');
         const group = document.querySelector('[data-testid="reader-nav"]');
         const seg = group === null ? 'none' : (['thumbnails', 'outline'].find((v) => group.querySelector(`[data-testid="reader-nav-${v}"][data-selected]`)) ?? 'unchosen');
         frames.push({ tabs, labels, seg });
@@ -1254,7 +1389,7 @@ test('a restored reader opens the outline on its own chapter only: page 1 is nev
     await page.reload();
     await expect(page.getByTestId('pdf-page-field')).toHaveValue('33');
     await expect(page.locator('[data-testid="pdf-outline-row"][data-current-page="true"]')).toHaveCount(1);
-    await page.waitForTimeout(300);
+    await settled(page);
     const frames = await page.evaluate(() => (window as unknown as { __outline: OutlineFrame[] }).__outline);
     expect(frames.filter((f) => f.rows > 0).length, 'the outline was drawn').toBeGreaterThan(3);
     // Only rows of chapter 4 are ever the current entry or opened; nothing of chapter 1.

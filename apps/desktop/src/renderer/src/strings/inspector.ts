@@ -10,6 +10,8 @@ export const inspector = {
   detailFailedBody: '잠시 뒤 다시 시도해 주세요.',
   /** The head's kind line: "PDF · 68쪽" (the duration comes from format.ts formatDuration). */
   pages: (n: number) => `${n}쪽`,
+  /** An image's kind line: "이미지 · 4032 × 3024", the kind alone while its size is unknown. */
+  imageKind: (width: number | undefined, height: number | undefined) => (width === undefined || height === undefined ? '이미지' : `이미지\u00a0· ${width}\u00a0×\u00a0${height}`),
   /** Nothing selected (library.html?state=none); reading progress joins the sentence in M7. */
   noneTitle: '선택한 자료 없음',
   noneBody: '표에서 자료를 고르면 정보가 여기에 보입니다.',
@@ -25,11 +27,39 @@ export const inspector = {
   /** Several selected (library.html?state=multi): the title and the "외 N개" line under the first eight titles. */
   multiTitle: (n: number) => `자료 ${n}개 선택`,
   more: (n: number) => `외 ${n}개`,
-  sections: { reading: '읽기', info: '정보', file: '파일' },
+  sections: { matches: '본문 일치', reading: '읽기', info: '정보', file: '파일' },
+  /** 본문 일치 (M7c spec 5.8, 11): the pages of a PDF whose body has the quick search's words, each with a marked snippet. */
+  matches: {
+    /** The head's count, in the app's count grammar, so it is not read as a page ("12쪽"): "쪽 34개". */
+    count: (n: number) => `쪽\u00a0${n}개`,
+    /** A row's page: "12쪽". */
+    page: (n: number) => `${n}쪽`,
+    /** The pages past the twenty shown: "외 14쪽". */
+    more: (n: number) => `외 ${n}쪽`,
+    searching: '찾는 중…',
+    /** A row's name: its page and the snippet's text (the typeahead's text too). */
+    rowName: (page: number, snippet: string) => `${page}쪽, ${snippet}`,
+  },
+  /** Where a PDF's body index stands (M7c spec 5.8, 11): the file section's 본문 검색 line and the 본문 일치 section. */
+  bodyText: {
+    label: '본문 검색',
+    pending: '본문을 색인하는 중입니다.',
+    empty: '글자를 찾지 못했습니다. 스캔한 PDF일 수 있습니다.',
+    failed: {
+      locked: '암호로 보호된 PDF라 본문을 색인하지 않았습니다.',
+      damaged: '파일 내용이 손상되어 본문을 색인하지 못했습니다.',
+      'too-large': '파일이 너무 커서 본문을 색인하지 않았습니다.',
+      'gave-up': '본문을 색인하지 못했습니다. 파일이 복잡하거나 손상되었을 수 있습니다.',
+    },
+    /** A done index that stopped at a limit: the pages it holds ("앞 5,000쪽까지"). */
+    truncated: (pages: number) => `앞 ${pages.toLocaleString('ko-KR')}쪽까지 색인했습니다.`,
+  },
   /** 읽기 section's line: where reading stopped; number and unit, and the date's words, bind with U+00A0 (design-spec 9). */
   reading: {
     stoppedAtPage: (page: number, pages: number | undefined) => `${pages === undefined ? `${page}` : `${page}\u00a0/\u00a0${pages}`}쪽에서\u00a0멈춤`,
     stoppedAtTime: (time: string) => `${time}에서\u00a0멈춤`,
+    /** An image has no place to stop at: it was opened, on this day. */
+    viewed: (date: string) => `열어\u00a0봄\u00a0· ${date}`,
     line: (where: string, date: string) => `${where}\u00a0· ${date}`,
   },
   fields: {
@@ -51,7 +81,7 @@ export const inspector = {
   monthDate: (y: number, m: number) => `${y}. ${m}.`,
   dayDate: (y: number, m: number, d: number) => `${y}. ${m}. ${d}.`,
   /** No info at all yet: what writing it gives (the pencil beside 정보 is the way). */
-  noInfo: '저자와 연도를 적어 두면 표에서 정렬하고 찾을 수 있습니다.',
+  noInfo: '저자와 연도를 적어 두면 표에서 정렬하고 찾을\u00a0수 있습니다.',
   showMore: '더 보기',
   showLess: '접기',
   file: { storage: '보관', size: '크기', originalName: '원래 이름', location: '위치' },

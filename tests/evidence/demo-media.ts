@@ -32,7 +32,8 @@ export const READ_TITLE = '세포 신호 전달 개요';
 /** The unplayable video the demo opens. */
 export const UNPLAYABLE_TITLE = '옛 강의 녹화 (MPEG-4)';
 
-const DOCS: Doc[] = [
+/** The study documents, in the order they are printed. */
+export const DOCS: readonly Doc[] = [
   {
     file: `${READ_TITLE}.pdf`,
     title: READ_TITLE,
@@ -375,6 +376,206 @@ li::marker { color: #0f736b; }
 .arrow { color: #73777e; font-size: 11pt; }
 figcaption { margin-top: 6pt; color: #73777e; font-size: 9pt; }
 </style></head><body>${sections.join('')}</body></html>`;
+}
+
+/**
+ * The five pictures the M7c demo drops (chapter 1): a fluorescence photo, a pathway figure, a rate curve, a leaf section and the
+ * stages of mitosis, drawn here on a canvas in the launched app (no third-party work) and saved in three formats. The photo is
+ * the one the image chapters open. No picture's title has 효소, the body word the search chapters look for.
+ */
+export const PICTURES = [
+  { file: '수용체 분포 형광 현미경 사진.jpg', kind: 'cells', width: 4032, height: 3024, mime: 'image/jpeg' },
+  { file: 'GPCR 신호 경로 도판.png', kind: 'pathway', width: 1800, height: 1000, mime: 'image/png' },
+  { file: '반응 속도 측정 그래프.png', kind: 'curve', width: 1600, height: 1100, mime: 'image/png' },
+  { file: '잎 단면 현미경 사진.webp', kind: 'leaf', width: 2400, height: 1600, mime: 'image/webp' },
+  { file: '체세포 분열 단계 도판.png', kind: 'mitosis', width: 2400, height: 900, mime: 'image/png' },
+] as const;
+export type Picture = (typeof PICTURES)[number];
+/** The photo the image chapters open, pinch, drag, turn and reopen. */
+export const PHOTO_TITLE = '수용체 분포 형광 현미경 사진';
+/** The two-letter body word of the search chapters: in three notes' pages (one of them also by its title), in no other title. */
+export const SEARCH_WORD = '효소';
+/** The note whose 본문 일치 the panel chapter shows and whose page the reader opens at. */
+export const MATCHES_TITLE = READ_TITLE;
+/** The note with a body match only, moved to the trash in the last chapter. */
+export const TRASHED_TITLE = '광합성 명반응과 암반응';
+
+/**
+ * Draws one picture on a canvas and returns it as a data URL of its MIME type. Runs in the page (as a string: no imports, no
+ * closures); a seeded generator, so every run draws the same picture.
+ */
+const DRAW = String.raw`
+window.drawPicture = async (spec) => {
+  await document.fonts.load('600 30px Pretendard');
+  await document.fonts.ready;
+  const c = document.createElement('canvas');
+  c.width = spec.width;
+  c.height = spec.height;
+  const g = c.getContext('2d');
+  const W = spec.width, H = spec.height, u = W / 1600;
+  let seed = 20261108;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const font = (px, weight = 500) => (g.font = weight + ' ' + Math.round(px * u) + 'px Pretendard');
+  const box = (x, y, w, h, r) => { g.beginPath(); g.roundRect(x, y, w, h, r); };
+  const arrow = (x0, y0, x1, y1) => {
+    const a = Math.atan2(y1 - y0, x1 - x0), k = 16 * u;
+    g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+    g.beginPath(); g.moveTo(x1, y1); g.lineTo(x1 - k * Math.cos(a - 0.45), y1 - k * Math.sin(a - 0.45)); g.lineTo(x1 - k * Math.cos(a + 0.45), y1 - k * Math.sin(a + 0.45)); g.closePath(); g.fill();
+  };
+  const caption = (text, y) => { g.fillStyle = '#5f646b'; font(26, 500); g.fillText(text, 60 * u, y); };
+  if (spec.kind === 'cells') {
+    g.fillStyle = '#020503'; g.fillRect(0, 0, W, H);
+    g.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 24; i++) {
+      const x = (0.06 + rnd() * 0.88) * W, y = (0.06 + rnd() * 0.88) * H, r = (90 + rnd() * 70) * u, sx = 0.8 + rnd() * 0.4;
+      g.save(); g.translate(x, y); g.rotate(rnd() * Math.PI); g.scale(sx, 1 / sx);
+      const m = g.createRadialGradient(0, 0, r * 0.55, 0, 0, r * 1.15);
+      m.addColorStop(0, 'rgba(30,140,70,0)'); m.addColorStop(0.72, 'rgba(60,200,110,0.35)'); m.addColorStop(0.86, 'rgba(130,240,160,0.5)'); m.addColorStop(1, 'rgba(30,140,70,0)');
+      g.fillStyle = m; g.beginPath(); g.arc(0, 0, r * 1.15, 0, Math.PI * 2); g.fill();
+      const n = g.createRadialGradient(0, 0, 0, 0, 0, r * 0.45);
+      n.addColorStop(0, 'rgba(100,140,255,0.8)'); n.addColorStop(0.7, 'rgba(60,90,230,0.4)'); n.addColorStop(1, 'rgba(40,60,200,0)');
+      g.fillStyle = n; g.beginPath(); g.arc(r * 0.08, -r * 0.05, r * 0.45, 0, Math.PI * 2); g.fill();
+      for (let d = 0; d < 18; d++) {
+        const t = rnd() * Math.PI * 2, q = r * (0.78 + rnd() * 0.2);
+        g.fillStyle = 'rgba(210,255,220,' + (0.5 + rnd() * 0.5) + ')'; g.beginPath(); g.arc(Math.cos(t) * q, Math.sin(t) * q, (3 + rnd() * 5) * u, 0, Math.PI * 2); g.fill();
+      }
+      g.restore();
+    }
+    g.globalCompositeOperation = 'source-over';
+    g.fillStyle = '#ffffff'; g.fillRect(W - 470 * u, H - 120 * u, 360 * u, 16 * u);
+    font(44, 600); g.textAlign = 'center'; g.fillText('20 µm', W - 290 * u, H - 150 * u);
+  } else if (spec.kind === 'pathway') {
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#eef0f2'; g.fillRect(0, 250 * u, W, 120 * u);
+    g.strokeStyle = '#c4c8cc'; g.lineWidth = 3 * u; g.beginPath(); g.moveTo(0, 250 * u); g.lineTo(W, 250 * u); g.moveTo(0, 370 * u); g.lineTo(W, 370 * u); g.stroke();
+    font(24, 500); g.fillStyle = '#8a8f96'; g.fillText('세포 밖', 60 * u, 220 * u); g.fillText('세포막', 60 * u, 318 * u); g.fillText('세포 안', 60 * u, 410 * u);
+    const nodes = { ligand: ['리간드', 360, 170], receptor: ['수용체', 360, 310], g: ['G 단백질', 680, 310], ac: ['고리화 효소', 1000, 310], camp: ['cAMP', 1000, 520], pka: ['PKA', 1320, 520], target: ['표적 단백질 인산화', 1320, 700] };
+    const half = {};
+    font(30, 600);
+    for (const [key, [label]] of Object.entries(nodes)) half[key] = Math.max(100 * u, g.measureText(label).width / 2 + 30 * u);
+    const edge = [['ligand', 'receptor'], ['receptor', 'g'], ['g', 'ac'], ['ac', 'camp'], ['camp', 'pka'], ['pka', 'target']];
+    g.lineWidth = 4 * u; g.strokeStyle = '#6f7479'; g.fillStyle = '#6f7479';
+    for (const [from, to] of edge) {
+      const [, x0, y0] = nodes[from], [, x1, y1] = nodes[to];
+      if (y0 === y1) arrow(x0 * u + half[from] + 6 * u, y0 * u, x1 * u - half[to] - 6 * u, y1 * u);
+      else arrow(x0 * u, y0 * u + 40 * u, x1 * u, y1 * u - 40 * u);
+    }
+    for (const [key, [label, x, y]] of Object.entries(nodes)) {
+      box(x * u - half[key], y * u - 34 * u, half[key] * 2, 68 * u, 14 * u); g.fillStyle = '#e6f4f1'; g.fill(); g.strokeStyle = '#0f736b'; g.lineWidth = 4 * u; g.stroke();
+      font(30, 600); g.fillStyle = '#123b37'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(label, x * u, y * u); g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+    }
+    g.fillStyle = '#212328'; font(40, 650); g.fillText('그림 2. GPCR–cAMP 신호 경로', 60 * u, 100 * u);
+    caption('리간드가 결합하면 2차 전령 cAMP가 늘고, PKA가 표적 단백질을 인산화한다.', H - 50 * u);
+  } else if (spec.kind === 'curve') {
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
+    const x0 = 200 * u, y0 = H - 220 * u, x1 = W - 120 * u, y1 = 200 * u, S = 50, V = 12, K = 6;
+    const px = (s) => x0 + (s / S) * (x1 - x0), py = (v) => y0 - (v / 14) * (y0 - y1);
+    g.strokeStyle = '#e3e5e8'; g.lineWidth = 2 * u;
+    for (let s = 10; s <= S; s += 10) { g.beginPath(); g.moveTo(px(s), y0); g.lineTo(px(s), y1); g.stroke(); }
+    for (let v = 2; v <= 14; v += 2) { g.beginPath(); g.moveTo(x0, py(v)); g.lineTo(x1, py(v)); g.stroke(); }
+    g.strokeStyle = '#212328'; g.lineWidth = 3 * u; g.beginPath(); g.moveTo(x0, y1); g.lineTo(x0, y0); g.lineTo(x1, y0); g.stroke();
+    g.setLineDash([14 * u, 10 * u]); g.strokeStyle = '#8a8f96'; g.beginPath(); g.moveTo(x0, py(V)); g.lineTo(x1, py(V)); g.stroke(); g.setLineDash([]);
+    g.strokeStyle = '#0f736b'; g.lineWidth = 6 * u; g.beginPath();
+    for (let s = 0; s <= S; s += 0.5) { const v = (V * s) / (K + s); if (s === 0) g.moveTo(px(s), py(v)); else g.lineTo(px(s), py(v)); }
+    g.stroke();
+    g.fillStyle = '#d9822b';
+    for (const s of [1, 2.5, 5, 7.5, 10, 15, 20, 30, 40, 50]) { const v = (V * s) / (K + s) + (rnd() - 0.5) * 0.7; g.beginPath(); g.arc(px(s), py(v), 11 * u, 0, Math.PI * 2); g.fill(); }
+    g.fillStyle = '#5f646b'; font(26, 500); g.textAlign = 'center';
+    for (let s = 0; s <= S; s += 10) g.fillText(String(s), px(s), y0 + 44 * u);
+    g.textAlign = 'right'; for (let v = 0; v <= 14; v += 2) g.fillText(String(v), x0 - 18 * u, py(v) + 9 * u);
+    g.textAlign = 'left'; g.fillStyle = '#212328'; font(30, 600);
+    g.fillText('기질 농도 [S] (mM)', (x0 + x1) / 2 - 140 * u, H - 120 * u);
+    g.save(); g.translate(80 * u, (y0 + y1) / 2 + 140 * u); g.rotate(-Math.PI / 2); g.fillText('반응 속도 v (µM/s)', 0, 0); g.restore();
+    g.fillStyle = '#8a8f96'; font(26, 500); g.fillText('Vmax', x1 - 90 * u, py(V) - 14 * u);
+    g.fillStyle = '#212328'; font(40, 650); g.fillText('그림 3. 기질 농도에 따른 반응 속도', 60 * u, 110 * u);
+  } else if (spec.kind === 'leaf') {
+    g.fillStyle = '#eef5e6'; g.fillRect(0, 0, W, H);
+    const cell = (x, y, w, h, fill) => { box(x, y, w, h, Math.min(w, h) * 0.35); g.fillStyle = fill; g.fill(); g.strokeStyle = '#4f7a3a'; g.lineWidth = 3 * u; g.stroke(); };
+    for (let x = -40 * u; x < W; x += 150 * u) cell(x, 40 * u, 140 * u, 110 * u, '#f6fbef');
+    for (let x = -20 * u; x < W; x += 105 * u) {
+      cell(x, 170 * u, 92 * u, 420 * u, '#cfe6b8');
+      for (let k = 0; k < 9; k++) { g.fillStyle = '#3f8f3a'; g.beginPath(); g.ellipse(x + (20 + rnd() * 52) * u, (200 + k * 42 + rnd() * 10) * u, 15 * u, 10 * u, rnd(), 0, Math.PI * 2); g.fill(); }
+    }
+    for (let i = 0; i < 70; i++) {
+      const x = rnd() * W, y = (640 + rnd() * 330) * u, w = (90 + rnd() * 70) * u, h = (60 + rnd() * 50) * u;
+      cell(x, y, w, h, '#ddeccc');
+      for (let k = 0; k < 4; k++) { g.fillStyle = '#4f9a44'; g.beginPath(); g.ellipse(x + rnd() * w, y + rnd() * h, 11 * u, 8 * u, rnd(), 0, Math.PI * 2); g.fill(); }
+    }
+    for (let x = -60 * u; x < W; x += 150 * u) cell(x, 1000 * u - 0, 140 * u, 90 * u, '#f6fbef');
+    g.fillStyle = 'rgba(255,255,255,0.86)'; g.fillRect(0, H - 110 * u, W, 110 * u);
+    g.fillStyle = '#212328'; font(34, 600); g.fillText('잎 단면 · 울타리 조직과 해면 조직 (200배)', 60 * u, H - 44 * u);
+  } else {
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
+    const names = ['간기', '전기', '중기', '후기', '말기'];
+    const cw = (W - 120 * u) / names.length;
+    names.forEach((name, i) => {
+      const cx = 60 * u + cw * (i + 0.5), cy = 320 * u, r = 125 * u;
+      g.fillStyle = '#f4f7fb'; g.strokeStyle = '#7a8fb0'; g.lineWidth = 5 * u;
+      if (i === 4) { for (const dx of [-0.5, 0.5]) { g.beginPath(); g.ellipse(cx + dx * r, cy, r * 0.55, r * 0.85, 0, 0, Math.PI * 2); g.fill(); g.stroke(); } }
+      else { g.beginPath(); g.ellipse(cx, cy, r * (i === 3 ? 1.1 : 1), r * (i === 3 ? 0.85 : 1), 0, 0, Math.PI * 2); g.fill(); g.stroke(); }
+      g.strokeStyle = '#c0392b'; g.lineWidth = 9 * u; g.lineCap = 'round';
+      const pair = (x, y, a) => { g.beginPath(); g.moveTo(x - 26 * u * Math.cos(a), y - 26 * u * Math.sin(a)); g.lineTo(x + 26 * u * Math.cos(a), y + 26 * u * Math.sin(a)); g.stroke(); };
+      if (i === 0) { g.fillStyle = '#e3e8f3'; g.beginPath(); g.arc(cx, cy, r * 0.5, 0, Math.PI * 2); g.fill(); g.strokeStyle = '#c0392b'; g.lineWidth = 3 * u; for (let k = 0; k < 7; k++) { g.beginPath(); g.moveTo(cx + (rnd() - 0.5) * 120 * u, cy + (rnd() - 0.5) * 120 * u); g.quadraticCurveTo(cx + (rnd() - 0.5) * 140 * u, cy + (rnd() - 0.5) * 140 * u, cx + (rnd() - 0.5) * 120 * u, cy + (rnd() - 0.5) * 120 * u); g.stroke(); } }
+      if (i === 1) for (let k = 0; k < 4; k++) pair(cx + (rnd() - 0.5) * 140 * u, cy + (rnd() - 0.5) * 140 * u, rnd() * 3);
+      if (i === 2) for (let k = 0; k < 4; k++) pair(cx, cy - 75 * u + k * 50 * u, 0);
+      if (i === 3) for (let k = 0; k < 4; k++) { pair(cx - 85 * u, cy - 60 * u + k * 40 * u, Math.PI / 2); pair(cx + 85 * u, cy - 60 * u + k * 40 * u, Math.PI / 2); }
+      if (i === 4) for (let k = 0; k < 3; k++) { pair(cx - 0.5 * r, cy - 40 * u + k * 40 * u, Math.PI / 3); pair(cx + 0.5 * r, cy - 40 * u + k * 40 * u, Math.PI / 3); }
+      g.lineCap = 'butt';
+      g.fillStyle = '#212328'; font(34, 600); g.textAlign = 'center'; g.fillText(name, cx, cy + r + 75 * u); g.textAlign = 'left';
+    });
+    g.fillStyle = '#212328'; font(40, 650); g.fillText('그림 4. 체세포 분열의 단계', 60 * u, 110 * u);
+  }
+  return c.toDataURL(spec.mime, 0.9);
+};`;
+
+/** The page a picture is drawn in: Pretendard (the labels) and the drawing function. */
+const pictureHtml = (font: string) => `<!doctype html><html lang="ko"><head><meta charset="utf-8"><style>
+@font-face { font-family: 'Pretendard'; src: url(data:font/woff2;base64,${font}) format('woff2'); font-weight: 45 920; }
+body { font-family: 'Pretendard'; }
+</style></head><body><span style="font-weight:600">가</span><script>${DRAW}</script></body></html>`;
+
+/** Where a fixture stands in for a picture that could not be drawn: the same kind of file, made distinct by a trailing byte. */
+const PICTURE_FALLBACKS: Readonly<Record<Picture['mime'], string>> = { 'image/jpeg': 'photo-4032.jpg', 'image/png': 'transparent.png', 'image/webp': 'alpha.webp' };
+
+/**
+ * Writes the five pictures into `dir` (created; emptied first). `drawPicture` loads the drawing page in the app and returns
+ * the picture's bytes for a spec. Should it fail, that picture and the ones after it are fixture copies under the same names,
+ * each distinct (a reader stops at the image's end marker, so a trailing byte changes nothing on screen), and `note` says so once.
+ */
+export async function writeDemoPictures(
+  dir: string,
+  drawPicture: (htmlFile: string, spec: Picture) => Promise<Buffer>,
+  note: (text: string) => void = () => {},
+  fixtures = FIXTURES,
+  staticImages = path.join(ROOT, 'fixtures/static/images'),
+): Promise<string[]> {
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  const page = path.join(dir, '.draw.html');
+  fs.writeFileSync(page, pictureHtml(fs.readFileSync(FONT).toString('base64')));
+  let drawing = true;
+  const out: string[] = [];
+  for (const [i, spec] of PICTURES.entries()) {
+    let bytes: Buffer | null = null;
+    if (drawing) {
+      try {
+        bytes = await drawPicture(page, spec);
+      } catch (e) {
+        drawing = false;
+        note(`drawing the demo pictures failed at "${spec.file}" (${e instanceof Error ? e.message.split('\n')[0] : String(e)}): it and the rest are copies of the fixture images`);
+      }
+    }
+    if (bytes === null) {
+      const name = PICTURE_FALLBACKS[spec.mime];
+      const from = fs.existsSync(path.join(fixtures, name)) ? path.join(fixtures, name) : path.join(staticImages, name);
+      bytes = Buffer.concat([fs.readFileSync(from), Buffer.from([i])]);
+    }
+    const file = path.join(dir, spec.file);
+    fs.writeFileSync(file, bytes);
+    out.push(file);
+  }
+  fs.rmSync(page, { force: true });
+  return out;
 }
 
 /** The page footer Chromium prints on every page: "n / N" at the right. */

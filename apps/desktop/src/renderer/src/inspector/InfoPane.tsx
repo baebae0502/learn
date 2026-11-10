@@ -1,10 +1,10 @@
 import { useEffect, useMemo, type ReactNode } from 'react';
-import { Clapperboard, FileText, Files, MousePointer2 } from 'lucide-react';
+import { Files, MousePointer2 } from 'lucide-react';
 import type { LibraryItem, TrashedItem } from '@learn/domain';
 import { ApiError } from '../api';
 import { useItem, useItemDetail, useItems } from '../data/queries';
 import { sortItems } from '../library/sort';
-import { useScopeView } from '../library/useScopeView';
+import { useScopeViewContext } from '../library/ScopeViewContext';
 import { useLibrarySettings } from '../library/useLibrarySettings';
 import { EmptyCollectionPanel } from '../sidebar/EmptyCollectionPanel';
 import { useLibrary } from '../state/library-store';
@@ -18,6 +18,7 @@ import { PaneEmpty } from '../ui/PaneEmpty';
 import { Spinner } from '../ui/Spinner';
 import { useReader } from '../viewers/pdf/readerStore';
 import { AddToCollectionButton } from './AddToCollectionButton';
+import { BodyMatchesSection } from './BodyMatchesSection';
 import { CollectionsSection } from './CollectionsSection';
 import { FileSection } from './FileSection';
 import { InfoHead } from './InfoHead';
@@ -25,6 +26,7 @@ import { InfoSection } from './InfoSection';
 import { ReadingSection } from './ReadingSection';
 import { TagsSection } from './TagsSection';
 import { TrashSelection } from './TrashInfo';
+import { itemIcon } from '../library/itemIcon';
 import { libraryStats, multiSummary } from './summary';
 import { useShownAfter } from './useShownAfter';
 
@@ -57,7 +59,7 @@ function LibraryInfo() {
   const list = useViewItems();
   const trash = useTrash().data;
   const items = list ?? NO_ITEMS;
-  const { scope, model, scoped, label } = useScopeView(items);
+  const { scope, model, scoped, label } = useScopeViewContext();
   const selected = useLibrary((s) => s.selected);
   const editingId = useLibrary((s) => s.editingId);
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
@@ -75,7 +77,7 @@ function LibraryInfo() {
     if (trashed.length === 1 && collections.length === 0) return <ItemInfo key={trashed[0]!.id} item={trashed[0]!} trashedAt={trashed[0]!.deletedAt} />;
     return <TrashSelection items={trashed} collections={collections} />;
   }
-  if (editing) return <ItemInfo key={editing.id} item={editing} probe={selected.size <= 1} />;
+  if (editing) return <ItemInfo key={editing.id} item={editing} probe={selected.size <= 1} preview={selected.size <= 1} matches={selected.size <= 1} />;
   // An empty collection: its name and the day it was made instead of numbers that would all be zero (spec 3.6). Items only in a
   // sub-collection make it non-empty (scoped counts them).
   const viewed = scope.kind === 'collection' ? model?.node(scope.id) : undefined;
@@ -128,7 +130,7 @@ function MultiSelection({ items }: { items: readonly LibraryItem[] }) {
         <ul className="multi-list">
           {shown.map((i) => (
             <li key={i.id} className="multi-row" data-testid="multi-row">
-              <Icon icon={i.type === 'video' ? Clapperboard : FileText} size="sm" />
+              <Icon icon={itemIcon(i.type)} size="sm" />
               <span className="ellipsis" title={i.title}>
                 {i.title}
               </span>
@@ -144,8 +146,11 @@ function MultiSelection({ items }: { items: readonly LibraryItem[] }) {
   );
 }
 
-/** One item: the head at once from the list row, the sections when the item's detail has come (300 ms rule meanwhile). */
-export function ItemInfo({ item, probe = true, trashedAt, before, inReader = false }: { item: LibraryItem; probe?: boolean; trashedAt?: string; before?: ReactNode; inReader?: boolean }) {
+/**
+ * One item: the head at once from the list row, the sections when the item's detail has come (300 ms rule meanwhile).
+ * `matches`: one item is selected, so the library's panel may show 본문 일치 (never the reader's or the trash's).
+ */
+export function ItemInfo({ item, probe = true, preview = true, matches = true, trashedAt, before, inReader = false }: { item: LibraryItem; probe?: boolean; preview?: boolean; matches?: boolean; trashedAt?: string; before?: ReactNode; inReader?: boolean }) {
   const detail = useItemDetail(item.id);
   const ids = useMemo(() => [item.id], [item.id]);
   const loading = useShownAfter(detail.isPending, LOADING_DELAY_MS);
@@ -155,14 +160,15 @@ export function ItemInfo({ item, probe = true, trashedAt, before, inReader = fal
   return (
     <div className="inspector-scroll" data-testid="inspector-item" data-item-id={item.id}>
       {before}
-      <InfoHead item={item} probe={probe} trashedAt={trashedAt} inReader={inReader} />
+      <InfoHead item={item} probe={probe} preview={preview} trashedAt={trashedAt} inReader={inReader} />
       {detail.data ? (
         <>
+          {matches && !inReader && trashedAt === undefined && <BodyMatchesSection item={item} text={detail.data.text} />}
           {!inReader && trashedAt === undefined && <ReadingSection itemId={item.id} />}
           <InfoSection item={item} detail={detail.data} readOnly={trashedAt !== undefined} />
           <TagsSection ids={ids} readOnly={trashedAt !== undefined} />
           <CollectionsSection ids={ids} />
-          <FileSection detail={detail.data} />
+          <FileSection detail={detail.data} trashed={trashedAt !== undefined} missing={item.availability === 'missing'} />
         </>
       ) : detail.isError ? (
         <div className="pane-empty top" data-testid="inspector-failed">

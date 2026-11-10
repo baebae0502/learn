@@ -3,7 +3,7 @@ import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument } from 'pdf-lib';
 import { expectNoSeriousA11y } from './a11y';
-import { FIXTURES, backFromReader, closeReaderTab, dragAlong, darkestPixel, importPaths, isCloseNoise, launch, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, pixelAt, shotPixels, readClipboard, resolveColor, runMenuCommand, setPdfZoom, showItemPanel, stubOpenExternal, trashItems, type MenuNode } from './helpers';
+import { FIXTURES, backFromReader, closeReaderTab, dragAlong, darkestPixel, importPaths, isCloseNoise, launch, libraryTab, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, pixelAt, readerTab, shotPixels, readClipboard, resolveColor, runMenuCommand, setPdfZoom, settled, showItemPanel, stubOpenExternal, trashItems, type MenuNode } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const SAMPLE = path.join(FIXTURES, 'sample.pdf');
@@ -710,7 +710,8 @@ test('the item panel has its width in its first frame when a PDF opens', async (
     });
     await openItem(page, 'paper-100');
     await expect(viewer(page)).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
-    await page.waitForTimeout(300);
+    // The sampler runs once a frame: the frames after the first render are in before the widths are read.
+    await settled(page);
     const widths = await page.evaluate(() => (window as unknown as { __panelWidths: number[] }).__panelWidths);
     expect(widths.length).toBeGreaterThan(0);
     expect(Math.min(...widths)).toBeGreaterThan(0);
@@ -1138,6 +1139,13 @@ test('the toolbar groups as the mockup has them: "/ 100" takes its own width wit
     const toggle = await page.locator('.reader-toolbar [aria-controls="inspector"]').evaluate((el) => el.getBoundingClientRect().left);
     expect(s.left - view.right).toBeCloseTo(8, 0);
     expect(toggle - s.right).toBeCloseTo(8, 0);
+    // 보기 ▾ opens as wide as the zoom menu beside it (the mockup's 232), its right edge on the button's.
+    await page.getByTestId('pdf-view-menu').click();
+    const menu = await page.getByRole('menu', { name: '보기' }).evaluate((el) => el.getBoundingClientRect().toJSON() as DOMRect);
+    expect(menu.width).toBe(232);
+    expect(menu.right).toBeCloseTo(view.right, 0);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('menu')).toHaveCount(0);
   } finally {
     await app.close();
   }
@@ -1620,6 +1628,145 @@ test('a long outline goes through the virtualizer with the same tree: rows keep 
       .toBe(1);
     await runMenuCommand(app, 'nav.historyBack');
     await expect(field(page)).toHaveValue('1');
+  } finally {
+    await app.close();
+  }
+});
+
+test('the outline scrolls its current entry into view, and leaves the list alone for two seconds after the user scrolled it', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, [LONG_OUTLINE]);
+    await openItem(page, 'long-outline');
+    await expect(viewer(page)).toHaveAttribute('data-pages', '6');
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', /.*/);
+    await page.getByTestId('reader-nav').getByText('목차', { exact: true }).click();
+    const tree = page.getByTestId('pdf-outline');
+    await expect(tree).toBeVisible();
+    const goTo = async (n: number) => {
+      await field(page).fill(String(n));
+      await field(page).press('Enter');
+    };
+    const scrollTop = () => tree.evaluate((el) => el.scrollTop);
+    /** Whether the current row is drawn and lies inside the tree's box. */
+    const currentInView = () =>
+      page.evaluate(() => {
+        const box = document.querySelector('[data-testid="pdf-outline"]')!.getBoundingClientRect();
+        const mark = document.querySelector('[data-testid="pdf-outline-row"] [aria-current="location"]');
+        const r = mark?.closest('[data-testid="pdf-outline-row"]')?.getBoundingClientRect();
+        return r !== undefined && r.top >= box.top - 1 && r.bottom <= box.bottom + 1;
+      });
+    await goTo(6);
+    await expect(viewer(page)).toHaveAttribute('data-page', '6');
+    await expect(tree).toHaveAttribute('data-current-id', '59.3');
+    await expect.poll(currentInView).toBe(true);
+    expect(await scrollTop()).toBeGreaterThan(0);
+
+    // The user scrolls the list to its top (a real wheel).
+    await tree.hover();
+    await page.mouse.wheel(0, -100000);
+    await expect.poll(scrollTop).toBe(0);
+    // The page moves on a moment after the user's scroll: the scroll and the page change are made in one task, so the two seconds
+    // are not spent on this test's own steps. The list does not follow, and says which row it held back.
+    await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="pdf-outline"]')!;
+      el.dispatchEvent(new WheelEvent('wheel', { deltaY: -1, bubbles: true }));
+      (el as HTMLElement).scrollTop = 0;
+      (window as unknown as { __learnReader: { getState(): { handle: { goToPage(n: number): void } } } }).__learnReader.getState().handle.goToPage(5);
+    });
+    await expect(viewer(page)).toHaveAttribute('data-page', '5');
+    await expect(tree).toHaveAttribute('data-current-id', '49.3');
+    await expect(tree).toHaveAttribute('data-follow-held', '49.3');
+    // Following would have needed a scroll: at the top, row 49.3 is far below the drawn window.
+    await expect(page.locator('[data-testid="pdf-outline-row"][data-key="49.3"]')).toHaveCount(0);
+    expect(await scrollTop()).toBe(0);
+
+    // Once the pause is over the next page turn is followed again (the turn that moves the page is retried until then).
+    let next = 6;
+    await expect
+      .poll(
+        async () => {
+          await goTo(next);
+          next = next === 6 ? 5 : 6;
+          return scrollTop();
+        },
+        { timeout: 15_000 },
+      )
+      .toBeGreaterThan(0);
+    await expect.poll(currentInView).toBe(true);
+    await expect(tree).not.toHaveAttribute('data-follow-held', /.*/);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the outline follows again when its search is cleared, and does not while a search is typed', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, [LONG_OUTLINE]);
+    await openItem(page, 'long-outline');
+    await expect(viewer(page)).toHaveAttribute('data-pages', '6');
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', /.*/);
+    await page.getByTestId('reader-nav').getByText('목차', { exact: true }).click();
+    const tree = page.getByTestId('pdf-outline');
+    const scrollTop = () => tree.evaluate((el) => el.scrollTop);
+    await field(page).fill('6');
+    await field(page).press('Enter');
+    await expect(tree).toHaveAttribute('data-current-id', '59.3');
+    await expect.poll(scrollTop).toBeGreaterThan(0);
+    const search = page.getByTestId('pdf-outline-search').getByRole('searchbox');
+    // Typing opens every hit: the rows shift under the user, and the list is not moved after the current row (which would be near row 299).
+    await search.fill('Topic');
+    await expect(page.getByTestId('pdf-outline-row').first()).toBeVisible();
+    await expect(tree).toHaveAttribute('data-current-id', '59.3');
+    expect(await scrollTop()).toBeLessThan(4000);
+    await tree.evaluate((el) => (el.scrollTop = 0));
+    await search.fill('');
+    // Cleared, the list comes back to the reader's place.
+    await expect.poll(scrollTop).toBeGreaterThan(0);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const box = document.querySelector('[data-testid="pdf-outline"]')!.getBoundingClientRect();
+          const r = document.querySelector('[data-testid="pdf-outline-row"] [aria-current="location"]')?.closest('[data-testid="pdf-outline-row"]')?.getBoundingClientRect();
+          return r !== undefined && r.top >= box.top - 1 && r.bottom <= box.bottom + 1;
+        }),
+      )
+      .toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a reader tab shown again has its outline on the current entry', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const [item] = await importPaths(page, [LONG_OUTLINE]);
+    await openItem(page, 'long-outline');
+    await expect(viewer(page)).toHaveAttribute('data-pages', '6');
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', /.*/);
+    await page.getByTestId('reader-nav').getByText('목차', { exact: true }).click();
+    const tree = page.getByTestId('pdf-outline');
+    await field(page).fill('6');
+    await field(page).press('Enter');
+    await expect(tree).toHaveAttribute('data-current-id', '59.3');
+    await field(page).fill('5');
+    await field(page).press('Enter');
+    await expect(tree).toHaveAttribute('data-current-id', '49.3');
+    // Away to the library and back: the outline is built again for the tab, and the current entry is in view.
+    await libraryTab(page).click();
+    await expect(page.getByTestId('library-table')).toBeVisible();
+    await readerTab(page, item!.id).click();
+    await expect(tree).toHaveAttribute('data-current-id', '49.3');
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const box = document.querySelector('[data-testid="pdf-outline"]')!.getBoundingClientRect();
+          const r = document.querySelector('[data-testid="pdf-outline-row"] [aria-current="location"]')?.closest('[data-testid="pdf-outline-row"]')?.getBoundingClientRect();
+          return r !== undefined && r.top >= box.top - 1 && r.bottom <= box.bottom + 1;
+        }),
+      )
+      .toBe(true);
   } finally {
     await app.close();
   }

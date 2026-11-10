@@ -11,3 +11,4 @@ export * from './asset-lock';
 export * from './purge';
 export * from './edited-copies';
 export * from './check';
+export * from './image-size';

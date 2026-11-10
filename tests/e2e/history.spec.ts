@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, importPaths, launch, libraryTab, mainWindow, openItem, readerTab, runMenuAccelerator, runMenuCommand } from './helpers';
+import { FIXTURES, importPaths, launch, libraryTab, mainWindow, openItem, readerTab, runMenuAccelerator, quiet, runMenuCommand, settled } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf'); // 100 pages, "See page 50." on page 1, an outline of ten chapters
 const SAMPLE = path.join(FIXTURES, 'sample.pdf');
@@ -157,7 +157,12 @@ async function holdTextLayers(page: Page) {
 /** The text layer of `pageNumber` has been drawn and is held back. */
 const expectHeld = (page: Page, pageNumber: number) =>
   expect.poll(() => page.evaluate(() => (window as unknown as { heldPages: () => number[] }).heldPages())).toContain(pageNumber);
-const releaseTextLayers = (page: Page) => page.evaluate(() => (window as unknown as { releaseTextLayers: () => void }).releaseTextLayers());
+/** Lets the held layers through, then waits until what pdf.js does once a layer is drawn (it focuses the page, the stage scrolls) has stopped. */
+const releaseTextLayers = async (page: Page) => {
+  await page.evaluate(() => (window as unknown as { releaseTextLayers: () => void }).releaseTextLayers());
+  await expect.poll(() => page.evaluate(() => (window as unknown as { heldPages: () => number[] }).heldPages().length)).toBe(0);
+  await quiet(page);
+};
 
 test('a scroll of the reader\'s own after a link keeps the stage when the target\'s text layer is drawn late', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
@@ -175,9 +180,36 @@ test('a scroll of the reader\'s own after a link keeps the stage when the target
     await expect(field(page)).toHaveValue('52');
     const there = await scrollTop(page);
     const height = await pageHeight(page);
-    await page.waitForTimeout(100); // the scroll event is reported
+    await settled(page, 2); // the scroll event is reported (the field shows its page above)
     await releaseTextLayers(page);
-    await page.waitForTimeout(500);
+    await expect(field(page)).toHaveValue('52');
+    expect(Math.abs((await scrollTop(page)) - there)).toBeLessThanOrEqual(height * 0.02);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a scroll in the same task as the link target\'s late text layer keeps the stage: the layer lands before that scroll is reported', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    await holdTextLayers(page);
+    await clickLink(page);
+    await expect(field(page)).toHaveValue('50');
+    await expectHeld(page, 50);
+    const height = await pageHeight(page);
+    // One task: the scroll, then the layer. A scroll is reported at the next frame, so no scroll event comes between them.
+    const there = await page.getByTestId('pdf-scroll').evaluate((el) => {
+      const p52 = el.querySelector<HTMLElement>('.page[data-page-number="52"]')!;
+      el.scrollTop = p52.offsetTop + p52.clientTop + p52.clientHeight * 0.3;
+      const at = el.scrollTop;
+      (window as unknown as { releaseTextLayers: () => void }).releaseTextLayers();
+      return at;
+    });
+    await expect.poll(() => page.evaluate(() => (window as unknown as { heldPages: () => number[] }).heldPages().length)).toBe(0);
+    await quiet(page);
+    // pdf.js's late focus of the target did run, so its pull was undone rather than skipped.
+    expect(await page.evaluate(() => document.activeElement?.closest('.page')?.getAttribute('data-page-number'))).toBe('50');
     await expect(field(page)).toHaveValue('52');
     expect(Math.abs((await scrollTop(page)) - there)).toBeLessThanOrEqual(height * 0.02);
   } finally {
@@ -198,7 +230,6 @@ test('going back before the link target\'s text layer is let through stays back:
     await runMenuCommand(app, 'nav.historyBack');
     await expect(field(page)).toHaveValue('1');
     await releaseTextLayers(page);
-    await page.waitForTimeout(500);
     await expect(field(page)).toHaveValue('1');
     expect(Math.abs((await scrollTop(page)) - start)).toBeLessThanOrEqual((await pageHeight(page)) * 0.02);
   } finally {
@@ -218,7 +249,6 @@ test('a page turn right after a link, before its text layer is let through, stay
     await expect(field(page)).toHaveValue('51');
     const at = await scrollTop(page);
     await releaseTextLayers(page);
-    await page.waitForTimeout(500);
     await expect(field(page)).toHaveValue('51');
     expect(Math.abs((await scrollTop(page)) - at)).toBeLessThanOrEqual((await pageHeight(page)) * 0.02);
   } finally {

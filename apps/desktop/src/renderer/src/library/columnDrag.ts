@@ -39,3 +39,12 @@ export function wheelSteps(e: { deltaX: number; deltaY: number; deltaMode: numbe
   const y = swapped ? 0 : e.deltaY;
   return { x: x * unit(view.width), y: y * unit(view.height) };
 }
+
+/**
+ * The sideways pixels a wheel over an empty table's header moves it by: with no rows there is nothing to move up or down,
+ * so a plain wheel moves it sideways too (a sweep with a sideways part goes by that part).
+ */
+export function emptyHeadStep(e: { deltaX: number; deltaY: number; deltaMode: number; shiftKey: boolean }, view: { width: number; height: number }): number {
+  const step = wheelSteps(e, view);
+  return step.x !== 0 ? step.x : step.y;
+}

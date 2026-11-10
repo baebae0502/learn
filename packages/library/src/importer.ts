@@ -1,15 +1,15 @@
 import type { Stats } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { LearnError, VIDEO_FORMATS, newId, nowIso, toLearnError, type ImportOutcome, type StorageMode } from '@learn/domain';
+import { IMAGE_FORMATS, LearnError, extractKey, VIDEO_FORMATS, newId, nowIso, toLearnError, type ImportOutcome, type StorageMode } from '@learn/domain';
 import type { AssetRow, LibraryRepository } from '@learn/db';
 import { withManagedPath } from './asset-lock';
 import { fsyncDir, fsyncFile } from './fsync';
 import { sha256File } from './hash';
 import { managedRelativePath, type LibraryLayout } from './layout';
+import { IMAGE_HEAD_BYTES, imageSize } from './image-size';
 import { sniffFile, type SniffResult } from './sniff';
 
-export const EXTRACTOR_VERSION = 'text-v0';
 /** A stopped file's outcome message. The queue leaves stopped files out of its report, so it is never shown. */
 const CANCELLED_MESSAGE = '가져오기를 취소했습니다.';
 
@@ -102,7 +102,7 @@ export class Importer {
     const st = await fs.stat(src);
     if (!st.isFile()) throw new LearnError('UNSUPPORTED_TYPE', '일반 파일만 가져올\u00a0수 있습니다.');
     const kind = await sniffFile(src);
-    if (!kind) throw new LearnError('UNSUPPORTED_TYPE', `지원하지 않는 형식입니다. 지금은 PDF와\u00a0동영상(${VIDEO_FORMATS})을 가져올\u00a0수 있습니다.`);
+    if (!kind) throw new LearnError('UNSUPPORTED_TYPE', `지원하지 않는 형식입니다. 지금은 PDF, 동영상(${VIDEO_FORMATS}), 이미지(${IMAGE_FORMATS})를 가져올\u00a0수 있습니다.`);
     const sha256 = await sha256File(src, { signal: opts.signal, onBytes: opts.onBytes });
     // First checkpoint: nothing has been written yet.
     opts.signal?.throwIfAborted();
@@ -118,6 +118,9 @@ export class Importer {
     const existingItemId = existing.map((a) => repo.itemIdsForAsset(a.id)[0]).find((id) => id !== undefined);
     if (existingItemId && !opts.allowDuplicate) return { status: 'duplicate', path: src, existingItemId };
 
+    // The size is read before the commit from the first MiB only; a file it cannot read is imported without one.
+    const size = kind.type === 'image' ? imageSize(await readHead(src, IMAGE_HEAD_BYTES), kind.mime) : null;
+
     const now = nowIso();
     const reusable =
       opts.mode === 'managed'
@@ -126,6 +129,7 @@ export class Importer {
     const fresh = (relativePath: string | null): AssetRow => ({
       id: newId(), sha256, storageMode: opts.mode, relativePath, externalPath: opts.mode === 'linked' ? src : null,
       originalName: displayFileName(src), mime: kind.mime, size: st.size, availability: 'available', createdAt: now, checkedAt: now,
+      width: size?.width ?? null, height: size?.height ?? null,
     });
     // A managed copy found in place is checked (and put back) now; the new asset's copy is placed now.
     if (reusable && opts.mode === 'managed') await this.ensurePlaced(src, sha256, opts.signal);
@@ -145,7 +149,7 @@ export class Importer {
       asset,
       assetIsNew: !reused,
       revision: reused ? null : { id: newId(), createdAt: now },
-      job: { id: newId(), kind: 'extract', dedupeKey: `extract:${sha256}:${EXTRACTOR_VERSION}`, payload: { sha256, type: kind.type } },
+      job: kind.type === 'pdf' ? { id: newId(), kind: 'extract', dedupeKey: extractKey(sha256), payload: { sha256, type: 'pdf', nextPage: 0, pages: null, chars: 0, truncated: false } } : null,
       collectionId,
     });
     const saved = repo.getItem(item.id);
@@ -227,5 +231,17 @@ async function exists(p: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/** The first `max` bytes of a file (all of it when smaller). */
+async function readHead(file: string, max: number): Promise<Uint8Array> {
+  const fh = await fs.open(file, 'r');
+  try {
+    const buf = Buffer.alloc(max);
+    const { bytesRead } = await fh.read(buf, 0, max, 0);
+    return buf.subarray(0, bytesRead);
+  } finally {
+    await fh.close();
   }
 }

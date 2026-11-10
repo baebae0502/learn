@@ -72,6 +72,9 @@ describe('UI copy (design-spec 4, 9)', () => {
   it('binds determiner + noun and the listed compounds with U+00A0', () => {
     expect(copy.filter((s) => DETERMINER.test(s.text) || COMPOUNDS.some((c) => s.text.includes(c))).map(show)).toEqual([]);
   });
+  it('keeps "찾을 수" of the item panel\'s note on one line, as "가져올 수" is kept elsewhere', () => {
+    expect(t.inspector.noInfo).toContain('찾을\u00a0수');
+  });
   it('tells 해요체 from 합니다체 and the -세요 imperative', () => {
     expect(['다시 시도하세요.', '선택하세요', '확인하세요, 그다음', '필요합니다.', '중요 표시', '요약', '요청을 보냈습니다.'].filter(isHaeyo)).toEqual([]);
     const haeyo = ['열 수 있어요.', '됐어요', '있어요, 그리고', '(열 수 있어요)', '그렇죠', '그렇죠?', '좋네요', '그렇군요.', '필요해요.', '중요해요'];
@@ -106,7 +109,7 @@ describe('a closing quote keeps its particle (design-spec 4)', () => {
     ['the toast for items already there', t.toast.filedExisting('학회 준비', 2), '’⁠에 넣었습니다'],
     ['the drop overlay title', t.drop.titleInto('분자생물학'), '’⁠으로 가져오기'],
     ['the search no-results title', t.library.searchEmptyTitle('형광'), '’⁠과 일치'],
-    ['the search no-results body in a collection', t.library.searchEmptyBody('형광 현미경', 0), '’⁠의 '],
+    ['the search no-results body in a collection', t.library.searchEmptyBody('형광 현미경', 0, false), '’⁠의 '],
     ['the palette no-results title', t.palette.emptyTitle('세포'), '’⁠와 일치'],
     ['the trash toast for one item', t.trash.movedOne('통계'), '’⁠를 휴지통'],
     ['the restore toast for one item', t.trash.restoredOne('통계'), '’⁠를 복원'],

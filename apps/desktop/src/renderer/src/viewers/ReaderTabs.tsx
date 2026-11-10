@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import { lastInput } from '../ui/inputModality';
 import { mountedTabs } from '../state/tabs';
 import { useShell } from '../state/shell-store';
-import { useTabItem } from '../shell/useTabItem';
+import { tabId, tabPanelId, useTabPanelsMounted } from '../shell/tabPanels';
 import { ViewerHost } from './ViewerHost';
 import { readerScopes, setActiveReaderScope } from './readerScope';
 
@@ -32,6 +32,7 @@ export function ReaderTabs() {
     for (const id of readerScopes.ids()) if (!open.has(id)) readerScopes.drop(id);
   }, [tabs.tabs]);
 
+  useTabPanelsMounted('readers', order.current);
   return (
     <>
       {order.current.map((id) => (
@@ -42,12 +43,11 @@ export function ReaderTabs() {
 }
 
 function TabPanel({ itemId, active }: { itemId: string; active: boolean }) {
-  const title = useTabItem(itemId).item?.title;
   const box = useRef<HTMLDivElement>(null);
   /** What had the focus in this reader when it was last shown: a hidden (inert) panel loses its focus, and shown again has none. */
   const lastFocus = useRef<HTMLElement | null>(null);
   const wasActive = useRef(active);
-  // Shown again, the reader takes the focus back where it was (or at its first target: the password field, the stage, the player) —
+  // Shown again, the reader takes the focus back where it was (or at its first target: the password field, a stage, the player) —
   // except when the tab was chosen from the strip by keyboard, where the focus stays on the tab (Tab goes on into the reader).
   useLayoutEffect(() => {
     const was = wasActive.current;
@@ -57,15 +57,16 @@ function TabPanel({ itemId, active }: { itemId: string; active: boolean }) {
     const onTab = document.activeElement instanceof Element && document.activeElement.closest('.tab-bar') !== null;
     if (onTab && lastInput() === 'keyboard') return;
     const last = lastFocus.current;
-    const target = last?.isConnected && panel.contains(last) ? last : panel.querySelector<HTMLElement>('input[type="password"], .pdf-stage, video');
+    const target = last?.isConnected && panel.contains(last) ? last : panel.querySelector<HTMLElement>('input[type="password"], .pdf-stage, .image-stage, video');
     target?.focus({ preventScroll: true });
   }, [active]);
   return (
     <div
       ref={box}
       className="tab-panel"
+      id={tabPanelId(itemId)}
       role="tabpanel"
-      aria-label={title}
+      aria-labelledby={tabId(itemId)}
       hidden={!active}
       inert={!active}
       data-testid="tab-panel"

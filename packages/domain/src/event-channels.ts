@@ -12,6 +12,7 @@ export const EventChannels = {
   'item:openRequested': 'evt:item-open-requested',
   'recovery:show': 'evt:recovery-show',
   'job:progress': 'evt:job-progress',
+  'search:progress': 'evt:search-progress',
 } as const;
 
 export type EventChannel = (typeof EventChannels)[keyof typeof EventChannels];

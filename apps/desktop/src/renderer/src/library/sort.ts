@@ -34,7 +34,7 @@ export function sortFromArgs(current: LibrarySort, args: Pick<CommandArgs, 'colu
 }
 
 const collator = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' });
-const TYPE_ORDER: Readonly<Record<ItemType, number>> = { pdf: 0, video: 1 };
+const TYPE_ORDER: Readonly<Record<ItemType, number>> = { pdf: 0, video: 1, image: 2 };
 const STORAGE_ORDER: Readonly<Record<StorageMode, number>> = { managed: 0, linked: 1 };
 type SortKey = string | number | null;
 const time = (iso: string | null): number | null => {

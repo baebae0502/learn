@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { OrganizeSnapshot } from '@learn/domain';
+import { unpackOrganize, type OrganizeSnapshot } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { keys, useItems } from '../data/queries';
 import { organizeModelFor, type OrganizeModel } from './model';
@@ -10,7 +10,7 @@ import { organizeModelFor, type OrganizeModel } from './model';
  * counts read before the list arrived would be zero. `settled` once the snapshot's read has answered, success or not.
  */
 export function useOrganize(): { snapshot: OrganizeSnapshot | undefined; model: OrganizeModel | undefined; settled: boolean } {
-  const read = useQuery({ queryKey: keys.organize, queryFn: () => unwrap(api().library.organize()) });
+  const read = useQuery({ queryKey: keys.organize, queryFn: () => unwrap(api().library.organize()).then(unpackOrganize) });
   const items = useItems().data;
   const snapshot = read.data;
   const model = useMemo(() => (snapshot !== undefined && items !== undefined ? organizeModelFor(snapshot, items) : undefined), [snapshot, items]);

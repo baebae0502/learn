@@ -1,6 +1,7 @@
 // @perf — M7a spec 11 (reader-perf.json): the PDF reader's budgets over paper-100.pdf — the first page, the frames of a
 // scroll, a zoom step, the first find match, the visible thumbnails, and a cached translation pop-up (fake engine only:
-// nothing here reaches the real service). Linux CI fails beyond twice each budget (budget.ts); the Mac reports.
+// nothing here reaches the real service); and M7c spec 13's image tab, opened to its first frame with the picture.
+// Linux CI fails beyond twice each budget (budget.ts); the Mac reports.
 //
 // Every end is a state of the page, as in organize-perf.evidence.ts: pdf.js's own `pagerendered` events (read from the
 // reader's event bus through the E2E handle, window.__learnReader), or the first animation frame whose callback finds the
@@ -18,10 +19,11 @@ import { spread, summary, tenth } from './p1-perf-math';
 const linuxCi = process.platform === 'linux' && Boolean(process.env['CI']);
 const RESULT = 'reader-perf.json';
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
+const PHOTO = path.join(FIXTURES, 'photo-4032.jpg'); // 4032 × 3024
 const S1 = 'Attention is all you need.';
 const K1 = '주의가 필요한 전부입니다.';
 /** spec 11: how many times each is measured. */
-const RUNS = { firstPage: 5, zoomStep: 10, find: 5, thumbnails: 5, popup: 10 } as const;
+const RUNS = { firstPage: 5, zoomStep: 10, find: 5, thumbnails: 5, popup: 10, imageOpen: 5 } as const;
 /** The scroll: pixels per animation frame, over this many pages. */
 const SCROLL_PX_PER_FRAME = 40;
 const SCROLL_PAGES = 30;
@@ -45,7 +47,7 @@ function save(patch: Record<string, unknown>): void {
       linuxCiLimitMs: Object.fromEntries(Object.entries(READER_BUDGET_MS).map(([k, v]) => [k, tenth(v * 2)])),
       platform: `${process.platform}-${process.arch}`, ci: process.env['CI'] ?? null, updatedAt: new Date().toISOString(),
     },
-    'M7a spec 11: the PDF reader — first page, scroll frames, zoom step, first find match, visible thumbnails, cached translation pop-up',
+    'M7a spec 11: the PDF reader — first page, scroll frames, zoom step, first find match, visible thumbnails, cached translation pop-up; M7c spec 13: an image tab open to its first frame with the picture',
   );
 }
 
@@ -114,7 +116,7 @@ async function seedPaper(page: Page): Promise<void> {
 }
 
 test.beforeAll(() => {
-  if (!fs.existsSync(PAPER)) throw new Error(`fixture missing: ${PAPER} — run \`pnpm fixtures\``);
+  for (const f of [PAPER, PHOTO]) if (!fs.existsSync(f)) throw new Error(`fixture missing: ${f} — run \`pnpm fixtures\``);
 });
 
 // ---- first page, find, thumbnails: each from a document just opened -----------------------------------------------------
@@ -299,9 +301,69 @@ test('reader budgets @2: the frame gaps of a 30-page scroll at the automatic fit
   }
 });
 
+// ---- the image tab ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * Opens a photo from the library list; returns the time from the double click to the first animation frame after the reader says
+ * the picture is drawn (its saved place applied, the picture shown): the frame that paints it.
+ */
+async function openPicture(page: Page, title: string): Promise<number> {
+  await page.evaluate(() => {
+    const w = window as unknown as {
+      __open?: number;
+      __drawn?: Promise<number>;
+      __learnReader: { subscribe(f: () => void): () => void; getState(): { image: { status: string } | null } };
+    };
+    w.__open = undefined;
+    window.addEventListener('dblclick', (e) => (w.__open = e.timeStamp), { capture: true, once: true });
+    w.__drawn = new Promise<number>((resolve) => {
+      const stop = w.__learnReader.subscribe(() => {
+        if (w.__learnReader.getState().image?.status !== 'shown') return;
+        stop();
+        requestAnimationFrame(() => resolve(performance.now()));
+      });
+    });
+  });
+  await openItem(page, title);
+  return page.evaluate(async () => {
+    const w = window as unknown as { __open: number; __drawn: Promise<number> };
+    return (await w.__drawn) - w.__open;
+  });
+}
+
+test('reader budgets @3: an image tab opened (5 times, each a 4032 × 3024 JPEG never opened before) → the first frame with the picture', { tag: '@perf' }, async ({}, testInfo) => {
+  test.setTimeout(linuxCi ? 90_000 : 150_000);
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    // Every open is of its own file — the photo with one byte more after its end, so another asset and another address — and so reads
+    // and decodes cold: the decode is what the budget is about. One more is opened first and reported apart: the session's first image.
+    const bytes = fs.readFileSync(PHOTO);
+    const dir = testInfo.outputPath('photos');
+    fs.mkdirSync(dir, { recursive: true });
+    const files = Array.from({ length: RUNS.imageOpen + 1 }, (_, i) => {
+      const file = path.join(dir, `photo-${i}.jpg`);
+      fs.writeFileSync(file, Buffer.concat([bytes, Buffer.from([i])]));
+      return file;
+    });
+    const items = await importPaths(page, files);
+    expect(new Set(items.map((i) => i.assetId)).size).toBe(files.length);
+    const first = await openPicture(page, 'photo-0');
+    await closeReaderTab(page);
+    const opens: number[] = [];
+    for (let i = 1; i <= RUNS.imageOpen; i++) {
+      opens.push(await openPicture(page, `photo-${i}`));
+      await closeReaderTab(page);
+    }
+    save({ imageFirstFrame: { ...summary(opens), first: tenth(first) } });
+    console.log('[measure] image tab open → first frame', JSON.stringify({ ...summary(opens), first: tenth(first) }));
+  } finally {
+    await app.close();
+  }
+});
+
 // ---- the cached translation pop-up ----------------------------------------------------------------------------------------------
 
-test('reader budgets @3: the same sentence selected again → the pop-up shows its translation from the cache (fake engine)', { tag: '@perf' }, async ({}, testInfo) => {
+test('reader budgets @4: the same sentence selected again → the pop-up shows its translation from the cache (fake engine)', { tag: '@perf' }, async ({}, testInfo) => {
   test.setTimeout(linuxCi ? 120_000 : 200_000);
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
@@ -363,6 +425,7 @@ test('reader budgets @3: the same sentence selected again → the pop-up shows i
     const values = {
       firstPage: all['firstPage']?.median, scrollFrameP95: all['scrollFrames']?.p95, zoomStep: all['zoomStep']?.median,
       findFirstMatch: all['findFirstMatch']?.median, thumbnailsVisible: all['thumbnailsVisible']?.median, popupCachedPaint: all['popupCachedPaint']?.p95,
+      imageFirstFrame: all['imageFirstFrame']?.median,
     };
     for (const [k, v] of Object.entries(values)) expect(typeof v, `${k} was measured`).toBe('number');
     const limits = readerLimits(values as Record<keyof typeof READER_BUDGET_MS, number>);

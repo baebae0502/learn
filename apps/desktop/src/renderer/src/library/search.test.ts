@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { LibraryItem, SearchText } from '@learn/domain';
 import { matchKorean } from '../palette/hangul';
-import { buildSearchIndex, carrySearchIndex, foldText, parseQuery, search, searchCached, searchIndexFor, type TagNames } from './search';
+import { RETAG_LIMIT, buildSearchIndex, carrySearchIndex, foldText, parseQuery, retagIndex, search, searchCached, searchIndexFor, type TagNames } from './search';
 
 let seq = 0;
 const item = (over: Partial<LibraryItem> & { title: string }): LibraryItem => {
@@ -266,5 +266,79 @@ describe('quick search at 10,000 items (spec 9: input → paint p95 ≤ 50 ms; t
     const p95 = times[Math.floor(times.length * 0.95)]!;
     expect(buildMs).toBeLessThan(2_000); // generous for CI; a few hundred ms locally at most
     expect(p95).toBeLessThan(40); // generous for CI; single-digit ms locally
+  });
+});
+
+describe('retagging the index (key 1 at ten thousand items)', () => {
+  const names = (pairs: Array<[LibraryItem, string]>): TagNames => new Map(pairs.map(([i, n]) => [i.id, n]));
+  const first = ITEMS[0]!;
+  const last = ITEMS[ITEMS.length - 1]!;
+  const middle = ITEMS[1]!;
+  const same = (a: ReturnType<typeof buildSearchIndex>, b: ReturnType<typeof buildSearchIndex>) => {
+    expect(a.short).toBe(b.short);
+    expect(a.initials).toBe(b.initials);
+    expect(Array.from(a.starts)).toEqual(Array.from(b.starts));
+    expect(Array.from(a.titleEnds)).toEqual(Array.from(b.titleEnds));
+    expect(Array.from(a.plainTitle)).toEqual(Array.from(b.plainTitle));
+    expect(a.long).toBe(b.long);
+    expect(Array.from(a.longStarts)).toEqual(Array.from(b.longStarts));
+  };
+
+  it('is the index built with the new names, for one item, the first, the last and one that had no tag', () => {
+    const a = names([[middle, '핵심 개념'], [last, 'Gq']]);
+    for (const b of [
+      names([[middle, '핵심 개념 더 길게'], [last, 'Gq']]), // longer
+      names([[middle, '짧게'], [last, 'Gq']]), // shorter
+      names([[first, '처음'], [middle, '핵심 개념'], [last, 'Gq']]), // the first, no tag before
+      names([[middle, '핵심 개념'], [last, 'Gq 끝']]), // the last
+      names([[middle, '핵심 개념']]), // a tag taken off the last
+      names([[first, '처음'], [middle, '정리  완료'], [last, '끝']]), // three at once, folded spaces
+    ]) {
+      const prev = buildSearchIndex(ITEMS, TEXTS, a);
+      const patched = retagIndex(prev, a, b);
+      expect(patched).not.toBeNull();
+      same(patched!, buildSearchIndex(ITEMS, TEXTS, b));
+      expect(found('처음', patched!)).toEqual(found('처음', buildSearchIndex(ITEMS, TEXTS, b)));
+    }
+  });
+
+  it('is the same index when the names did not change, and null past 50 changed items', () => {
+    const a = names([[middle, 'x']]);
+    const prev = buildSearchIndex(ITEMS, TEXTS, a);
+    expect(retagIndex(prev, a, new Map(a))).toBe(prev);
+    const many = new Map<string, string>();
+    for (let k = 0; k <= RETAG_LIMIT; k++) many.set(`id${k}`, `t${k}`);
+    expect(retagIndex(prev, a, new Map([...a, ...many]))).toBeNull();
+    const fifty = new Map([...a].concat([...many].slice(0, RETAG_LIMIT - 1)));
+    expect(retagIndex(prev, a, fifty)).not.toBeNull(); // 49 new ids that are not in the list, and the item itself unchanged
+  });
+
+  it('is what searchIndexFor hands out for the same list and texts with other names', () => {
+    const a = names([[middle, 'alpha']]);
+    const b = names([[middle, 'beta']]);
+    const before = searchIndexFor(ITEMS, TEXTS, a);
+    const after = searchIndexFor(ITEMS, TEXTS, b);
+    expect(after).not.toBe(before);
+    same(after, buildSearchIndex(ITEMS, TEXTS, b));
+    expect(found('beta', after)).toEqual([middle.title]);
+  });
+
+  it('records one search:index measure per index, whether it was retagged or rebuilt in full', () => {
+    const measure = vi.spyOn(performance, 'measure');
+    const count = () => measure.mock.calls.filter((c) => c[0] === 'learn:search:index').length;
+    try {
+      const list = [...ITEMS];
+      const a = names([[middle, 'alpha']]);
+      searchIndexFor(list, TEXTS, a);
+      expect(count()).toBe(1); // the first index is a build
+      searchIndexFor(list, TEXTS, names([[middle, 'beta']]));
+      expect(count()).toBe(2); // positive control: a retag is one measure
+      const many = new Map<string, string>();
+      for (let k = 0; k <= RETAG_LIMIT; k++) many.set(`id${k}`, `t${k}`);
+      searchIndexFor(list, TEXTS, many); // retagIndex answers null: a full rebuild
+      expect(count()).toBe(3);
+    } finally {
+      measure.mockRestore();
+    }
   });
 });

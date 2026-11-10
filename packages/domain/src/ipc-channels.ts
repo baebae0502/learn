@@ -26,6 +26,7 @@ export const Channels = {
   settings: { get: 'settings:get', set: 'settings:set' },
   prefs: { get: 'prefs:get', set: 'prefs:set' },
   reader: { open: 'reader:open', getPosition: 'reader:getPosition', savePosition: 'reader:savePosition' },
+  search: { body: 'search:body', pages: 'search:pages', progress: 'search:progress' },
   backup: { create: 'backup:create', cancel: 'backup:cancel', restore: 'backup:restore' },
   ui: {
     showContextMenu: 'ui:showContextMenu', windowState: 'ui:windowState', reportContext: 'ui:reportContext', confirm: 'ui:confirm', confirmPurge: 'ui:confirmPurge',

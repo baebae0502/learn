@@ -34,5 +34,22 @@ v1은 `001`의 테이블 그대로다(`items`, `assets`, `item_assets`, `source_
 - 코드 쪽: `LATEST_SCHEMA_VERSION`은 `MIGRATIONS` 배열에서 유도한다(상수를 따로 올리지 않는다). 업그레이드가 실패하면 오류 문구가 어디까지 적용됐는지("데이터베이스는 v<M> 상태입니다")와 다음 행동("앱을 다시 시작해 보세요")을 알리고, 백업을 만들었을 때만 그 파일 이름을 넣는다("업데이트 전 백업(library.sqlite.pre-v<N>.bak)이 라이브러리 폴더에 있습니다").
 - 백업: manifest `counts`에 `collections`, `collectionItems`, `tags`, `itemTags`, `readingPositions`를 추가했다. v1 때 만든 manifest에는 없으므로 선택 필드이고, 복원 시 manifest에 있는 필드만 대조한다. DB 스냅샷이 전체이므로 `settings`·`reading_positions` 내용은 개수와 무관하게 복원된다(ADR-0007).
 
+## 스키마 v4 (M7c, `packages/db/src/migrations/004-images-text.ts`)
+SQLite는 CHECK를 고칠 수 없어 `items`와 `anchors`를 다시 만든다. `items.type`에 `image`를 더하고, `anchors.kind`는 `slide`를 `slides`로 바꾸며 `image`를 더한다(`slide` 행은 열과 `locator_json`의 `kind`를 함께 `slides`로 고친다. JSON이 아닌 `locator_json`은 그대로 옮긴다). 두 표 모두 rowid를 그대로 옮긴다(정렬의 동점 처리가 `i.rowid`, `listByRevision`이 `rowid`를 쓴다). 002의 색인 `items_deleted_at`·`anchors_revision`은 다시 만든다.
+
+- 순서가 규칙이다. 새 표를 만들고, 옮기고, 옛 표를 지우고, 새 표의 이름을 바꾼다. 옛 표의 이름을 먼저 바꾸면 SQLite 3.26+는 외래 키가 꺼져 있어도 자식 표의 `REFERENCES`를 옛 이름으로 고쳐 쓴다.
+- `assets.width`·`assets.height`(NULL 또는 양수): 이미지의 표시용 크기. 읽지 못하면 둘 다 NULL이고 가져오기는 성공한다.
+- `page_texts(id, sha256, page_index, text)`(`UNIQUE(sha256, page_index)`)와 외부 내용 FTS5 표 `page_texts_fts`(`content='page_texts'`, `tokenize='trigram remove_diacritics 2'`). 넣기·지우기·고치기 트리거 셋이 색인을 맞춘다.
+- 아무도 소비하지 않은 `extract:*:text-v0` 작업을 지운다.
+
+외래 키를 끄는 실행기(`Migration.foreignKeysOff`, 004만 켠다)의 규칙 다섯:
+1. 트랜잭션 밖에서 `PRAGMA foreign_keys = OFF`를 하고(트랜잭션 안에서는 효과가 없다) 값이 0인지 읽어 확인한다. 트랜잭션 안에서 불리면 거절한다.
+2. SQL은 한 트랜잭션 안에서 돈다.
+3. 커밋 전, 같은 트랜잭션 안에서 `PRAGMA foreign_key_check`를 하고 한 행이라도 있으면 던져 되돌린다. 실패 문구는 다른 마이그레이션과 같다.
+4. `schema_migrations` 행은 같은 트랜잭션에서 쓴다(일반 길과 같은 `record()`).
+5. 성공이든 실패든 `finally`에서 `PRAGMA foreign_keys = ON`으로 되돌린다. 설정은 연결마다라서 도중에 앱이 죽어도 저널이 되돌리고 다음 연결이 다시 켠다.
+
+백업은 그대로다(대기 중인 첫 마이그레이션 앞에서 `library.sqlite.pre-v4.bak`).
+
 ## 근거
 원본 불변·재시작 복구·빈 프로필 복원(AC01·AC06·AC15)을 파일 시스템과 DB 양쪽에서 단순하게 보장하기 위해서다.

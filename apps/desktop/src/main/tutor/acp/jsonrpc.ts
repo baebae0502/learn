@@ -127,8 +127,9 @@ export function createPeer(o: { write(line: string): void; onFatal(code: 'AGENT_
     }
     const w = m.id === null ? undefined : waiting.get(m.id);
     if (!w) {
-      // A late answer (its request timed out) or an id Learn never sent.
-      tutorLog('rpc-unknown-id', m.id === null ? {} : { req: m.id });
+      // A late answer (its request timed out) or an id Learn never sent. Learn's ids are numbers; a string id is the
+      // agent's own text, which the log never holds.
+      tutorLog('rpc-unknown-id', typeof m.id === 'number' ? { req: m.id } : {});
       return;
     }
     waiting.delete(m.id!);

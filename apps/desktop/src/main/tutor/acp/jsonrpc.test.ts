@@ -162,6 +162,8 @@ describe('createPeer', () => {
     ['an error message that is not a string', '{"jsonrpc":"2.0","id":1,"error":{"code":1,"message":7}}'],
     ['neither a request nor an answer', '{"jsonrpc":"2.0"}'],
     ['a request with a null id', '{"jsonrpc":"2.0","id":null,"method":"x"}'],
+    ['a string id over 256 characters', JSON.stringify({ jsonrpc: '2.0', id: 'x'.repeat(257), result: {} })],
+    ['an empty string id', JSON.stringify({ jsonrpc: '2.0', id: '', method: 'x' })],
   ])('a wrong envelope is fatal: %s', (_, line) => {
     const fatal: string[] = [];
     const notes: string[] = [];
@@ -171,6 +173,15 @@ describe('createPeer', () => {
     expect([notes, fatal]).toEqual([['fine'], []]);
     peer.receive(line);
     expect(fatal).toEqual(['AGENT_PROTOCOL']);
+  });
+
+  it('an answer with a string id the agent chose is dropped and logged without it: no agent text reaches the log', () => {
+    const fatal: string[] = [];
+    const peer = createPeer({ write: () => {}, onFatal: (c) => fatal.push(c) });
+    peer.receive(JSON.stringify({ jsonrpc: '2.0', id: 'x\n[tutor] turn-end code=FORGED', result: {} }));
+    peer.receive(JSON.stringify({ jsonrpc: '2.0', id: 'y'.repeat(256), result: {} }));
+    expect(fatal).toEqual([]);
+    expect(info.mock.calls).toEqual([['[tutor] rpc-unknown-id'], ['[tutor] rpc-unknown-id']]);
   });
 
   it('an error answer with a null id (the agent could not read the request) is dropped like an unknown id', () => {

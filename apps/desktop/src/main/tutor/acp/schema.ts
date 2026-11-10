@@ -8,7 +8,7 @@ import { z } from 'zod';
  */
 
 const sessionId = z.string().min(1).max(256);
-const rpcId = z.union([z.number(), z.string()]);
+const rpcId = z.union([z.number(), z.string().min(1).max(256)]);
 
 const envelope = z.object({
   jsonrpc: z.literal('2.0'),

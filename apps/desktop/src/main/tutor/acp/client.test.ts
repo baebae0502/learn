@@ -2,6 +2,7 @@ import { LearnError } from '@learn/domain';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { createAcpClient, permissionAnswer, type SessionUpdate, type ToolCallInfo } from './client';
 import { createPeer, RpcError, type JsonRpcPeer } from './jsonrpc';
+import { acpOut } from './schema';
 
 const LEARN_TOOLS = new Set(['mcp__learn__get_context', 'mcp__learn__get_outline', 'mcp__learn__read_pdf_pages']);
 /** Claude's marker as the agent table will pass it: the title or the tool name. */
@@ -21,13 +22,20 @@ type Script = Record<string, (params: unknown) => unknown>;
 interface Wire { method?: string; params?: unknown }
 
 /** A fake agent: a second peer, each peer's lines going straight into the other's receive. */
-function setup(o: { isLearnTool?: (c: ToolCallInfo) => boolean } = {}) {
+function setup(o: { isLearnTool?: (c: ToolCallInfo) => boolean; failWrite?: (line: string) => boolean } = {}) {
   const lines: string[] = [];
   const atAgent: Array<{ method: string; params: unknown }> = [];
   const fatal: string[] = [];
   const onLockdown = vi.fn();
   let agent!: JsonRpcPeer;
-  const learn = createPeer({ write: (l) => { lines.push(l); agent.receive(l); }, onFatal: (c) => fatal.push(c) });
+  const learn = createPeer({
+    write: (l) => {
+      if (o.failWrite?.(l)) throw new Error('write EPIPE');
+      lines.push(l);
+      agent.receive(l);
+    },
+    onFatal: (c) => fatal.push(c),
+  });
   agent = createPeer({ write: (l) => learn.receive(l), onFatal: (c) => fatal.push(`agent ${c}`) });
   const script: Script = {
     initialize: () => ({ protocolVersion: 1, agentCapabilities: { loadSession: true, mcpCapabilities: { http: true }, promptCapabilities: { image: true }, sessionCapabilities: { resume: {} } } }),
@@ -69,6 +77,12 @@ describe('permissionAnswer', () => {
     expect(permissionAnswer([opt('a', 'allow_once'), opt('r1', 'reject_once'), opt('r2', 'reject_always')])).toEqual({ outcome: { outcome: 'selected', optionId: 'r1' } });
     expect(permissionAnswer([opt('a', 'allow_always'), opt('r2', 'reject_always')])).toEqual({ outcome: { outcome: 'selected', optionId: 'r2' } });
     expect(permissionAnswer([opt('a', 'allow_once'), opt('b', 'allow_always')])).toEqual({ outcome: { outcome: 'cancelled' } });
+    expect(permissionAnswer([])).toEqual({ outcome: { outcome: 'cancelled' } });
+  });
+
+  it('hands out a new answer each time, so changing one never changes the next', () => {
+    const first = permissionAnswer([]);
+    (first.outcome as { outcome: string }).outcome = 'selected';
     expect(permissionAnswer([])).toEqual({ outcome: { outcome: 'cancelled' } });
   });
 });
@@ -215,6 +229,7 @@ describe('createAcpClient', () => {
 
   it('every permission request is refused; one still up at cancel, and any after it, is answered cancelled', async () => {
     const h = setup();
+    const strict = vi.spyOn(acpOut.permissionResult, 'parse');
     const answers: unknown[] = [];
     h.script['session/prompt'] = async () => {
       answers.push(await h.agent.request('session/request_permission', permission('s1')));
@@ -235,6 +250,8 @@ describe('createAcpClient', () => {
     };
     await h.ask();
     expect(answers.at(-1)).toEqual(REFUSED);
+    // Each of the four answers, refused or cancelled, was built through the strict schema.
+    expect(strict).toHaveBeenCalledTimes(4);
   });
 
   it('a permission request with a wrong type is fatal and gets no answer', async () => {
@@ -296,12 +313,13 @@ describe('createAcpClient', () => {
     expect(h.onLockdown).not.toHaveBeenCalled();
   });
 
-  it('a first-seen tool_call_update is judged by its tool name alone; an update of a seen call is not judged again (the shape Claude sends)', async () => {
+  it('a first-seen tool_call_update is judged by its tool name alone; an update of a seen call is not judged again', async () => {
     const h = setup();
     const before: number[] = [];
     h.script['session/prompt'] = () => {
       h.update(claudeLearnCall('toolu_1'));
-      // Claude's real update: no title, no kind, no tool name.
+      // The adapter's real update has no title or kind but keeps the tool name; this one lacks even the tool name, and
+      // still passes, because a call already judged is never judged again.
       h.update({ sessionUpdate: 'tool_call_update', toolCallId: 'toolu_1', status: 'in_progress', rawInput: { from: 3 } });
       h.update({ sessionUpdate: 'tool_call_update', toolCallId: 'toolu_2', status: 'in_progress', rawInput: { from: 4 }, _meta: { claudeCode: { toolName: READ } } });
       before.push(h.atAgent.length);
@@ -325,6 +343,58 @@ describe('createAcpClient', () => {
     };
     await expect(h.ask()).resolves.toMatchObject({ lockdown: true });
     expect(h.onLockdown).toHaveBeenCalledTimes(1);
+  });
+
+  it('a foreign tool call after the user stopped the turn still locks down', async () => {
+    const h = setup();
+    h.script['session/prompt'] = () => {
+      h.client.cancel('s1');
+      h.update({ sessionUpdate: 'tool_call', toolCallId: 'toolu_1', title: 'Terminal', kind: 'execute', rawInput: {} });
+      return { stopReason: 'cancelled' };
+    };
+    await expect(h.ask()).resolves.toMatchObject({ lockdown: true });
+    expect(h.onLockdown).toHaveBeenCalledTimes(1);
+    expect(h.atAgent).toEqual([{ method: 'session/cancel', params: { sessionId: 's1' } }, { method: 'session/cancel', params: { sessionId: 's1' } }]);
+  });
+
+  it('lockdown calls back even when its cancel cannot be written', async () => {
+    const h = setup({ failWrite: (l) => l.includes('"session/cancel"') });
+    h.script['session/prompt'] = () => {
+      h.update({ sessionUpdate: 'tool_call', toolCallId: 'toolu_1', title: 'Terminal', kind: 'execute', rawInput: {} });
+      return { stopReason: 'cancelled' };
+    };
+    // The write's error ends that update's handling (logged, not delivered); the turn still ends locked down.
+    await expect(h.ask()).resolves.toMatchObject({ stopReason: 'cancelled', lockdown: true });
+    expect(h.onLockdown).toHaveBeenCalledTimes(1);
+    expect(h.atAgent).toEqual([]);
+    expect(h.updates).toEqual([]);
+    expect(logged('[tutor] rpc-handler-failed code=INTERNAL')).toBe(1);
+  });
+
+  it('a tool call is judged per session: the same id in another session is judged anew', async () => {
+    const h = setup();
+    h.script['session/prompt'] = () => {
+      h.update(claudeLearnCall('toolu_1'));
+      h.update({ sessionUpdate: 'tool_call_update', toolCallId: 'toolu_1', status: 'in_progress', rawInput: { from: 3 } });
+      return { stopReason: 'end_turn' };
+    };
+    await h.ask();
+    expect(h.onLockdown).not.toHaveBeenCalled();
+    h.update({ sessionUpdate: 'tool_call_update', toolCallId: 'toolu_1', status: 'in_progress', rawInput: {} }, 's2');
+    expect(h.atAgent).toEqual([{ method: 'session/cancel', params: { sessionId: 's2' } }]);
+    expect(h.onLockdown).toHaveBeenCalledTimes(1);
+  });
+
+  it('a foreign tool call while session/resume is open locks down: a resume replays nothing', async () => {
+    const h = setup();
+    h.script['session/resume'] = () => {
+      h.update({ sessionUpdate: 'tool_call', toolCallId: 'toolu_1', title: 'Read file', kind: 'read', rawInput: {} });
+      return {};
+    };
+    await h.client.resumeSession('resume', { sessionId: 's1', cwd: '/w/c1', mcpServers: [] });
+    expect(h.atAgent).toEqual([{ method: 'session/cancel', params: { sessionId: 's1' } }]);
+    expect(h.onLockdown).toHaveBeenCalledTimes(1);
+    expect(h.client.lockedDown).toBe(true);
   });
 
   it('a foreign tool call outside a turn still locks down', async () => {

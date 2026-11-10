@@ -27,7 +27,6 @@ export interface AcpClient {
 }
 
 type PermissionResult = z.output<typeof acpOut.permissionResult>;
-const CANCELLED: PermissionResult = { outcome: { outcome: 'cancelled' } };
 /** The longest model name the messages table holds; a longer one is dropped, not fatal — it is only kept, never used. */
 const MODEL_MAX = 128;
 
@@ -35,7 +34,7 @@ const MODEL_MAX = 128;
 export function permissionAnswer(options: ReadonlyArray<{ optionId: string; kind: string }>):
   { outcome: { outcome: 'selected'; optionId: string } | { outcome: 'cancelled' } } {
   const pick = options.find((o) => o.kind === 'reject_once') ?? options.find((o) => o.kind === 'reject_always');
-  return pick ? { outcome: { outcome: 'selected', optionId: pick.optionId } } : CANCELLED;
+  return pick ? { outcome: { outcome: 'selected', optionId: pick.optionId } } : { outcome: { outcome: 'cancelled' } };
 }
 
 /** What the agent sent, read with `schema`; a field Learn reads with the wrong type is AGENT_PROTOCOL. */
@@ -44,6 +43,10 @@ function read<S extends z.ZodType>(schema: S, value: unknown): z.output<S> {
   if (!r.success) throw new LearnError('AGENT_PROTOCOL', 'The agent sent a message Learn cannot read.');
   return r.data;
 }
+
+/** Every permission answer, refused or cancelled, is built new and checked by the strict schema before it is sent. */
+const refusal = (options: ReadonlyArray<{ optionId: string; kind: string }>): PermissionResult => acpOut.permissionResult.parse(permissionAnswer(options));
+const cancelledAnswer = (): PermissionResult => refusal([]);
 
 const isAcpStop = (s: string): s is AcpStopReason => (ACP_STOP_REASONS as readonly string[]).includes(s);
 
@@ -64,10 +67,11 @@ export function createAcpClient(peer: JsonRpcPeer, o: {
   let lockedDown = false;
   /** The turn whose updates go to onUpdate; one at a time, as there is one session per agent process. */
   let turn: { sessionId: string; onUpdate: (u: SessionUpdate) => void } | null = null;
-  /** Sessions whose session/load is replaying history Learn already holds. */
+  /** Sessions whose session/load is replaying history Learn already holds (a session/resume replays nothing). */
   const replaying = new Set<string>();
-  /** Every tool call seen, with whether it was Learn's: an update of a seen call is not judged again. */
+  /** Every tool call seen, by session and id, with whether it was Learn's: an update of a seen call is not judged again. */
   const judged = new Map<string, boolean>();
+  const callKey = (sessionId: string, toolCallId: string) => `${sessionId}\u0000${toolCallId}`;
   /** Sessions cancelled since their last prompt: a permission request in them is answered cancelled. */
   const cancelled = new Set<string>();
   const unanswered = new Set<{ sessionId: string; answer: (r: PermissionResult) => void }>();
@@ -80,8 +84,12 @@ export function createAcpClient(peer: JsonRpcPeer, o: {
   const lockdown = (sessionId: string) => {
     if (lockedDown) return;
     lockedDown = true;
-    client.cancel(sessionId);
-    o.onLockdown();
+    // The agent is killed from onLockdown, so a cancel that cannot be written must not keep it from being called.
+    try {
+      client.cancel(sessionId);
+    } finally {
+      o.onLockdown();
+    }
   };
 
   const isLearn = (call: ToolCallInfo) => {
@@ -97,13 +105,14 @@ export function createAcpClient(peer: JsonRpcPeer, o: {
     const call: ToolCallInfo = {
       toolCallId: u.toolCallId, title: u.title ?? null, kind: u.kind ?? null, toolName: u._meta?.claudeCode?.toolName ?? null, rawInput: u.rawInput ?? null,
     };
-    const seen = judged.get(call.toolCallId);
+    const key = callKey(sessionId, call.toolCallId);
+    const seen = judged.get(key);
     if (u.sessionUpdate === 'tool_call_update' && seen !== undefined) return { kind: 'tool', call, learn: seen };
     // An update of a call never announced carries no title Learn can trust: its tool name alone decides.
     const learn = u.sessionUpdate === 'tool_call'
       ? isLearn(call)
       : call.toolName !== null && isLearn({ toolCallId: call.toolCallId, title: null, kind: null, toolName: call.toolName, rawInput: null });
-    judged.set(call.toolCallId, learn);
+    judged.set(key, learn);
     if (!learn) lockdown(sessionId);
     return { kind: 'tool', call, learn };
   };
@@ -132,13 +141,13 @@ export function createAcpClient(peer: JsonRpcPeer, o: {
   const onPermission = (params: unknown): Promise<PermissionResult> => {
     const req = read(acpIn.permissionRequest, params);
     tutorLog('permission-refused');
-    if (cancelled.has(req.sessionId)) return Promise.resolve(CANCELLED);
+    if (cancelled.has(req.sessionId)) return Promise.resolve(cancelledAnswer());
     // Decided when answered, not when received, so a cancel that comes first turns it into cancelled.
     return new Promise((resolve) => {
       const entry = { sessionId: req.sessionId, answer: resolve };
       unanswered.add(entry);
       queueMicrotask(() => {
-        if (unanswered.delete(entry)) resolve(acpOut.permissionResult.parse(permissionAnswer(req.options)));
+        if (unanswered.delete(entry)) resolve(refusal(req.options));
       });
     });
   };
@@ -213,11 +222,12 @@ export function createAcpClient(peer: JsonRpcPeer, o: {
 
     async resumeSession(how, p) {
       const params = acpOut.resumeParams.parse({ sessionId: p.sessionId, ...sessionSetup(p) });
-      replaying.add(p.sessionId);
+      const load = how === 'load';
+      if (load) replaying.add(p.sessionId);
       try {
-        await peer.request(how === 'resume' ? 'session/resume' : 'session/load', params, { timeoutMs: TUTOR_TIMEOUTS.sessionMs });
+        await peer.request(load ? 'session/load' : 'session/resume', params, { timeoutMs: TUTOR_TIMEOUTS.sessionMs });
       } finally {
-        replaying.delete(p.sessionId);
+        if (load) replaying.delete(p.sessionId);
       }
     },
 
@@ -254,7 +264,7 @@ export function createAcpClient(peer: JsonRpcPeer, o: {
       for (const u of [...unanswered]) {
         if (u.sessionId !== sessionId) continue;
         unanswered.delete(u);
-        u.answer(CANCELLED);
+        u.answer(cancelledAnswer());
       }
     },
 

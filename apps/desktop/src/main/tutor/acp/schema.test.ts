@@ -136,7 +136,8 @@ describe('acpOut: what Learn sends is strict', () => {
   it('builds each message Learn sends', () => {
     const system = { mode: 'append', content: [text('You are the study tutor')] };
     expect(acpOut.initializeParams.parse(init)).toEqual(init);
-    expect(acpOut.newSessionParams.parse({ cwd: '/w/c1', mcpServers: [], systemPrompt: system, _meta: { claudeCode: { options: { tools: [] } } } })).toBeTruthy();
+    const session = { cwd: '/w/c1', mcpServers: [{ type: 'http', name: 'learn' }], systemPrompt: system, _meta: { claudeCode: { options: { tools: [] } } } };
+    expect(acpOut.newSessionParams.parse(session)).toEqual(session);
     expect(acpOut.resumeParams.parse({ sessionId: 's1', cwd: '/w/c1', mcpServers: [] })).toEqual({ sessionId: 's1', cwd: '/w/c1', mcpServers: [] });
     expect(acpOut.setModeParams.parse({ sessionId: 's1', modeId: 'default' })).toEqual({ sessionId: 's1', modeId: 'default' });
     expect(acpOut.promptParams.parse({ sessionId: 's1', prompt: [text('q')] })).toEqual({ sessionId: 's1', prompt: [text('q')] });

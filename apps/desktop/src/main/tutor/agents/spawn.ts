@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import type { Readable, Writable } from 'node:stream';
 import { LearnError } from '@learn/domain';
 import { createLineReader } from '../acp/jsonrpc';
 import { tutorLog } from '../log';
@@ -33,13 +34,22 @@ export function spawnAgent(spec: LaunchSpec): ChildPort {
   child.on('error', (e: NodeJS.ErrnoException) => {
     if (child.pid === undefined) tutorLog('agent-start-failed', { code: e.code ?? 'unknown' });
   });
+  const pid = child.pid;
+  if (pid === undefined) {
+    // EMFILE and ENFILE leave no pipes at all; ENOENT leaves pipes nothing will use.
+    const pipes: Array<Readable | Writable | null> = [child.stdin, child.stdout, child.stderr];
+    for (const pipe of pipes) {
+      if (pipe === null) continue;
+      pipe.on('error', ignore);
+      pipe.destroy();
+    }
+    throw new LearnError('AGENT_START_FAILED', 'The agent could not be started.');
+  }
   child.stdin.on('error', ignore);
   child.stdout.on('error', ignore);
   child.stderr.on('error', ignore);
   // The question's text can be in it: drained so the agent never blocks on it, and never read.
   child.stderr.resume();
-  const pid = child.pid;
-  if (pid === undefined) throw new LearnError('AGENT_START_FAILED', 'The agent could not be started.');
 
   let exit: { code: number | null; signal: NodeJS.Signals | null } | null = null;
   const exitFns: Array<(e: { code: number | null; signal: NodeJS.Signals | null }) => void> = [];

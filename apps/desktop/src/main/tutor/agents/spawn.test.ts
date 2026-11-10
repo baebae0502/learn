@@ -1,9 +1,16 @@
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { spawnAgent, type ChildPort } from './spawn';
+
+// The real spawn, unless a test replaces one call (a start that got no pid and no stdio).
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return { ...actual, spawn: vi.fn(actual.spawn) };
+});
 
 // Small Node scripts run with this Node: never a real agent.
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-spawn-'));
@@ -41,6 +48,10 @@ process.stdin.on('data', (chunk) => {
   }
 });
 process.stdin.on('end', () => process.exit(buffered === '' ? 0 : 3));
+`);
+// More than one line may hold, and no newline.
+const OVERFLOW = script('overflow.cjs', `
+process.stdout.write('x'.repeat(9 * 1024 * 1024));
 `);
 const CLOSED_STDIN = script('closed-stdin.cjs', `
 require('node:fs').closeSync(0);
@@ -187,5 +198,27 @@ describe('spawnAgent', () => {
     expect(error).toMatchObject({ code: 'AGENT_START_FAILED' });
     await vi.waitFor(() => expect(info).toHaveBeenCalledWith('[tutor] agent-start-failed code=ENOENT'));
     expect(info.mock.calls).toEqual([['[tutor] agent-start-failed code=ENOENT']]);
+  });
+
+  it('a start that got no pid and no stdio (EMFILE) is AGENT_START_FAILED, not a crash on the missing pipes', async () => {
+    const failed = Object.assign(new EventEmitter(), { pid: undefined, stdin: null, stdout: null, stderr: null });
+    vi.mocked(spawn).mockImplementationOnce((() => {
+      process.nextTick(() => failed.emit('error', Object.assign(new Error('spawn EMFILE'), { code: 'EMFILE' })));
+      return failed as unknown as ChildProcess;
+    }) as unknown as typeof spawn);
+    let error: unknown = null;
+    try {
+      spawnAgent({ command: process.execPath, args: [ARGS], env: {}, cwd: dir });
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toMatchObject({ code: 'AGENT_START_FAILED' });
+    await vi.waitFor(() => expect(info).toHaveBeenCalledWith('[tutor] agent-start-failed code=EMFILE'));
+  });
+
+  it('a line longer than the limit reaches onOverflow', async () => {
+    const { lines, exit } = start(OVERFLOW);
+    await expect(exit).resolves.toEqual({ code: 0, signal: null });
+    await vi.waitFor(() => expect(lines).toEqual(['<overflow>']));
   });
 });

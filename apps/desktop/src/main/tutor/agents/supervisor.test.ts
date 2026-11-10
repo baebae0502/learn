@@ -289,16 +289,22 @@ describe('one agent process at a time', () => {
     expect(spawned).toHaveLength(2);
   });
 
-  it('a session that is no longer on screen gets no process', async () => {
+  it('a warm for a session that is neither on screen nor reserved is CANCELLED before its spec runs', async () => {
     const { sup, spawned } = harness();
     sup.view(KEY_B);
-    await expect(sup.acquire(KEY_A, 'fake', () => SPEC, async () => ({}))).rejects.toMatchObject({ code: 'AGENT_EXITED' });
+    let specs = 0;
+    const launch = () => {
+      specs += 1;
+      return SPEC;
+    };
+    await expect(sup.acquire(KEY_A, 'fake', launch, async () => ({}))).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(specs).toBe(0);                               // no detection, no login check for a session that gets nothing
     expect(spawned).toHaveLength(0);
     await sup.acquire(KEY_B, 'fake', () => SPEC, async () => ({}));
     expect(spawned).toHaveLength(1);
   });
 
-  it('a process whose session is left while it starts closes at once, and its start fails', async () => {
+  it('a process whose session is left while it starts closes at once, and its start is CANCELLED', async () => {
     const { sup, spawned, timers } = harness();
     sup.view(KEY_A);
     let ready!: () => void;
@@ -308,7 +314,7 @@ describe('one agent process at a time', () => {
     sup.view(KEY_B);
     expect(spawned[0]!.signals).toEqual(['SIGTERM']);
     ready();
-    await expect(live).rejects.toMatchObject({ code: 'AGENT_EXITED' });
+    await expect(live).rejects.toMatchObject({ code: 'CANCELLED' });
     spawned[0]!.exit(null, 'SIGTERM');
     await timers.flush();
     expect(sup.processes().count).toBe(0);
@@ -660,5 +666,170 @@ describe('stopping and closing', () => {
     expect(spawned[0]!.signals).toEqual(['SIGKILL']);
     await timers.flush();
     expect(sup.processes().count).toBe(0);
+  });
+});
+
+describe('review: interleavings around a start', () => {
+  it("a sent question's process is answering before the lane lets a queued login check in: the check waits for that answer", async () => {
+    const { sup, spawned, timers } = harness();
+    sup.view(KEY_A);
+    let releaseStart!: () => void;
+    const ask = sup.acquire(KEY_A, 'fake', () => SPEC, () => new Promise<object>((resolve) => { releaseStart = () => resolve({}); }), { streaming: true });
+    await timers.flush();
+    expect(spawned).toHaveLength(1);
+    const check = sup.probe(SPEC_PROBE, async () => 'ok');
+    await timers.flush();
+    releaseStart();
+    const live = await ask;
+    await timers.flush();
+    expect(live.streaming).toBe(true);
+    expect(spawned[0]!.events).toEqual([]);
+    expect(sup.current()).toBe(live);
+    expect(spawned).toHaveLength(1);
+    sup.streaming(KEY_A, false);                         // the answer ended: now the check closes it and runs
+    await timers.flush();
+    expect(spawned[0]!.events).toEqual(['endInput', 'SIGTERM']);
+    spawned[0]!.exit(null, 'SIGTERM');
+    await expect(check).resolves.toBe('ok');
+    expect(spawned.map((c) => c.spec.args[0])).toEqual([SPEC.args[0], SPEC_PROBE.args[0]]);
+  });
+
+  it('a send never inherits a start that a glance away closed: the session is still wanted, so it starts again once the old group has exited', async () => {
+    const { sup, spawned, timers } = harness();
+    sup.view(KEY_A);
+    let starts = 0;
+    let releaseFirst!: () => void;
+    const start = () => (++starts === 1 ? new Promise<object>((resolve) => { releaseFirst = () => resolve({ n: 1 }); }) : Promise.resolve({ n: starts }));
+    const warm = sup.acquire(KEY_A, 'fake', () => SPEC, start);
+    await timers.flush();
+    sup.view(KEY_B);
+    sup.view(KEY_A);
+    expect(spawned[0]!.signals).toEqual(['SIGTERM']);
+    const ask = sup.acquire(KEY_A, 'fake', () => SPEC, start, { streaming: true });
+    releaseFirst();
+    await timers.advance(1_999);
+    expect(spawned).toHaveLength(1);                     // the old group still runs (this fake ignores SIGTERM)
+    await timers.advance(1);
+    const live = await ask;
+    expect(live.streaming).toBe(true);
+    expect(live.conn).toEqual({ n: 2 });
+    await expect(warm).resolves.toBe(live);
+    expect(spawned).toHaveLength(2);
+    expect(spawned[0]!.signals).toEqual(['SIGTERM', 'SIGKILL']);
+    expect(sup.processes().max).toBe(1);
+  });
+
+  it("another agent waits while this session's answer streams: AGENT_BUSY and nothing touched; after the answer the switch closes the old process first", async () => {
+    const { sup, spawned, timers } = harness();
+    sup.view(KEY_A);
+    const live = await sup.acquire(KEY_A, 'claude', () => SPEC_CLAUDE, async () => ({}), { streaming: true });
+    let specs = 0;
+    const warm = sup.acquire(KEY_A, 'fake', () => {
+      specs += 1;
+      return SPEC_FAKE;
+    }, async () => ({}));
+    let outcome: unknown = 'pending';
+    warm.then((v) => { outcome = v; }, (e: unknown) => { outcome = e; });
+    await timers.flush();
+    expect(outcome).toMatchObject({ code: 'AGENT_BUSY' });
+    expect(specs).toBe(0);
+    expect(live.streaming).toBe(true);
+    expect(spawned[0]!.events).toEqual([]);
+    expect(spawned).toHaveLength(1);
+    sup.streaming(KEY_A, false);
+    const next = sup.acquire(KEY_A, 'fake', () => SPEC_FAKE, async () => ({}));
+    await timers.flush();
+    expect(spawned[0]!.events).toEqual(['endInput', 'SIGTERM']);
+    expect(spawned).toHaveLength(1);
+    spawned[0]!.exit(null, 'SIGTERM');
+    await expect(next).resolves.toMatchObject({ key: KEY_A, agent: 'fake' });
+    expect(spawned.map((c) => c.spec.args[0])).toEqual([SPEC_CLAUDE.args[0], SPEC_FAKE.args[0]]);
+  });
+
+  it("a warm for another agent whose spec was still waiting when this session's send started streaming closes nothing", async () => {
+    const { sup, spawned, timers } = harness();
+    sup.view(KEY_A);
+    let release!: (s: LaunchSpec) => void;
+    const warm = sup.acquire(KEY_A, 'fake', () => new Promise<LaunchSpec>((resolve) => { release = resolve; }), async () => ({}));
+    let outcome: unknown = 'pending';
+    warm.then((v) => { outcome = v; }, (e: unknown) => { outcome = e; });
+    const live = await sup.acquire(KEY_A, 'claude', () => SPEC_CLAUDE, async () => ({}), { streaming: true });
+    release(SPEC_FAKE);
+    await timers.flush();
+    expect(outcome).toMatchObject({ code: 'AGENT_BUSY' });
+    expect(spawned[0]!.events).toEqual([]);
+    expect(live.streaming).toBe(true);
+    expect(spawned).toHaveLength(1);
+  });
+
+  it("a send's reservation goes when the supervisor fails it (start or spec rejected, quitting); the caller's streaming(false) after it is harmless", async () => {
+    const { sup, spawned, timers } = harness();
+    const failedStart = sup.acquire(KEY_A, 'fake', () => SPEC, async () => {
+      throw new LearnError('AGENT_TIMEOUT', 'initialize took too long');
+    }, { streaming: true });
+    expect(sup.busyWith(KEY_B)).toEqual(KEY_A);
+    await expect(failedStart).rejects.toMatchObject({ code: 'AGENT_TIMEOUT' });
+    expect(sup.busyWith(KEY_B)).toBeNull();
+    sup.streaming(KEY_A, false);
+    spawned[0]!.exit(null, 'SIGTERM');
+    await timers.flush();
+    const failedSpec = sup.acquire(KEY_A, 'fake', async () => {
+      throw new LearnError('AGENT_NOT_READY', 'not installed');
+    }, async () => ({}), { streaming: true });
+    expect(sup.busyWith(KEY_B)).toEqual(KEY_A);
+    await expect(failedSpec).rejects.toMatchObject({ code: 'AGENT_NOT_READY' });
+    expect(sup.busyWith(KEY_B)).toBeNull();
+    let release!: (s: LaunchSpec) => void;
+    const waiting = sup.acquire(KEY_A, 'fake', () => new Promise<LaunchSpec>((resolve) => { release = resolve; }), async () => ({}), { streaming: true });
+    expect(sup.busyWith(KEY_B)).toEqual(KEY_A);
+    await sup.shutdown(2_000);
+    release(SPEC);
+    await expect(waiting).rejects.toMatchObject({ code: 'AGENT_EXITED' });
+    expect(sup.busyWith(KEY_B)).toBeNull();
+    sup.streaming(KEY_A, false);
+    expect(spawned).toHaveLength(1);
+  });
+
+  it('a start that never settles is given up when its agent exits, its reservation goes, and the lane moves on', async () => {
+    const { sup, spawned, timers } = harness();
+    const ask = sup.acquire(KEY_A, 'fake', () => SPEC, () => new Promise<object>(() => {}), { streaming: true });
+    let outcome: unknown = 'pending';
+    ask.then((v) => { outcome = v; }, (e: unknown) => { outcome = e; });
+    await timers.flush();
+    expect(spawned).toHaveLength(1);
+    spawned[0]!.exit(1, null);
+    await timers.flush();
+    expect(outcome).toMatchObject({ code: 'AGENT_EXITED' });
+    expect(sup.busyWith(KEY_B)).toBeNull();
+    await expect(sup.probe(SPEC_PROBE, async () => 'ok')).resolves.toBe('ok');
+    expect(spawned).toHaveLength(2);
+  });
+
+  it('a login check whose run never settles is given up when its process exits, and the lane moves on', async () => {
+    const { sup, spawned, timers } = harness();
+    const check = sup.probe(SPEC_PROBE, () => new Promise<string>(() => {}));
+    let outcome: unknown = 'pending';
+    check.then((v) => { outcome = v; }, (e: unknown) => { outcome = e; });
+    await timers.flush();
+    expect(spawned).toHaveLength(1);
+    spawned[0]!.exit(1, null);
+    await timers.flush();
+    expect(outcome).toMatchObject({ code: 'AGENT_EXITED' });
+    await expect(sup.acquire(KEY_A, 'fake', () => SPEC, async () => ({}))).resolves.toMatchObject({ key: KEY_A });
+    expect(spawned).toHaveLength(2);
+  });
+
+  it('streaming(key, true) while another session holds the reservation is AGENT_BUSY', async () => {
+    const { sup } = harness();
+    void sup.acquire(KEY_A, 'fake', () => new Promise<LaunchSpec>(() => {}), async () => ({}), { streaming: true });
+    let error: unknown = null;
+    try {
+      sup.streaming(KEY_B, true);
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toMatchObject({ code: 'AGENT_BUSY' });
+    expect(sup.busyWith(KEY_B)).toEqual(KEY_A);
+    expect(() => sup.streaming(KEY_A, true)).not.toThrow();
   });
 });

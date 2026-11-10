@@ -12,15 +12,21 @@ export interface Supervisor<C = unknown> {
   busyWith(key: SessionKey): SessionKey | null;
   /**
    * The process of (key, agent): the live one if both match; a live one of the same key but another agent is closed and a new
-   * one started, so a question asked after switching agents never reaches the old one. AGENT_BUSY (nothing started) while
-   * another key's answer streams. With { streaming: true } the key is reserved for an answer synchronously, before the returned
-   * promise settles. One start in flight per key, shared by its callers (warm and ask). `spec` may wait (detection runs in the
-   * asynchronous part). `start` must settle: its requests carry their own time limits.
+   * one started, so a question asked after switching agents never reaches the old one. AGENT_BUSY (nothing started or touched)
+   * while another key's answer streams, or while this key's answer streams in another agent. With { streaming: true } the key
+   * is reserved for an answer synchronously, before the returned promise settles, and the process is marked answering before
+   * anything queued behind its start runs; the reservation goes again when the supervisor fails the acquire. Without it, a key
+   * that is neither on screen nor reserved is CANCELLED before `spec` runs. One start in flight per key, shared by its callers
+   * (warm and ask); a start the user's glance away closed starts again while its key is still wanted. `spec` may wait
+   * (detection runs in the asynchronous part). A `start` still pending when its agent exits is given up (AGENT_EXITED).
    */
   acquire(key: SessionKey, agent: AgentId, spec: () => LaunchSpec | Promise<LaunchSpec>, start: (child: ChildPort) => Promise<C>, opts?: { streaming?: boolean }): Promise<LiveAgent<C>>;
   /** A new empty session's process (and the viewed key, and a reservation) gets its conversation once the first question made one. */
   rekey(from: SessionKey, to: SessionKey): void;
-  /** The answer of `key` ended (or never started): the reservation goes, and a process its user left closes now. */
+  /**
+   * The answer of `key` ended (or never started): the reservation goes, and a process its user left closes now. `on` reserves
+   * the key; AGENT_BUSY while another key holds the reservation or streams.
+   */
   streaming(key: SessionKey, on: boolean): void;
   /** Turn activity: the idle clock starts over. */
   touch(): void;
@@ -28,7 +34,7 @@ export interface Supervisor<C = unknown> {
    * The login check: one at a time, never beside a session's process (a live one closes first and its group's exit is awaited);
    * it waits for a streaming *process* to end, never for a bare reservation — the reserving acquire may be waiting for this
    * very check inside its spec. Counted in processes(). Resolves with `run`'s result as soon as `run` settles; the next process
-   * still starts only after the check's group has ended. `run` must settle: its caller bounds it with probeMs.
+   * still starts only after the check's group has ended. A `run` still pending when its process exits is given up (AGENT_EXITED).
    */
   probe<T>(spec: LaunchSpec, run: (child: ChildPort) => Promise<T>): Promise<T>;
   /**
@@ -64,23 +70,33 @@ interface Group {
   pollTimer: unknown;
   readonly done: Promise<void>;
   finish(): void;
+  /** Settles when the leader exits. */
+  readonly leaderExit: Promise<void>;
+  leaderExited(): void;
 }
 interface SessionProc<C> extends Group, LiveAgent<C> {
   readonly kind: 'session';
   key: SessionKey;
   ready: boolean;
+  /** Closed because its session was no longer on screen. */
+  left: boolean;
   /** Who waits for its answer to end (a login check). */
   answerWaiters: Array<() => void>;
 }
 interface ProbeProc extends Group { readonly kind: 'probe' }
 type Proc<C> = SessionProc<C> | ProbeProc;
-interface Start<C> { key: SessionKey; readonly agent: AgentId; promise: Promise<SessionProc<C>> }
+/** streaming: a send created or joined it, so its process is marked answering before the lane moves on. */
+interface Start<C> { key: SessionKey; readonly agent: AgentId; streaming: boolean; promise: Promise<SessionProc<C>> }
+/** agent null: the key is reserved for whichever agent its process runs. */
+interface Reservation { key: SessionKey; readonly agent: AgentId | null }
 
 const sameKey = (a: SessionKey | null | undefined, b: SessionKey | null | undefined): boolean =>
   a != null && b != null && a.itemId === b.itemId && a.conversationId === b.conversationId;
 const copy = (k: SessionKey): SessionKey => ({ itemId: k.itemId, conversationId: k.conversationId });
 const noop = () => {};
-const busy = () => new LearnError('AGENT_BUSY', 'Another session is receiving an answer.');
+const busy = () => new LearnError('AGENT_BUSY', 'Another answer is streaming.');
+const quit = () => new LearnError('AGENT_EXITED', 'Learn is quitting.');
+const unwanted = () => new LearnError('CANCELLED', 'The session is no longer on screen.');
 
 export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; setTimer(fn: () => void, ms: number): unknown; clearTimer(id: unknown): void }): Supervisor<C> {
   const t = { idleMs: TUTOR_LIMITS.idleCloseMs as number, cancelGraceMs: TUTOR_TIMEOUTS.cancelGraceMs as number, termGraceMs: TUTOR_TIMEOUTS.termGraceMs as number };
@@ -88,8 +104,8 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
   const groups = new Set<Proc<C>>();
   /** The newest session process, from its spawn until its group has ended. */
   let session: SessionProc<C> | null = null;
-  /** The key reserved for an answer, from the send until its answer ends. */
-  let answerKey: SessionKey | null = null;
+  /** From the send until its answer ends (or the supervisor fails the send). */
+  let answer: Reservation | null = null;
   /** undefined until the renderer first says which session is on screen. */
   let viewed: SessionKey | null | undefined;
   let idleTimer: unknown = null;
@@ -100,7 +116,24 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
   const starts = new Set<Start<C>>();
   const exitFns: Array<(key: SessionKey | 'probe', e: { code: number | null; signal: string | null }) => void> = [];
 
-  const held = (p: SessionProc<C>) => p.streaming || sameKey(answerKey, p.key);
+  const reservedFor = (key: SessionKey, agent: AgentId) =>
+    answer !== null && sameKey(answer.key, key) && (answer.agent === null || answer.agent === agent);
+  const held = (p: SessionProc<C>) => p.streaming || reservedFor(p.key, p.agent);
+  /** Its key is on screen (or the renderer never said), or reserved for this agent. */
+  const wanted = (key: SessionKey, agent: AgentId) => viewed === undefined || sameKey(viewed, key) || reservedFor(key, agent);
+
+  const busyWith = (key: SessionKey): SessionKey | null => {
+    if (answer !== null && !sameKey(answer.key, key)) return copy(answer.key);
+    const p = session;
+    if (p && p.streaming && !sameKey(p.key, key)) return copy(p.key);
+    return null;
+  };
+  /** This key's answer belongs to another agent: switching now would close the process it streams on. */
+  const otherAgentAnswers = (key: SessionKey, agent: AgentId): boolean => {
+    if (answer !== null && sameKey(answer.key, key) && answer.agent !== null && answer.agent !== agent) return true;
+    const p = session;
+    return p !== null && sameKey(p.key, key) && p.agent !== agent && p.streaming;
+  };
 
   const stopIdle = () => {
     if (idleTimer !== null) d.clearTimer(idleTimer);
@@ -114,6 +147,10 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
       idleTimer = null;
       if (session === p && !p.closing && !held(p)) void close(p);
     }, t.idleMs);
+  };
+  const markAnswering = (p: SessionProc<C>) => {
+    p.streaming = true;
+    if (p === session) stopIdle();
   };
 
   const flushAnswerWaiters = (p: SessionProc<C>) => {
@@ -170,8 +207,9 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
     return terminate(g);
   };
 
-  const onChildExit = (g: Proc<C>, e: { code: number | null; signal: NodeJS.Signals | null }) => {
+  const onLeaderExit = (g: Proc<C>, e: { code: number | null; signal: NodeJS.Signals | null }) => {
     const key = g.kind === 'probe' ? 'probe' : copy(g.key);
+    g.leaderExited();
     // An agent that ended by itself leaves its CLI orphaned in the group: it is ended with it.
     if (!g.closing) {
       beginClose(g);
@@ -188,15 +226,25 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
     const done = new Promise<void>((resolve) => {
       finish = resolve;
     });
-    const base = { child, closing: false, termSent: false, killSent: false, gone: false, killTimer: null, pollTimer: null, done, finish };
+    let leaderExited = noop;
+    const leaderExit = new Promise<void>((resolve) => {
+      leaderExited = resolve;
+    });
+    const base = { child, closing: false, termSent: false, killSent: false, gone: false, killTimer: null, pollTimer: null, done, finish, leaderExit, leaderExited };
     const g: Proc<C> = kind === 'probe'
       ? { ...base, kind }
-      : { ...base, kind, key: key!, agent: agent!, conn: undefined as C, streaming: false, ready: false, answerWaiters: [] };
+      : { ...base, kind, key: key!, agent: agent!, conn: undefined as C, streaming: false, ready: false, left: false, answerWaiters: [] };
     groups.add(g);
     max = Math.max(max, groups.size);
-    child.onExit((e) => onChildExit(g, e));
+    child.onExit((e) => onLeaderExit(g, e));
     return g;
   }
+
+  /** A start or a login check whose agent has exited will not answer: it must not hold the lane until its own time limits. */
+  const untilLeaderExit = <T>(work: Promise<T>, g: Proc<C>): Promise<T> => new Promise<T>((resolve, reject) => {
+    work.then(resolve, reject);
+    void g.leaderExit.then(() => reject(new LearnError('AGENT_EXITED', 'The agent exited before it answered.')));
+  });
 
   const inLane = <T>(fn: () => Promise<T>): Promise<T> => {
     const run = lane.then(fn);
@@ -204,14 +252,6 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
     return run;
   };
   const firstGroup = (): Proc<C> | undefined => groups.values().next().value;
-  const quit = () => new LearnError('AGENT_EXITED', 'Learn is quitting.');
-
-  const busyWith = (key: SessionKey): SessionKey | null => {
-    if (answerKey !== null && !sameKey(answerKey, key)) return copy(answerKey);
-    const p = session;
-    if (p && p.streaming && !sameKey(p.key, key)) return copy(p.key);
-    return null;
-  };
   const reusable = (key: SessionKey, agent: AgentId): SessionProc<C> | null => {
     const p = session;
     return p && p.ready && !p.closing && sameKey(p.key, key) && p.agent === agent ? p : null;
@@ -219,30 +259,48 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
 
   /** In the lane: the one process before it (closing or not) ends its group first, so two groups never overlap. */
   const startIn = async (s: Start<C>, launch: LaunchSpec, start: (child: ChildPort) => Promise<C>): Promise<SessionProc<C>> => {
-    for (;;) {
-      const live = reusable(s.key, s.agent);
-      if (live) return live;
-      if (busyWith(s.key)) throw busy();
-      if (quitting) throw quit();
-      if (viewed !== undefined && !sameKey(viewed, s.key) && !sameKey(answerKey, s.key)) {
-        throw new LearnError('AGENT_EXITED', 'The session is no longer on screen.');
-      }
-      const g = firstGroup();
-      if (!g) break;
-      await close(g);
-    }
-    const p = track(d.spawn(launch), 'session', s.key, s.agent);
-    session = p;
     try {
-      p.conn = await start(p.child);
-    } catch (e) {
-      void close(p);
-      throw e;
+      for (;;) {
+        const live = reusable(s.key, s.agent);
+        if (live) {
+          if (s.streaming && reservedFor(live.key, live.agent)) markAnswering(live);
+          return live;
+        }
+        if (busyWith(s.key) || otherAgentAnswers(s.key, s.agent)) throw busy();
+        if (quitting) throw quit();
+        if (!wanted(s.key, s.agent)) throw unwanted();
+        const g = firstGroup();
+        if (g) {
+          await close(g);
+          continue;
+        }
+        const p = track(d.spawn(launch), 'session', s.key, s.agent);
+        session = p;
+        let ok = false;
+        let failure: unknown = null;
+        try {
+          p.conn = await untilLeaderExit(start(p.child), p);
+          ok = true;
+        } catch (e) {
+          failure = e;
+        }
+        if (ok && !p.closing) {
+          p.ready = true;
+          // Before the lane moves on: a login check queued behind this start must see an answering process, not an idle one.
+          if (s.streaming && reservedFor(p.key, p.agent)) markAnswering(p);
+          startIdle();
+          return p;
+        }
+        // The user looked away and back while it started: a send must not inherit a closed process.
+        if (p.left && !quitting && wanted(s.key, s.agent)) continue;
+        void close(p);
+        if (quitting) throw quit();
+        if (p.left) throw unwanted();
+        throw ok ? new LearnError('AGENT_EXITED', 'The agent was closed while it started.') : failure;
+      }
+    } finally {
+      starts.delete(s);
     }
-    if (p.closing) throw new LearnError('AGENT_EXITED', 'The agent was closed while it started.');
-    p.ready = true;
-    startIdle();
-    return p;
   };
 
   const closeSession = (): Promise<void> => {
@@ -255,7 +313,10 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
       viewed = key === null ? null : copy(key);
       const p = session;
       if (!p || p.closing || sameKey(p.key, key)) return;
-      if (!held(p)) void close(p);
+      if (!held(p)) {
+        p.left = true;
+        void close(p);
+      }
     },
 
     current() {
@@ -266,22 +327,29 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
     busyWith,
 
     acquire(key, agent, spec, start, opts = {}) {
-      if (busyWith(key)) return Promise.reject(busy());
-      if (quitting) return Promise.reject(quit());
       const streaming = opts.streaming === true;
-      if (streaming) answerKey = copy(key);
-      const mark = (p: SessionProc<C>): LiveAgent<C> => {
-        if (streaming && !p.gone && sameKey(answerKey, p.key)) {
-          p.streaming = true;
-          if (p === session) stopIdle();
-        }
-        return p;
+      if (busyWith(key) || otherAgentAnswers(key, agent)) return Promise.reject(busy());
+      if (quitting) return Promise.reject(quit());
+      if (!streaming && !wanted(key, agent)) return Promise.reject(unwanted());
+      const mine: Reservation | null = streaming ? { key: copy(key), agent } : null;
+      if (mine) answer = mine;
+      const release = (e: unknown): never => {
+        if (mine !== null && answer === mine) answer = null;
+        throw e;
       };
       const live = reusable(key, agent);
-      if (live) return Promise.resolve(mark(live));
-      for (const s of starts) if (sameKey(s.key, key) && s.agent === agent) return s.promise.then(mark);
+      if (live) {
+        if (streaming) markAnswering(live);
+        return Promise.resolve(live);
+      }
+      for (const s of starts) {
+        if (sameKey(s.key, key) && s.agent === agent) {
+          if (streaming) s.streaming = true;
+          return s.promise.catch(release);
+        }
+      }
       // Registered before its body runs: a spec that throws at once still removes it.
-      const s = { key: copy(key), agent } as Start<C>;
+      const s = { key: copy(key), agent, streaming } as Start<C>;
       starts.add(s);
       s.promise = (async () => {
         try {
@@ -291,12 +359,12 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
           starts.delete(s);
         }
       })();
-      return s.promise.then(mark);
+      return s.promise.catch(release);
     },
 
     rekey(from, to) {
       if (session && sameKey(session.key, from)) session.key = copy(to);
-      if (sameKey(answerKey, from)) answerKey = copy(to);
+      if (answer !== null && sameKey(answer.key, from)) answer.key = copy(to);
       if (viewed && sameKey(viewed, from)) viewed = copy(to);
       for (const s of starts) if (sameKey(s.key, from)) s.key = copy(to);
     },
@@ -304,14 +372,12 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
     streaming(key, on) {
       const p = session && sameKey(session.key, key) ? session : null;
       if (on) {
-        answerKey = copy(key);
-        if (p && p.ready && !p.closing) {
-          p.streaming = true;
-          stopIdle();
-        }
+        if (busyWith(key)) throw busy();
+        if (answer === null || !sameKey(answer.key, key)) answer = { key: copy(key), agent: p ? p.agent : null };
+        if (p && p.ready && !p.closing) markAnswering(p);
         return;
       }
-      if (sameKey(answerKey, key)) answerKey = null;
+      if (answer !== null && sameKey(answer.key, key)) answer = null;
       if (!p) return;
       p.streaming = false;
       flushAnswerWaiters(p);
@@ -343,7 +409,7 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
             return reject(e);
           }
           try {
-            resolve(await run(g.child));
+            resolve(await untilLeaderExit(run(g.child), g));
           } catch (e) {
             reject(e);
           }

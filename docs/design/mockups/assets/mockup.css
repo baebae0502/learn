@@ -4458,3 +4458,94 @@ h2,
   text-align: center;
   text-wrap: balance;
 }
+
+/* ── T1a additions (tutor mockup update, spec 14 ①–⑬) ─────────────────────── */
+/* Sent-scope line: "선택 N · 자료 1" — the dot between the two groups. */
+.tu-scope .dot {
+  color: var(--text-tertiary);
+}
+/* A question waiting for another session's answer: its text stays in the composer, dimmed (it cannot be sent yet). */
+.tu-composer .input.is-readonly {
+  color: var(--text-secondary);
+}
+/* One line above the conversation: Learn's own notice (a PDF without readable text) — not the agent's words. */
+.tu-line {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-6);
+  padding: var(--space-8) var(--space-16);
+  border-bottom: 1px solid var(--separator);
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.tu-line .icon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--text-tertiary);
+}
+.tu-line .l-text {
+  min-width: 0;
+  text-wrap: pretty;
+}
+/* Above the composer while another session's answer is still coming: spinner, the line, and 보내지 않기. */
+.tu-wait {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  margin: 0 var(--space-16) var(--space-8);
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.tu-wait .w-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* "최신으로": a zero-height row between the conversation and the composer, the button centred on it and lifted 8 px above the composer. */
+.tu-latest-row {
+  flex: none;
+  position: relative;
+  z-index: 2;
+  height: 0;
+  display: flex;
+  justify-content: center;
+}
+.tu-latest {
+  position: absolute;
+  bottom: var(--space-8);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-e1);
+}
+.tu-latest-row.static {
+  position: static;
+  height: auto;
+  justify-content: flex-start;
+}
+.tu-latest-row.static .tu-latest {
+  position: static;
+}
+.tu-stopped {
+  padding: 0 var(--space-4);
+}
+/* The login command inside a failure notice: code that wraps (a long command), copy at its end. */
+.tu-notice .nt-cmd {
+  align-items: flex-start;
+}
+.tu-notice .nt-cmd .tu-cmd {
+  display: block;
+  flex: 0 1 auto;
+  height: auto;
+  min-height: 20px;
+  padding: 2px var(--space-8);
+  white-space: normal;
+  overflow-wrap: break-word; /* breaks at spaces, not inside a word (<wbr> from cmdHtml) */
+}
+/* A tooltip with a second line (the attached passage across pages). */
+.tooltip.multi {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  height: auto;
+  padding: var(--space-4) var(--space-8);
+}

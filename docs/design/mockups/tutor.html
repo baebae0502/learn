@@ -1,6 +1,7 @@
 <!doctype html>
 <!--
-  Learn 목업 · 튜터 (T1). Spec: docs/superpowers/specs/2026-10-26-tutor-mockup-design.md
+  Learn 목업 · 튜터 (T1a). Spec: docs/superpowers/specs/2026-10-26-tutor-mockup-design.md; updated for T1a (docs/superpowers/specs/2026-11-10-t1a-tutor-design.md §14 ①–⑬):
+  one real agent (Claude Code; Codex is out of T1a), the consent card's facts, the chooser's five states, failures, 최신으로, the reground turn, the session segment.
   Shared: ?theme=light|dark  ?ms=1 (milestone badges)  ?layout=B (owner's layout; A is not drawn)
   ?state=1…10  (spec §2; default 5)
      1 모드 전환   2 첫 사용 동의   3 에이전트 고르기   4 빈 세션   5 대화(스트리밍)
@@ -13,15 +14,32 @@
      ?sessions=sidebar|panel       session list (state 9): left sidebar (default: decided) or a list button in the tutor head
   Sub-states:
      ?mode=tutor|info              state 1: 정보 mode under the same head (reader 320 wide; with &view=library the library)
-     ?consent=card&later=1         state 2: the card after 나중에 (tutor off)
-     ?agents=list|none|searching|blocked   state 3: detected list · none installed · searching · none ready
-     ?fail=offline|agent|login     state 8 (default offline)
+     ?consent=card&later=1         state 2: the card after 나중에 (tutor off). One company (Anthropic), one agent (Claude Code), usage,
+                                   tools off (files · shell · web), the "Learn 전용 설정" fact (separate login, records in that folder)
+     ?agents=list|none|searching|blocked   state 3: Claude Code ready · not installed (the install command, no link) · searching · signed out
+     ?agents=…&states=all          state 3: the chooser's row in all five states on one screen (a critique sheet): 준비됨 · 연결 도구 필요 ·
+                                   로그인 필요 · 지원하지 않는 버전 · 설치 안 됨, with their commands (copy) and the dev group left out
+     ?fail=offline|login|agent|notready|start|exited|lockdown|interrupted|busy|stopped   state 8 (default offline). Before an answer: the question
+                                   returns to the composer and the notice stands between turns (offline · login · notready · start · exited);
+                                   during an answer: the partial answer stays (agent: + 다시 보내기 · lockdown: no resend · interrupted: Learn quit ·
+                                   stopped: the user's own stop, "중지함"); busy: another session is answering, the waiting line above the composer
      ?sessions=…&empty=1           state 9: no sessions for this item; &sheet=delete: the delete sheet
-     ?fold=collapsed|open|960      state 10: window 1040 folded · 1040 opened (sidebar folds) · 960 opened
-     ?menu=agent                   the composer's agent menu (opens above the button)
-     ?view=reader|library          library = the one library-view sheet (tutor mode beside the item table)
-     ?backend=agent|fake           fake = the fake backend's marker (dev and demo builds only)
+     ?menu=session                 state 9: the session row's native context menu (이름 바꾸기 · 세션 삭제 ⌘⌫); the reader's left segment is
+                                   [썸네일 · 목차 · 세션] (no 필기 in T1a)
+     ?fold=collapsed|shrunk|open|960   state 10 (T1a numbers: the slot shrinks below 1060, folds below 1000): window 980 folded · 1040 with the
+                                   tutor at 360 · 980 opened (sidebar folds) · 960 opened
+     ?menu=agent                   the composer's agent menu (opens above the button): Claude Code ✓ · (dev) 가짜 에이전트 · — · 에이전트 고르기…
+     ?view=reader|library          library = the one library-view sheet (tutor mode beside the item table). NOT T1a (J1): T1a draws the tutor
+                                   in the PDF reader only; the sheet stays as the alternative and its ?ms=1 marks read "J1" (the sessions
+                                   group in its sidebar is T1a's)
+     ?backend=agent|fake           fake = the fake agent's marker "가짜 에이전트" (strip · composer button · chooser row; dev and demo builds only)
      ?scroll=top                   a conversation from its top (to compare ?msg= on the same content)
+     &scrolled=1                   state 5: scrolled up while the answer streams — the "최신으로" (↓) button above the composer, centred
+     &reground=1                   state 6: after "원문 근거로 다시 묻기" — the request turn "57쪽을 먼저 읽고 다시 답해 주세요." and the answer
+                                   with its verified chip
+     &text=empty|locked            state 4: the notice line for a PDF whose text the tutor cannot read (also failed|large)
+     &attach=multipage             state 4: the attached chip's tooltip adds "여러 쪽에 걸친 선택은 첫 쪽의 글만 붙습니다."
+     The sent-scope line reads "선택 N · 자료 1" (send · book-open); its open list: 보낸 것 · 읽게 열어 둔 것 · 읽은 쪽 · 에이전트 (state 5)
 -->
 <html lang="ko">
   <head>

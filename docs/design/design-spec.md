@@ -536,7 +536,7 @@
 ### 10.8 컴포넌트·토큰 보드 — `components.html?part=1|2|3|4|5`
 상태 완비 확인용(구현 화면 아님, 마일스톤 없음). 1부 버튼·입력·메뉴·목록 행(키보드 커서 포함)·칩·토스트, 2부 토큰, 3부 탭·실행기·세그먼트·선택 컨트롤·칩·스크러버·썸네일 상태, 4부 튜터(인용 칩(패널 면과 말풍선 안)·도구 칩·보낸 범위 줄·제안 카드·입력창), 5부 튜터 목록(라디오·에이전트 행·세션 행·에이전트 메뉴·에이전트 단추) — 튜터 목업. M3에서 컴포넌트 단위 시각 테스트의 기준.
 
-### 10.9 튜터 — `tutor.html` (튜터 목업, 소유자 결정 2026-10-27 (1·2·4·5·6; 3 잠정) — `?state=1…10`, 결정 변형과 쿼리는 파일 머리 주석과 `mockups/tutor-decisions.md`)
+### 10.9 튜터 — `tutor.html` (튜터 목업, 소유자 결정 2026-10-27 (1·2·4·5·6; 3 잠정) — `?state=1…10`, 결정 변형과 쿼리는 파일 머리 주석과 `mockups/tutor-decisions.md`; T1a 갱신(승인 전, 에이전트 Claude Code 하나): `?state=3&agents=list|blocked|searching|none`(+`&states=all` 다섯 상태 한 화면), `?state=8&fail=offline|login|agent|notready|start|exited|lockdown|interrupted|busy|stopped`, `?state=5&scrolled=1`, `?state=6&reground=1`, `?state=4&text=empty|locked`(+`failed|large`), `?state=4&attach=multipage`, `?state=9&menu=session`, `?state=10&fold=collapsed|shrunk|open|960`(T1a 숫자 1060·1000·960), `?backend=fake`, `?view=library`는 T1a 아님(J1))
 | 요소 | 마일스톤 |
 |---|---|
 | 인스펙터 모드 전환 [정보 \| 튜터], 오른쪽 패널 보기·가리기, 새 세션, 첫 사용 동의(패널 카드 또는 시트)·튜터 꺼짐, 에이전트 고르기(상태 — 준비됨·연결 도구 필요·로그인 필요·지원하지 않는 버전·설치 안 됨, 연결 도구 설치 명령 복사, 다시 확인, 다시 찾기, 시작, 에이전트 없음과 설치 안내 보기(기본 브라우저), 찾는 중), 가짜 백엔드 표시(개발·데모 빌드), 빈 세션 | T1 |

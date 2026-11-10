@@ -114,7 +114,8 @@ window.Mockup = (() => {
       const host = tip.offsetParent.getBoundingClientRect();
       const w = tip.offsetWidth;
       const left = Math.max(4, Math.min(r.left + r.width / 2 - w / 2 - host.left, host.width - w - 4));
-      tip.style.top = `${Math.round(r.bottom - host.top + 6)}px`;
+      // data-place="above": a target at the window's bottom (the composer's chip) — open 6 px over it instead.
+      tip.style.top = `${Math.round(tip.dataset.place === 'above' ? r.top - host.top - tip.offsetHeight - 6 : r.bottom - host.top + 6)}px`;
       tip.style.left = `${Math.round(left)}px`;
     }
     // M7a selection pop-up: 8 px under the end of the selection (above it when there is no room), centred on that end
@@ -244,7 +245,7 @@ window.Mockup = (() => {
    * User/document text (titles, subtitles, PDF pages) is out of scope.
    */
   const COPY = '.pe-text, .pe-title, .d-text, .ci-text, .ci-title, .notice p, .notice h2, .empty-state p, .empty-state h1, .hint, .sidebar-empty-hint, .dm-text, .t-body, .codec-notice p, .files, ' +
-    '.tu-text, .tu-notice .nt, .tu-notice .nt-text, .tu-facts .f-title, .tu-facts .f-text, .tu-consent h2, .agent-row .a-text, .tu-banner, .sim-note, .tu-scope-list dd, .tu-learn-note, ' +
+    '.tu-text, .tu-notice .nt, .tu-notice .nt-text, .tu-facts .f-title, .tu-facts .f-text, .tu-consent h2, .agent-row .a-text, .tu-banner, .sim-note, .tu-scope-list dd, .tu-learn-note, .tu-line .l-text, .tu-wait .w-text, ' +
     // M6
     '.trash-note, .ec-head, .restore-issues, ' +
     // M7a

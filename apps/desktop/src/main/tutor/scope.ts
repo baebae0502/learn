@@ -59,6 +59,9 @@ export function createScopeRegistry(): ScopeRegistry {
       return hit;
     },
     close(token) {
+      const scope = scopes.get(token);
+      // A tool call still running for this session finds its question over and keeps nothing.
+      if (scope) scope.activeTurn = null;
       scopes.delete(token);
     },
     size: () => scopes.size,

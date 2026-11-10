@@ -5,7 +5,7 @@ import {
 import { z } from 'zod';
 import { mainStrings } from '../strings';
 import { wrapMaterial } from './boundary';
-import { guardToolArgs, type AcpScope, type ActiveTurn } from './scope';
+import { guardPromptSelection, guardToolArgs, type AcpScope, type ActiveTurn } from './scope';
 
 const page = z.number().int().min(1).max(100_000);
 const item = z.uuid().optional();
@@ -257,8 +257,10 @@ function readPages(scope: AcpScope, turn: ActiveTurn, args: ReadArgs, deps: Tool
 }
 
 /**
- * One tool call of an ACP session. `onStart` is called once when a call with a question to answer starts (the asked
- * range for read_pdf_pages); the result is kept only if that question is still the scope's when it is ready.
+ * One tool call of an ACP session; the result is kept only if the call's question is still the scope's when it is ready.
+ * `onStart` is called once for every call that has a question to answer — refused and bad-argument calls included —
+ * with the asked range for read_pdf_pages (null otherwise). Its chip's outcome is a placeholder, not yet known:
+ * consumers tell a running chip by the event's `running` flag, never by the outcome.
  */
 export async function callTool(
   scope: AcpScope, name: string, rawArgs: unknown, deps: ToolDeps, onStart?: (chip: ToolChip) => void,
@@ -285,12 +287,17 @@ export async function callTool(
     return { isError: b.isError, text: b.text, envelope: b.envelope, read: { tool, ...b.row, ms: Math.max(0, Math.round(deps.now() - started)) } };
   };
 
+  const outside = (): Built => failed(SAY.outside, row('refused', null, 'OUT_OF_SCOPE'));
   if (args === null) return finish(failed(SAY.badArgs, row('failed', null, 'BAD_ARGS')));
-  if (!verdict.ok) return finish(failed(SAY.outside, row('refused', null, 'OUT_OF_SCOPE')));
-  if (tool === 'get_context') return finish(getContext(scope, turn));
+  if (!verdict.ok) return finish(outside());
+  if (tool === 'get_context') return finish(guardPromptSelection(scope, turn.selection).ok ? getContext(scope, turn) : outside());
   if (tool === 'get_outline') return finish(getOutline(scope));
 
   const read = args as ReadArgs;
+  // A used-up budget cannot return a new page: refused before the scheduler is asked or anything is waited for.
+  if (turn.pagesReturned >= TUTOR_LIMITS.pagesPerTurn && !scope.returnedPages.has(read.from - 1)) {
+    return finish(failed(SAY.budget, row('refused', scope.revisionId, 'PAGE_BUDGET')));
+  }
   const state = await awaitText(scope, read.from - 1, deps, current);
   const still = scope.activeTurn;
   if (still === null || !current()) return ended();

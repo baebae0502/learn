@@ -46,6 +46,15 @@ describe('the scope registry', () => {
     expect(reg.size()).toBe(1);
     expect(reg.find(b.token)).toBe(b);
   });
+
+  it('closing a scope ends its turn, so a tool call still running finds no question to keep its result for', () => {
+    const reg = createScopeRegistry();
+    const s = reg.open(INIT);
+    s.activeTurn = { tutorMessageId: MSG, selection: null, pagesReturned: 3 };
+    reg.close(s.token);
+    expect(s.activeTurn).toBeNull();
+    expect(reg.find(s.token)).toBeNull();
+  });
 });
 
 describe('the guard', () => {

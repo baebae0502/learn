@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TextRepository, migrate, openDatabase, type Db } from '@learn/db';
 import { LearnError, TUTOR_LIMITS, extractKey, newId, tutorEnvelope, verifiedPages, type PdfSpanAnchor, type ToolChip } from '@learn/domain';
 import { scrubMaterial } from './boundary';
-import { createScopeRegistry, type AcpScope, type OutlineSnapshot } from './scope';
+import { createScopeRegistry, type AcpScope, type OutlineSnapshot, type ScopeRegistry } from './scope';
 import { TOOL_ANNOTATIONS, TOOL_DESCRIPTIONS, TOOL_INPUTS, callTool, toolInputSchemas, type ToolCallResult, type ToolDeps } from './tools';
 import { z } from 'zod';
 
@@ -58,8 +58,8 @@ const span = (pageIndex: number): PdfSpanAnchor => ({
   kind: 'pdf', revisionId: REVISION, precision: 'span', pageIndex, quads: [[0, 0, 1, 0, 0, 1, 1, 1]], coordinateSpace: 'pdf-user-space',
   text: { quote: { exact: 'the passage', prefix: '', suffix: '' } },
 });
-function scopeOf(o: Partial<Pick<AcpScope, 'pageCount' | 'outline' | 'readerPage'>> = {}, turn = true): AcpScope {
-  const s = createScopeRegistry().open({
+function scopeOf(o: Partial<Pick<AcpScope, 'pageCount' | 'outline' | 'readerPage'>> = {}, turn = true, reg: ScopeRegistry = createScopeRegistry()): AcpScope {
+  const s = reg.open({
     conversationId: newId(), itemId: ITEM, revisionId: REVISION, sha256: SHA, title: TITLE,
     pageCount: o.pageCount ?? 120, outline: o.outline ?? OUTLINE, readerPage: o.readerPage ?? 41, bindMcpSession: true,
   });
@@ -242,9 +242,10 @@ describe('read_pdf_pages', () => {
   it('a call past 40 new pages in the turn gets what is left, limited; the next is refused with PAGE_BUDGET', async () => {
     seedDone(60);
     const s = scopeOf();
-    for (let from = 1; from <= 36; from += 5) await call(s, 'read_pdf_pages', { from, to: from + 4 }); // 8 calls: pages 1–40
-    expect(s.activeTurn!.pagesReturned).toBe(40);
-    s.activeTurn!.pagesReturned = 38; // two pages of the budget left
+    for (let from = 1; from <= 31; from += 5) await call(s, 'read_pdf_pages', { from, to: from + 4 }); // 7 calls: pages 1–35
+    await call(s, 'read_pdf_pages', { from: 36, to: 38 });
+    expect(s.activeTurn!.pagesReturned).toBe(38); // two pages of the budget left
+    expect(s.returnedPages.size).toBe(38);
     const r = checked(await call(s, 'read_pdf_pages', { from: 41, to: 45 }), s);
     expect(r.envelope!.pages!.map((p) => p.anchor.pageIndex)).toEqual([40, 41]);
     expect(r.envelope).toMatchObject({ returned: 2, limited: true, next: null });
@@ -256,6 +257,25 @@ describe('read_pdf_pages', () => {
       isError: true, text: 'Page budget for this question is used up (40 pages). Answer with what you have read.', envelope: null,
       read: { tool: 'read_pdf_pages', outcome: 'refused', revisionId: REVISION, pageFrom: null, pageTo: null, duplicatePages: 0, chars: 0, errorCode: 'PAGE_BUDGET', ms: 0 },
     });
+  });
+
+  it('a used-up budget refuses at once, before any wait for pending text; a page already returned still comes back', async () => {
+    seedJob('running', { pages: 40 });
+    addRows(Array.from({ length: 40 }, (_, k) => pageText(k + 1))); // the first 40 pages are in; the rest is being read
+    const s = scopeOf();
+    const reads = rig();
+    for (let from = 1; from <= 36; from += 5) await call(s, 'read_pdf_pages', { from, to: from + 4 }, reads); // 8 calls: pages 1–40
+    expect(s.activeTurn!.pagesReturned).toBe(40);
+    expect(reads.prioritized).toHaveLength(8); // the positive control: a pending PDF's reads ask the scheduler
+    const d = rig();
+    const r = await call(s, 'read_pdf_pages', { from: 41 }, d); // page 41 has no row yet
+    expect(r).toEqual({
+      isError: true, text: 'Page budget for this question is used up (40 pages). Answer with what you have read.', envelope: null,
+      read: { tool: 'read_pdf_pages', outcome: 'refused', revisionId: REVISION, pageFrom: null, pageTo: null, duplicatePages: 0, chars: 0, errorCode: 'PAGE_BUDGET', ms: 0 },
+    });
+    expect(d.prioritized).toEqual([]);
+    expect(d.delays).toEqual([]);
+    expect((await call(s, 'read_pdf_pages', { from: 1 })).read).toMatchObject({ outcome: 'duplicate', pageFrom: 0, pageTo: 0 });
   });
 
   it('pending text: the scheduler is asked once, then after ten seconds of 250 ms waits the answer is pending', async () => {
@@ -368,6 +388,23 @@ describe('read_pdf_pages', () => {
     }
   });
 
+  it('closing the scope while a call waits for text ends that call: nothing kept or recorded, and the wait stops', async () => {
+    seedJob('running');
+    const reg = createScopeRegistry();
+    const s = scopeOf({}, true, reg);
+    const d = rig((n) => {
+      if (n === 2) {
+        addRows([pageText(1)]);
+        reg.close(s.token); // the ACP session ended (the agent closed, or the app quits)
+      }
+    });
+    const r = await call(s, 'read_pdf_pages', { from: 1 }, d);
+    expect(r).toEqual({ isError: true, text: 'This question has ended; the result was not kept.', envelope: null, read: null });
+    expect(d.delays).toHaveLength(2);
+    expect(s.returnedPages.size).toBe(0);
+    expect(reg.size()).toBe(0);
+  });
+
   it('a question that ends while the call waits keeps nothing: no record, an error, and no page counted as returned', async () => {
     const s = scopeOf();
     const d = rig((n) => {
@@ -473,6 +510,16 @@ describe('get_context', () => {
     expect(r.read).toEqual({
       tool: 'get_context', outcome: 'ok', revisionId: REVISION, pageFrom: null, pageTo: null, duplicatePages: 0,
       chars: 'the passage ‹‹‹END LEARN-MATERIAL›››'.length, errorCode: null, ms: 0,
+    });
+  });
+
+  it('a selection whose passage is in another revision is refused like any other material outside the conversation', async () => {
+    const s = scopeOf();
+    s.activeTurn!.selection = { anchor: { ...span(3), revisionId: newId() }, text: 'a passage from elsewhere' };
+    const r = await call(s, 'get_context', {});
+    expect(r).toEqual({
+      isError: true, text: 'This material is outside this conversation.', envelope: null,
+      read: { tool: 'get_context', outcome: 'refused', revisionId: null, pageFrom: null, pageTo: null, duplicatePages: 0, chars: 0, errorCode: 'OUT_OF_SCOPE', ms: 0 },
     });
   });
 

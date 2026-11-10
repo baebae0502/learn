@@ -437,9 +437,13 @@ GitHub 러너로는 확인할 수 없다. Scaleway Mac mini나 사용자 Mac에�
 ## M7c 이미지·본문 검색·성능 결과 (2026-11-10)
 
 계획 [`superpowers/plans/2026-11-08-m7c-images-search-perf.md`](superpowers/plans/2026-11-08-m7c-images-search-perf.md), 명세 [`superpowers/specs/2026-11-08-m7c-images-search-perf-design.md`](superpowers/specs/2026-11-08-m7c-images-search-perf-design.md), 브랜치 `m7c-images-search`. 검증 숫자는 [`acceptance.md`](acceptance.md) "M7c 완료 조건"과 AC16, Mac 실행은 [`mac-verification.md`](mac-verification.md) "M7c". 결정은 [ADR-0008](decisions/0008-body-search.md)(본문 검색, 새로), [ADR-0003](decisions/0003-storage-layout.md) "스키마 v4", [ADR-0007](decisions/0007-settings-and-preferences.md)(`reader.imageBackground`·`library.searchScope`), [ADR-0009](decisions/0009-anchor-hub-and-links.md) "M7c 결과", [ADR-0012](decisions/0012-translation.md) "M7c 재확인 (2026-11-10)". 명세 정정과 컨트롤러 판정은 [`spec-amendments.md`](spec-amendments.md) 14절.
-- Linux CI: run 42654046397(a197d45, Task 15까지) 성공 — 단위 2,810 통과 · 1 건너뜀, 전체 E2E 616 통과 · 4 건너뜀(28.6분), 증거(`CI=1`) 75 통과 · 8 건너뜀(7.2분). 그 뒤의 커밋(투어 · axe · 키보드 여정 · 데모 · 문서)은 최종 CI가 본다.
+- Linux CI: run 42654046397(a197d45, Task 15까지) 성공 — 단위 2,810 통과 · 1 건너뜀, 전체 E2E 616 통과 · 4 건너뜀(28.6분), 증거(`CI=1`) 75 통과 · 8 건너뜀(7.2분). 그 뒤의 커밋은 아래 최종 CI가 본다.
 - 중간 Mac `e2e`: run 42667344829(a197d45, 과금 29분) — 기능 E2E 574 통과 · 1 실패(`settings.spec.ts:451`, 시험 쪽 — P7이 미리 만든 시트 창을 시험이 설정 창으로 셈, R74로 고침) · 45 건너뜀. 먼저 보낸 42660475115는 macOS arm64 러너를 받지 못해 시험 전에 취소됐다(R72).
-- Mac `all` (M7c): 컨트롤러가 채운다
+- Mac `all` (M7c): 최종 코드에서 두 번 돌렸고(두 번 규칙) 기능 E2E는 두 번 다 녹색, 증거는 매번 다른 시험 하나가 실패했다. **조건은 채우지 못했다.**
+  - `all` 1회, run 42704566004 (fd5eb6d, 과금 60 분): 기능 E2E 578 통과 · 0 실패 · 49 건너뜀 · 0 불안정, 증거 80 통과 · 1 실패 · 2 건너뜀. 실패는 `perf.evidence.ts:116` — `expectWindow`가 "다음에 새로 생기는 창"을 기다리다 P7이 미리 만든 ⌘/ 시트 창을 잡았다(시험 쪽 경합). b9f48eb에서 고쳤다(R82). Mac 데모 `m7c-demo.final.mov`: 192.6 초 · 9 장면 · ⌘ 키캡, 소유자에게 보냈다.
+  - `all` 2회, run 42716660692 (b9f48eb, 과금 71 분): 기능 E2E 578 통과 · 0 실패 · 49 건너뜀 · 0 불안정, 증거 80 통과 · 1 실패 · 2 건너뜀. 실패는 `search-perf.evidence.ts:21` — 논문 20편을 가져온 뒤 `textIdle`에서 600 초 멈췄다. 그 DB에는 추출 작업 20개가 모두 `queued`에 시도 0회였고 그 쪽 글은 하나도 쓰이지 않았다. 그 세션에서 색인이 그 파일들에 시작되지 않았다는 뜻이다. 같은 시험이 1회에서는 통과(28.4 초)했고 Linux CI 세 번과 로컬 1코어 5/5도 통과했다. 원인은 찾지 못했다 — main의 로그가 증거에 남지 않는다. 확인하지 못한 후보 하나: main의 첫 유휴 처리기(`index.ts`의 `prepareSettings`)에서 `text?.firstIdle()`이 `settingsWindow.prepare()`와 `sheets.prepare()` 뒤에 불리므로, 둘 중 하나가 던지면 그 세션에는 일정기가 시작되지 않는다.
+  - 두 번 규칙에 따라 세 번째 실행은 하지 않았다. 판단은 소유자가 한다.
+- Linux CI 최종: run 42716618649(b9f48eb) 녹색 — 단위 2,822 통과 · 1 건너뜀, E2E 623 통과(37.6 분), 증거 75 통과 · 8 건너뜀(8.6 분). 느린 러너라 P6 p95가 63 · 64 ms였다(CI 선 100 ms 안, 예산 50 ms 밖). `search.pages` 1,000쪽 책 p95 38 ms, 이미지 첫 그림 중앙값 63 ms.
 
 ### M7c에서 해결한 것
 - **이미지 자료**: PNG · JPEG · WebP · GIF · AVIF를 파일 머리로 판별해 가져온다(확장자가 틀려도, HEIC은 거절 — J1). 크기는 main이 머리 1 MiB 안에서 범위 검사를 하며 읽는다(JPEG EXIF 방향 5–8은 가로·세로를 바꿈, AVIF는 `pitm`·`ipma`·`ispe`·`irot`). 크기를 읽지 못해도 가져오기는 성공하고 그릴 수 있는지는 리더가 말한다(J3). 종류 `image`가 표의 아이콘 · 종류 이름 · 정렬 · 통계 줄 · 드롭 요약 · 열기 패널의 형식 필터에 닿는다.
@@ -463,6 +467,7 @@ GitHub 러너로는 확인할 수 없다. Scaleway Mac mini나 사용자 Mac에�
 ### 실기에서만 확인할 것 (M7c, M14 전)
 - **포장한 앱의 일꾼**: asar 안의 `out/renderer/pdfjs`에서 일꾼이 cMap·글꼴을 `fs`로 읽는지(명세 17절). 포장하지 않은 Electron에서는 `korean-cmap.pdf`(글꼴을 품지 않은 한국어)로 확인했다.
 - **일꾼의 연속 실패 차단기(첫 포장 출시 전에 둔다)**: 지금은 파일마다 세 번 실패해야 `gave-up`이다. 묶음이 깨지거나 도우미가 막히거나 Electron을 올려 일꾼이 늘 실패하면, 파일마다 세 번씩 연달아 태워 몇 분 안에 모든 PDF가 `gave-up`이 되고 버전을 올리기 전에는 다시 할 길이 없다. 서로 다른 작업에서 충돌·시간 초과·틀린 메시지가 세 번 이어지면 그 세션 동안 멈추고 그 시도를 돌려주는 차단기를 M14에서 둔다(최종 리뷰의 분류, R79 — M7c에서는 포장 빌드가 없어 그대로 둔다).
+- **색인 먼저 `search:pages` 계획의 비용**(R80): PDF 1만 개에서 잰다. 라이브러리 전체 일치 수 다음에 한다.
 - **실제 논문 1,000편의 DB 크기**: 합성 시드(1,000 × 12쪽 × 4,000자)는 221,137,352 B였다. 실제 논문의 쪽 수와 글 양으로 다시 재고, 백업·복원 시간도 본다. 넘치면 `columnsize=0` 같은 선택을 판정으로 본다(ADR-0008).
 - **트랙패드 핀치의 실제 손맛**: 시험은 합성 `ctrl` 휠뿐이다(배율 계수 `exp(-deltaY/100)`).
 - **5,000만 화소 근처 사진의 디코드 메모리**: 디코드는 Chromium 몫이다. 항목 패널은 5,000만 화소 위에서 미리보기를 하지 않는다(J12). 리더에서 큰 사진을 열 때의 메모리와 반응을 본다.
@@ -477,6 +482,8 @@ GitHub 러너로는 확인할 수 없다. Scaleway Mac mini나 사용자 Mac에�
 - **'글자 없음'·'실패' 파일의 '본문 일치' 행**(최종 리뷰 M2): 표는 `empty` 색인(뽑은 몇 글자도 색인한다)이나 실패 전에 쪽을 저장한 `failed` 파일을 본문 일치로 보일 수 있지만, 절은 `done`일 때만 `search:pages`를 불러 상태 줄만 보인다(`BodyMatchesSection.tsx`의 `read`, `bodyText.ts`의 `matchesView`). 저장된 쪽이 있으면 행을 그 줄 위에 보인다 — 값은 낮다(거의 빈 스캔본의 일치는 대개 쪽 번호).
 - **v4 이전 백업의 끊긴 외래 키를 복원할 때의 문구**(최종 리뷰 M3): 004의 `foreign_key_check`가 그런 백업을 MIGRATION_FAILED로 거절하고, 문구는 버린 임시 폴더 안의 `.pre-v4.bak`과 다시 시작을 말한다(예전에는 `RESTORE_COPY.damagedDatabase`). 라이브러리는 그대로이고 복원은 어느 쪽이든 거절된다. 고친다면 복원이 `migrate()` 전에 외래 키를 검사한다(`backup.ts` 479줄, `migrate.ts` 71–78줄).
 - **`finish()`가 `payload.pages`를 덮어씀**(최종 리뷰 M4): 일꾼이 끝낸 쪽 번호를 P-9가 문서의 쪽 수로 정한 `payload.pages`에 쓴다 — 앞 5,000쪽에서 잘린 6,000쪽 문서가 5,000으로 읽힌다. 지금은 이 값으로 상태를 만드는 곳이 없다(`stateOf`는 `nextPage`). `opened`가 쓴 값을 지킨다(`text-repository.ts`의 `finish`).
+- **Mac 다크 증거와 데모의 손질**(Mac 디자인 비평 minor 2 · nit 3, R83): M7c 화면의 Mac 다크 증거 그림 — 어둡게 배경과 무대 포커스의 이미지 리더, 진행 줄이 있는 범위 메뉴, 본문 일치, 찾기 막대. 데모 자막 "색인 진행"(8장)과 "PDF 본문"(4장)의 U+00A0. 창의 둥근 모서리가 무대 링을 자른다. 실제 앱의 Retina 렌더링은 아직 보지 못했다. 메뉴 막대의 시계가 영어다.
+- **Mac `all` 2회의 멈춤 조사**(`search-perf.evidence.ts:21`이 `textIdle`에서 600초 멈춤): E2E와 증거가 실패할 때 main의 stdout/stderr를 남긴다. 일정기의 상태(켜짐, 멈춤, sawFirstIdle, sawChecked, 도는 중, 줄이 바쁨)를 알리는 시험용 훅을 둔다. `text.firstIdle()`을 `prepareSettings`의 prepare 호출들과 상관없이 불리게 한다. 그런 뒤 Mac에서 search-perf 증거를 다시 돌린다.
 - **M8 밖으로 넘긴 것**: 인용 단위 `extracted_chunks`는 T1(ADR-0008 8절), `image` 앵커를 만드는 화면은 M9·T1, HEIC·TIFF·OCR은 M14.
 
 ### 소유자 결정 (M7c, 2026-11-08)

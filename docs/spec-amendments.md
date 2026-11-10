@@ -247,7 +247,7 @@
 - 추적: [`acceptance.md`](acceptance.md) "M7b 완료 조건", [`next-session.md`](next-session.md) "M7b 리더 탭 결과", [`mac-verification.md`](mac-verification.md) "M7b".
 
 ## 14. 이미지 · PDF 본문 검색 · 성능(M7c)
-- 날짜: 2026-11-08(설계·목업 승인) · 2026-11-10(구현 뒤 기록) · 근거: M7c 명세([`superpowers/specs/2026-11-08-m7c-images-search-perf-design.md`](superpowers/specs/2026-11-08-m7c-images-search-perf-design.md) 0절, 16절), 계획의 사전 판정 P-*([`superpowers/plans/2026-11-08-m7c-images-search-perf.md`](superpowers/plans/2026-11-08-m7c-images-search-perf.md)), 명세의 컨트롤러 판정 J1–J35, 구현 중 컨트롤러 판정 R1…R76(12·13절의 것과 구별하려고 "M7c R46"처럼 쓴다)
+- 날짜: 2026-11-08(설계·목업 승인) · 2026-11-10(구현 뒤 기록) · 근거: M7c 명세([`superpowers/specs/2026-11-08-m7c-images-search-perf-design.md`](superpowers/specs/2026-11-08-m7c-images-search-perf-design.md) 0절, 16절), 계획의 사전 판정 P-*([`superpowers/plans/2026-11-08-m7c-images-search-perf.md`](superpowers/plans/2026-11-08-m7c-images-search-perf.md)), 명세의 컨트롤러 판정 J1–J35, 구현 중 컨트롤러 판정 R1–R83(12·13절의 것과 구별하려고 "M7c R46"처럼 쓴다)
 - 원본: 1절(이미지 형식), 7절의 M7 줄, 8절(본문 검색), 10절(번역), 13절 A(M7c의 범위), 디자인 명세 2.4·3.1·5·6·7.3·7.4·9·10.1·10.2·10.3·10.10.
 - **A. M7c의 범위**(소유자, 2026-11-08 — PR 하나): 이미지 자료(래스터 5종의 판별·크기 읽기·종류 `image`), 마이그레이션 004와 "외래 키를 끄고 도는 마이그레이션" 실행기, 이미지 리더와 `image` 앵커(형식과 검증만), 항목 패널의 미리보기, PDF 본문 검색(추출 작업 · `utilityProcess` 일꾼 · 쪽 글 표 · FTS5 trigram · 질의 · 화면 — [ADR-0008](decisions/0008-body-search.md)), 성능 P1–P11, M7b에서 넘긴 셋(목차 현재 항목 스크롤 · 탭 패널 연결 · 시험 대기 정리), 번역 주소 재확인(문서 조사만 — [ADR-0012](decisions/0012-translation.md) "M7c 재확인"). Mac 간헐 실패 넷은 먼저 별도 작은 PR(`mac-flakes`, PR #13)로 했다. 하지 않는 것은 명세 2절(SVG · HEIC/HEIF/TIFF · RAW · 이미지 편집 · 영역 선택 UI · 별도 검색 화면 · 팔레트의 본문 검색 · 자막·노트 본문 · 관련도 순위 · 암호 PDF의 본문 · 실패한 추출을 다시 돌리는 단추 · `extracted_chunks`).
 - **B. 소유자 결정**(2026-11-08, 명세 0절이 정본):
@@ -285,6 +285,7 @@
     - R65 '본문 일치' 절은 표처럼 지금 입력한 질의를 열쇠로 하고 앞 답을 남기지 않는다(타자 한 묶음에 아래 절이 한 번 움직인다).
     - R66 `search:pages`가 실패하면 절을 보이지 않는다(새 문구 없음, J24).
     - R67 열기에 실패한 '본문 일치' 행은 나중에 그 탭을 열 때 쪽을 남기지 않는다.
+    - R79 '본문 일치' 행은 질의 전체가 아니라 질의에서 가장 긴 본문 낱말로 찾기 막대를 연다(J24).
     - R68 잘린 색인은 '본문 일치'에 "앞 5,000쪽까지 색인했습니다."를 행 아래에, 일치가 없으면 그 줄만 보인다.
   - 본문 색인:
     - R11 쪽 글 정리는 표시 문자와 공백 아닌 제어 문자를 공백으로 바꾸지 않고 지운다(두 낱말 사이의 제어 문자는 두 낱말을 잇는다 — 실제 PDF에서는 드물다).

@@ -3383,6 +3383,7 @@ h2,
 .agent-row .a-name {
   display: flex;
   align-items: center;
+  flex-wrap: wrap; /* the name never breaks (a .nobr unit); the flag wraps as a whole under it at the narrowest tutor */
   gap: var(--space-8);
   min-width: 0;
   font: var(--type-headline);
@@ -4548,4 +4549,23 @@ h2,
   gap: 0;
   height: auto;
   padding: var(--space-4) var(--space-8);
+}
+
+/* Fix round 1 */
+/* Searching again: the rows found before stay, disabled, under the searching line. */
+.agent-group.is-searching {
+  opacity: 0.45;
+  pointer-events: none;
+}
+/* The notice after a reground turn follows an answer: the fact stays, the body and the button go. */
+.tu-notice.is-brief {
+  padding: var(--space-8) var(--space-12);
+}
+/* A scanned page (no text layer): flat, softened, grey — a raster, not selectable text. */
+.pdf-page.is-scan > * {
+  filter: blur(0.8px) grayscale(1); /* local: a raster's softness */
+  opacity: 0.75;
+}
+.agent-row .inline-flag {
+  white-space: nowrap;
 }

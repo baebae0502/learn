@@ -174,12 +174,12 @@ window.MockupData = (() => {
       },
       login: {
         text: 'Learn 전용 설정으로 한 번 로그인해야 합니다. 터미널에서 아래 명령을 실행한 뒤 다시 확인하세요.',
-        cmd: 'CLAUDE_CONFIG_DIR="<Learn 전용 폴더>" claude auth login',
+        cmd: 'CLAUDE_CONFIG_DIR="$HOME/Library/Application Support/Learn/Tutor/agents/claude" claude auth login', // macOS; under a non-home folder the full path
       },
-      old: { text: 'Claude Code 2.1.318 이상과 연결 도구 0.103.0 이상이 필요합니다. 업데이트한 뒤 다시 확인하세요.' },
+      old: { text: 'Claude\u00a0Code\u00a02.1.318 이상과 연결\u00a0도구\u00a00.103.0 이상이 필요합니다. 업데이트한 뒤 다시 확인하세요.' },
       missing: {
-        text: '설치되어 있지 않습니다. 터미널에서 아래 명령으로 설치하고 로그인한 뒤 다시 찾기를 누르세요.',
-        cmd: 'npm install -g @anthropic-ai/claude-code',
+        text: '설치되어 있지 않습니다. 터미널에서 아래 명령으로 설치한 뒤 다시 찾기를 누르세요.',
+        cmd: 'npm install -g @anthropic-ai/claude-code @agentclientprotocol/claude-agent-acp@0.103.0',
       },
     },
   };

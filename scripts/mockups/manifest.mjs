@@ -233,6 +233,7 @@ export const TUTOR = [
     [{ state: '2', later: '1' }, '2-consent-later', '2 동의 카드 · 나중에 뒤'],
     [{ state: '3', agents: 'none' }, '3-agents-none', '3 설치 안 됨 + 설치 명령'],
     [{ state: '3', agents: 'searching' }, '3-agents-searching', '3 에이전트 찾는 중'],
+    [{ state: '3', agents: 'searching', rows: '1' }, '3-agents-searching-rows', '3 다시 찾는 중(앞의 행은 비활성으로 남음)'],
     [{ state: '3', agents: 'blocked' }, '3-agents-blocked', '3 준비된 에이전트 없음'],
     [{ state: '5', menu: 'agent' }, 'menu-agent', '에이전트 메뉴'],
     [{ state: '8', fail: 'agent' }, '8-failure-agent', '8 실패 · 에이전트 중단'],
@@ -261,6 +262,9 @@ export const TUTOR = [
   ].flatMap(([q, suffix, label]) => THEMES.map((t) => tutor(t, q, suffix, label))),
   // §4 decisions: each alternative once (the defaults are the base state renders above).
   tutor('light', { state: '5', width: '320' }, '5-width-320', '결정 · 폭 320(최소)'),
+  tutor('light', { state: '3', states: 'all', width: '320' }, '3-agents-states-w320', '3 다섯 상태 · 튜터 최소 폭 320'),
+  tutor('dark', { state: '3', agents: 'blocked', width: '320' }, '3-agents-blocked-w320', '3 로그인 필요 · 튜터 최소 폭 320'),
+  tutor('dark', { state: '8', fail: 'login', width: '320' }, '8-failure-login-w320', '8 로그인 필요 안내 · 튜터 최소 폭 320'),
   tutor('light', { state: '5', width: '340' }, '5-width-340', '결정 · 폭 340'),
   tutor('light', { state: '5', width: '440' }, '5-width-440', '결정 · 폭 440'),
   tutor('light', { state: '5', msg: 'doc' }, '5-msg-doc', '결정 · 문서식(대안)'),

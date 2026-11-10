@@ -74,9 +74,10 @@
 - ② 에이전트 고르기: 행은 Claude Code 하나, `3-agents-states`가 다섯 상태(준비됨 · 연결 도구 필요 · 로그인 필요 · 지원하지 않는 버전 · 설치 안 됨)를 한 화면에(비평용), 명령은 고정폭에 복사 단추, `3-agents-none`은 설치 안 됨 + 설치 명령(링크 없음), 가짜 행 "가짜 에이전트"(개발용).
 - ③ `menu-agent`: Claude Code ✓ · (개발) 가짜 에이전트 · — · 에이전트 고르기…(준비 안 됐으면 "Claude Code — 상태" 비활성은 부품 보드 `part5`).
 - ④ 보낸 범위 줄 "선택 N · 자료 1"(`send` · `book-open`), 열린 목록 `5-conversation`: 보낸 것 · 읽게 열어 둔 것 · 읽은 쪽 · 에이전트.
-- ⑤ 실패(`8-failure-offline|login|agent|notready|start|exited|lockdown|interrupted`, `8-failure-busy`, `8-stopped`): 답 전(질문이 입력창에, 차례 사이 안내)과 답 도중(부분 답 + 다시 보내기, 꺼 둔 도구는 다시 보내기 없음), 중지함, 다른 세션이 답하는 동안의 기다림 줄.
+- ⑤ 실패(`8-failure`(오프라인)`|8-failure-login|agent|notready|start|exited|lockdown|interrupted`, `8-failure-busy`, `8-stopped`): 답 전(질문이 입력창에, 차례 사이 안내)과 답 도중(부분 답 + 다시 보내기, 꺼 둔 도구는 다시 보내기 없음), 중지함, 다른 세션이 답하는 동안의 기다림 줄.
 - ⑥ `5-backend-fake`·`3-backend-fake`: "가짜 에이전트". ⑦ `5-scrolled`: 최신으로. ⑧ `6-reground`: 원문 근거 요청 차례(그 차례의 목록에 "원문 근거 요청", 확인된 57쪽 칩, 앞 답의 안내는 걷힘 — 컨트롤러 판정 전 제안). ⑨ `4-text-empty|locked`: 본문 없는 PDF 안내 줄. ⑩ `4-attach-multipage`: 칩 툴팁 덧붙임.
 - ⑪ `9-sessions`·`9-sessions-menu`: 리더 왼쪽 세그먼트 [썸네일 · 목차 · 세션](필기는 M9에 목차와 세션 사이로), 세션 컨텍스트 메뉴(이름 바꾸기 · — · 세션 삭제 ⌘⌫, 네이티브).
 - ⑫ 좁은 창은 T1a의 표(리더 내용 최소 440): 1060 아래에서 튜터가 줄고(`10-narrow-shrunk` 창 1040 · 튜터 360) 1000 아래에서 접힘(`10-narrow` 창 980), 펼치면 사이드바가 접힘(`10-narrow-open` 980 · `10-narrow-960`). 이전 그림의 "1040에서 접힘"은 M9(리더 640)의 숫자였다. 실측 뒤 고침은 구현(8.10)에서.
 - ⑬ `library`·`library-milestones`: 라이브러리의 튜터 시트는 **T1a 아님(J1)** — 그림은 대안으로 남고 `?ms=1` 표시는 J1이다(사이드바 "세션" 묶음은 T1a).
 - 문구는 명세 13절(에이전트 하나로 줄인 판)이다. "다른 세션의 답이 끝나면 보냅니다"는 디자인 명세 9의 규칙대로 "다른"과 "세션"을 U+00A0로 묶었다 — 13절에도 그렇게 옮길 것.
+- 비평 뒤 고침 1: 로그인 명령은 실제 모양(`CLAUDE_CONFIG_DIR="$HOME/Library/Application Support/Learn/Tutor/agents/claude" claude auth login`, 보이는 글과 복사하는 글이 같고 "Application Support"는 화면에서만 U+00A0)이다. 보내기는 에이전트가 준비되지 않아도 글이 있으면 켜져 있고 보내면 먼저 다시 확인한다. 본문 없는 PDF 안내 아래 빈 세션 문구는 사실만 말한다. 동의 카드는 "사용량과 요금은 … 계정에서". 좁은 창 네 장면은 T1a 도구 막대(필기 묶음 없음)이고 리더가 480보다 좁으면 "/ N"이 빠진다. 결정에서 빠진 대안은 "대안 (T1a 아님)"으로 표시한다. `3-agents-searching-rows`, `*-w320`(최소 폭 확인) 렌더를 더했다.

@@ -17,6 +17,7 @@
      ?consent=card&later=1         state 2: the card after 나중에 (tutor off). One company (Anthropic), one agent (Claude Code), usage,
                                    tools off (files · shell · web), the "Learn 전용 설정" fact (separate login, records in that folder)
      ?agents=list|none|searching|blocked   state 3: Claude Code ready · not installed (the install command, no link) · searching · signed out
+     ?agents=searching&rows=1      state 3: searching again — the rows found before stay, disabled, under "에이전트를 찾는 중…"
      ?agents=…&states=all          state 3: the chooser's row in all five states on one screen (a critique sheet): 준비됨 · 연결 도구 필요 ·
                                    로그인 필요 · 지원하지 않는 버전 · 설치 안 됨, with their commands (copy) and the dev group left out
      ?fail=offline|login|agent|notready|start|exited|lockdown|interrupted|busy|stopped   state 8 (default offline). Before an answer: the question
@@ -37,7 +38,8 @@
      &scrolled=1                   state 5: scrolled up while the answer streams — the "최신으로" (↓) button above the composer, centred
      &reground=1                   state 6: after "원문 근거로 다시 묻기" — the request turn "57쪽을 먼저 읽고 다시 답해 주세요." and the answer
                                    with its verified chip
-     &text=empty|locked            state 4: the notice line for a PDF whose text the tutor cannot read (also failed|large)
+     &text=empty|locked            state 4: the notice line for a PDF whose text the tutor cannot read (also failed|large); the empty session's body
+                                   says only what is true (no page can be verified; empty = a scan, drawn flat)
      &attach=multipage             state 4: the attached chip's tooltip adds "여러 쪽에 걸친 선택은 첫 쪽의 글만 붙습니다."
      The sent-scope line reads "선택 N · 자료 1" (send · book-open); its open list: 보낸 것 · 읽게 열어 둔 것 · 읽은 쪽 · 에이전트 (state 5)
 -->

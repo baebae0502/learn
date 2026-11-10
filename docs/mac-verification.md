@@ -1,6 +1,6 @@
 # macOS 검증 기록 (M0 증거 레인)
 
-- 갱신: 2026-11-10(M7c — 아래 "M7c": Linux CI run 42654046397의 값, 중간 `e2e` run 42660475115는 러너를 받지 못해 취소, 최종 `all` 두 번(42704566004 · 42716660692)은 기능 E2E 녹색, 증거는 매번 다른 시험 하나 실패; mac-flakes PR #13의 `all` run 42479810434가 전부 녹색 — 아래 "mac-flakes") · 2026-11-05(M7a 최종 `all` run 41917866220, c83064d가 전부 녹색 — 아래 "M7a"; 중간 `e2e` run 41740397794) · 2026-10-30(M5 정리, 최종 `all` run 41024983289, af807d6이 전부 녹색 — 아래 "M5 정리") · 2026-10-28(M5 정리, run 40708161452) · 2026-10-26(M4 라이브러리, 최종 `all` run 40242680541이 전부 녹색 — 아래 "M4 라이브러리") · 2026-10-23(M3 셸 Task 14 반영, 5차 run 39920413383까지 — 아래 "M3 셸 (Task 14)") · 처음: 2026-10-20(수정 1회차 반영) · 브랜치 `m0-evidence` · 계획: [`superpowers/plans/2026-10-20-m0-macos-evidence.md`](superpowers/plans/2026-10-20-m0-macos-evidence.md)
+- 갱신: 2026-11-10(mac-index-hang PR #15의 `perf` run 42774413580이 성공 — 아래 "mac-index-hang") · 2026-11-10(M7c — 아래 "M7c": Linux CI run 42654046397의 값, 중간 `e2e` run 42660475115는 러너를 받지 못해 취소, 최종 `all` 두 번(42704566004 · 42716660692)은 기능 E2E 녹색, 증거는 매번 다른 시험 하나 실패; mac-flakes PR #13의 `all` run 42479810434가 전부 녹색 — 아래 "mac-flakes") · 2026-11-05(M7a 최종 `all` run 41917866220, c83064d가 전부 녹색 — 아래 "M7a"; 중간 `e2e` run 41740397794) · 2026-10-30(M5 정리, 최종 `all` run 41024983289, af807d6이 전부 녹색 — 아래 "M5 정리") · 2026-10-28(M5 정리, run 40708161452) · 2026-10-26(M4 라이브러리, 최종 `all` run 40242680541이 전부 녹색 — 아래 "M4 라이브러리") · 2026-10-23(M3 셸 Task 14 반영, 5차 run 39920413383까지 — 아래 "M3 셸 (Task 14)") · 처음: 2026-10-20(수정 1회차 반영) · 브랜치 `m0-evidence` · 계획: [`superpowers/plans/2026-10-20-m0-macos-evidence.md`](superpowers/plans/2026-10-20-m0-macos-evidence.md)
 - 이 문서의 수치는 모두 아래 실행 기록의 artifact(`env.json`, `baseline.json`, `spikes.json`, Playwright 리포트)에서 옮겼다. GitHub 러너는 M1 **가상 머신**이므로 성능·코덱 값은 참고값이고, AC16 판정은 기준 장비(Apple Silicon 16 GB 실기)에서 한다.
 
 ## 목적
@@ -779,6 +779,33 @@ Mac 값과 나란히 보려고 옮긴다(예산은 M7c 명세 6·13절, CI는 2�
   - `all` 1회, run 42704566004 (fd5eb6d, 과금 60 분): 기능 E2E 578 통과 · 0 실패 · 49 건너뜀 · 0 불안정, 증거 80 통과 · 1 실패 · 2 건너뜀. 실패는 `perf.evidence.ts:116` — `expectWindow`가 "다음에 새로 생기는 창"을 기다리다 P7이 미리 만든 ⌘/ 시트 창을 잡았다(시험 쪽 경합). b9f48eb에서 고쳤다(R82). Mac 데모 `m7c-demo.final.mov`: 192.6 초 · 9 장면 · ⌘ 키캡, 소유자에게 보냈다.
   - `all` 2회, run 42716660692 (b9f48eb, 과금 71 분): 기능 E2E 578 통과 · 0 실패 · 49 건너뜀 · 0 불안정, 증거 80 통과 · 1 실패 · 2 건너뜀. 실패는 `search-perf.evidence.ts:21` — 논문 20편을 가져온 뒤 `textIdle`에서 600 초 멈췄다. 그 DB에는 추출 작업 20개가 모두 `queued`에 시도 0회였고 그 쪽 글은 하나도 쓰이지 않았다. 그 세션에서 색인이 그 파일들에 시작되지 않았다는 뜻이다. 같은 시험이 1회에서는 통과(28.4 초)했고 Linux CI 세 번과 로컬 1코어 5/5도 통과했다. 원인은 찾지 못했다 — main의 로그가 증거에 남지 않는다. 확인하지 못한 후보 하나: main의 첫 유휴 처리기(`index.ts`의 `prepareSettings`)에서 `text?.firstIdle()`이 `settingsWindow.prepare()`와 `sheets.prepare()` 뒤에 불리므로, 둘 중 하나가 던지면 그 세션에는 일정기가 시작되지 않는다.
   - 두 번 규칙에 따라 세 번째 실행은 하지 않았다. 판단은 소유자가 한다.
+
+## mac-index-hang (2026-11-10, macos-15 arm64, 브랜치 `mac-index-hang`, PR #15)
+
+M7c 판정 R84의 작은 PR이다. M7c `all` 2회(run 42716660692)의 `search-perf.evidence.ts:21` 멈춤을 다음에 가릴 수 있게 기록을 남기고, 원인과 상관없이 고칠 수 있는 순서 하나를 고쳤다. **원인은 아직 모른다.**
+
+- **조사.** 그 실행의 DB에서 추출 작업 20개는 모두 `queued`·시도 0회였고 `updated_at`이 만든 시각 그대로였다(정상 종료, 다음 작업 SQL은 20개를 모두 돌려준다). M7c에 적은 후보 "`prepareSettings`가 던졌다"는 반박됐다 — 코드 캐시에 설정 창과 ⌘/ 시트 창의 preload가 둘 다 컴파일돼 있었다. 남은 후보는 (a) 시작 점검이 끝나지 않음, (b) 루프가 작업 줄이 비기를 기다림, (c) 루프가 작업 시작 전에 던짐(그 뒤로 깨울 것이 없다)이다. 로컬에서 셋을 강제로 일으키면 모두 Mac과 같은 DB가 남았고, 늦게라도 끝나는 점검은 그런 DB를 남기지 않았다. 재현은 되지 않았다(고치기 전 6/6, 고친 뒤 3/3, `taskset -c 0`).
+- **바뀐 것.** 일정기는 최근 64단계의 발자취를 남기고 `state()`로 플래그·현재 작업·줄·마지막 오류 코드·보류를 알린다(동작은 그대로). 첫 유휴는 화면과 본문 신호를 먼저 보내고, 설정 창과 시트 창을 각각 따로 준비한다(던지면 `[window] first idle: <단계> failed: <코드>`). 시험용 `textState` 훅이 생겼다. `textIdle`은 min(240 초, 시험 제한의 절반) 뒤에 작업 수와 `textState`를 담아 실패한다. `launch()`는 main의 stdout/stderr를 시험 출력 폴더의 `main.log`에 남기므로 Mac artifact에도 올라간다. search-perf는 통과할 때도 `textState`를 `search-perf.json`에 남긴다.
+- **다음 실패에서 읽을 곳**(`textState`의 필드):
+  - (a): `sawChecked` false, `main.checkStart`는 있고 `checkEnd`는 없다. 발자취는 `control now` 다음에 `start-waits startupChecked`.
+  - (b): `live` · `looping` · `laneBusy`가 모두 true다. 발자취에 `lane-wait`가 있고 `lane-free`는 없다.
+  - (c): `looping` false, `lastError`에 코드가 있다. 발자취는 `loop-error`, `loop-end error`이고 `main.log`에 같은 코드가 남는다.
+  - 첫 유휴가 일정기에 닿지 않음: `sawFirstIdle` false. `main.firstIdle`이 null이면 신호가 오지 않은 것이고, `text`가 `ok`가 아니면 그 단계가 던진 것이다.
+  - 작업이 일꾼 안에서 멈춤: 발자취에 `job-start`는 있고 `job-end`는 없다.
+  - main의 JS가 막힘: "no state: main did not answer textState within 10000 ms".
+
+| run id | 날짜(UTC) | suite / 패키지 / head | mac 잡 (과금 분) | 결과 |
+|---|---|---|---|---|
+| [42774413580](https://github.com/baebae0502/learn/actions/runs/42774413580) | 11-10 07:19 | perf / 아니오 / d2916c1 (PR #15의 최종 코드) | 9분 | **성공**: 증거 18 통과 · 0 실패 · 0 건너뜀 |
+
+- **이 실행의 search-perf**(darwin-arm64, 보고값): `search:body` p95 65.7 ms(예산 300), '본문 일치' p95 9.4 ms(100), 1,000쪽 책 39.7 ms(100), 추출 중 표 스크롤 p95 19.5 ms(16.7 — 러너 한계, M4부터 같다), 처리량 초당 242.2쪽.
+- **이 실행의 `textState`**:
+  - 첫 유휴의 네 단계(screen · text · settings · sheets)가 모두 `ok`였다. 시작 점검은 87 ms에 끝났다.
+  - 발자취의 순서는 `startupChecked` → `firstIdle` → 가져오기 → `control now` → `begin` → `loop-start` → `job-start`였고, 마지막은 `loop-end empty` · `idle-settled`였다. `lastError`는 없었다.
+  - 이 실행에서는 순서 변경이 한 일이 없다. 창 준비가 던졌거나 돌아오지 않았다면 그 단계가 `ok`가 아니거나 `firstIdle`이 비었을 텐데, 네 단계 모두 `ok`였다. 그러니 멈춤은 재발하지 않은 것이다.
+- 같은 head의 Linux CI run 42768842540: 단위 2,845 통과, E2E 623 통과 · 4 건너뜀, 증거 75 통과 · 8 건너뜀.
+
+**합계: mac-index-hang 1회 9분.**
 
 ## 알려진 한계
 

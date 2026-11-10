@@ -483,7 +483,7 @@ GitHub 러너로는 확인할 수 없다. Scaleway Mac mini나 사용자 Mac에�
 - **v4 이전 백업의 끊긴 외래 키를 복원할 때의 문구**(최종 리뷰 M3): 004의 `foreign_key_check`가 그런 백업을 MIGRATION_FAILED로 거절하고, 문구는 버린 임시 폴더 안의 `.pre-v4.bak`과 다시 시작을 말한다(예전에는 `RESTORE_COPY.damagedDatabase`). 라이브러리는 그대로이고 복원은 어느 쪽이든 거절된다. 고친다면 복원이 `migrate()` 전에 외래 키를 검사한다(`backup.ts` 479줄, `migrate.ts` 71–78줄).
 - **`finish()`가 `payload.pages`를 덮어씀**(최종 리뷰 M4): 일꾼이 끝낸 쪽 번호를 P-9가 문서의 쪽 수로 정한 `payload.pages`에 쓴다 — 앞 5,000쪽에서 잘린 6,000쪽 문서가 5,000으로 읽힌다. 지금은 이 값으로 상태를 만드는 곳이 없다(`stateOf`는 `nextPage`). `opened`가 쓴 값을 지킨다(`text-repository.ts`의 `finish`).
 - **Mac 다크 증거와 데모의 손질**(Mac 디자인 비평 minor 2 · nit 3, R83): M7c 화면의 Mac 다크 증거 그림 — 어둡게 배경과 무대 포커스의 이미지 리더, 진행 줄이 있는 범위 메뉴, 본문 일치, 찾기 막대. 데모 자막 "색인 진행"(8장)과 "PDF 본문"(4장)의 U+00A0. 창의 둥근 모서리가 무대 링을 자른다. 실제 앱의 Retina 렌더링은 아직 보지 못했다. 메뉴 막대의 시계가 영어다.
-- **Mac `all` 2회의 멈춤 조사**(`search-perf.evidence.ts:21`이 `textIdle`에서 600초 멈춤): E2E와 증거가 실패할 때 main의 stdout/stderr를 남긴다. 일정기의 상태(켜짐, 멈춤, sawFirstIdle, sawChecked, 도는 중, 줄이 바쁨)를 알리는 시험용 훅을 둔다. `text.firstIdle()`을 `prepareSettings`의 prepare 호출들과 상관없이 불리게 한다. 그런 뒤 Mac에서 search-perf 증거를 다시 돌린다.
+- **Mac `all` 2회의 멈춤 조사**(`search-perf.evidence.ts:21`이 `textIdle`에서 600초 멈춤, R84): 작은 PR `mac-index-hang`(PR #15)에서 기록을 남기게 했다. main의 `main.log`, 일정기의 발자취와 `textState`, 240초 뒤 이유를 말하는 `textIdle`을 넣고, 첫 유휴가 본문 신호를 창 준비보다 먼저 보내게 했다. Mac `perf` run 42774413580은 통과했다. 첫 유휴의 네 단계가 모두 `ok`였으므로 재발하지 않은 것이고, **원인은 아직 모른다.** 다음에 같은 실패가 나면 그 시험의 `main.log`와 실패 메시지의 `textState`를 [`mac-verification.md`](mac-verification.md) "mac-index-hang"의 후보 목록과 맞춰 본다.
 - **M8 밖으로 넘긴 것**: 인용 단위 `extracted_chunks`는 T1(ADR-0008 8절), `image` 앵커를 만드는 화면은 M9·T1, HEIC·TIFF·OCR은 M14.
 
 ### 소유자 결정 (M7c, 2026-11-08)

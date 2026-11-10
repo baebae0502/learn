@@ -3,6 +3,7 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { LearnError } from '@learn/domain';
 import { z } from 'zod';
+import { acpOut } from '../acp/schema';
 import { tutorLog } from '../log';
 import type { AcpScope, ScopeRegistry } from '../scope';
 import { readMcpMessage, rpcError, type McpConnection, type createMcpServer } from './server';
@@ -26,12 +27,8 @@ const MAX_BODY = 64 * 1024;
 const REQUEST_TIMEOUT_MS = 10_000;
 const MAX_CONNECTIONS = 32;
 
-const entrySchema = z.object({
-  type: z.literal('http'),
-  name: z.literal('learn'),
-  url: z.string().regex(/^http:\/\/127\.0\.0\.1:\d{1,5}\/mcp$/),
-  headers: z.tuple([z.object({ name: z.literal('Authorization'), value: z.string().regex(/^Bearer [0-9a-f]{64}$/) }).strict()]),
-}).strict();
+// The shape session/new and a resume are checked against, so the two can never disagree.
+const entrySchema = acpOut.mcpServer;
 const sessionIdSchema = z.string().regex(/^[0-9a-f]{32}$/);
 // RFC 6750: the scheme's case does not matter.
 const BEARER = /^bearer +(\S+)$/i;

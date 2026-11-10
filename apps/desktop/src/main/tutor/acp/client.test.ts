@@ -123,7 +123,7 @@ describe('createAcpClient', () => {
     const h = setup();
     const systemPrompt = { mode: 'append' as const, content: [{ type: 'text' as const, text: 'You are the study tutor inside Learn.' }] };
     const meta = { claudeCode: { options: { tools: [], settingSources: [], strictMcpConfig: true } } };
-    const server = { type: 'http', name: 'learn', url: 'http://127.0.0.1:4000/mcp', headers: [{ name: 'Authorization', value: 'Bearer t' }] };
+    const server = { type: 'http' as const, name: 'learn' as const, url: 'http://127.0.0.1:4000/mcp', headers: [{ name: 'Authorization' as const, value: `Bearer ${'ab'.repeat(32)}` }] };
     await expect(h.client.newSession({ cwd: '/w/c1', mcpServers: [server], meta, systemPrompt })).resolves.toEqual({ sessionId: 's1' });
     await h.client.newSession({ cwd: '/w/c2', mcpServers: [] });
     expect(h.sent('session/new')).toEqual([{ cwd: '/w/c1', mcpServers: [server], systemPrompt, _meta: meta }, { cwd: '/w/c2', mcpServers: [] }]);

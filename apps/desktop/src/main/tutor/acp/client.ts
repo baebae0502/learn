@@ -1,6 +1,7 @@
 import { LearnError, TUTOR_TIMEOUTS, type StopReason } from '@learn/domain';
 import type { z } from 'zod';
 import { tutorLog } from '../log';
+import type { AcpMcpServer } from '../mcp/http';
 import { RpcError, type JsonRpcPeer } from './jsonrpc';
 import { ACP_STOP_REASONS, acpIn, acpOut, resumeCapable, type AcpStopReason } from './schema';
 
@@ -13,7 +14,7 @@ export interface ToolCallInfo { toolCallId: string; title: string | null; kind: 
 export type SessionUpdate = { kind: 'text'; text: string } | { kind: 'tool'; call: ToolCallInfo; learn: boolean } | { kind: 'activity' };
 /** model: the _meta.quota.model_usage entry with the largest token_count; tokens: the result's top-level usage. */
 export interface PromptOutcome { stopReason: StopReason | null; lockdown: boolean; model: string | null; inputTokens: number | null; outputTokens: number | null }
-export interface AcpSessionParams { cwd: string; mcpServers: unknown[]; meta?: Record<string, unknown>; systemPrompt?: { mode: 'append'; content: Array<{ type: 'text'; text: string }> } }
+export interface AcpSessionParams { cwd: string; mcpServers: AcpMcpServer[]; meta?: Record<string, unknown>; systemPrompt?: { mode: 'append'; content: Array<{ type: 'text'; text: string }> } }
 export interface AcpClient {
   initialize(): Promise<InitializeInfo>;
   /** The _auth/status_update kind if it came within `ms` of the initialize answer, else null. */

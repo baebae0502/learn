@@ -22,10 +22,12 @@ export function tutorHome(userData: string, o: { live: boolean; liveHome: string
 /** The path alone, for naming it in a message without making it. */
 export const agentHomePath = (home: string, agent: AgentId): string => path.join(home, 'agents', agent);
 export const agentHome = (home: string, agent: AgentId): string => privateDir(agentHomePath(home, agent));
-export function workDir(userData: string, conversationId: string): string {
+/** The path alone, for removing it without making it first. */
+export function workDirPath(userData: string, conversationId: string): string {
   if (!/^[A-Za-z0-9._-]+$/.test(conversationId) || conversationId === '.' || conversationId === '..') throw new Error('invalid conversation id');
-  return privateDir(path.join(userData, 'Tutor', 'work', conversationId));
+  return path.join(userData, 'Tutor', 'work', conversationId);
 }
+export const workDir = (userData: string, conversationId: string): string => privateDir(workDirPath(userData, conversationId));
 export const idleDir = (userData: string): string => path.join(userData, 'Tutor', 'idle');
 export const probeDir = (userData: string): string => path.join(userData, 'Tutor', 'probe');
 export const tmpDir = (userData: string): string => privateDir(path.join(userData, 'Tutor', 'tmp'));

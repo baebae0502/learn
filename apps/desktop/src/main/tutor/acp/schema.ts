@@ -83,10 +83,17 @@ export function resumeCapable(result: z.output<typeof acpIn.initializeResult>): 
 const textBlock = z.object({ type: z.literal('text'), text: z.string() }).strict();
 const systemPrompt = z.object({ mode: z.literal('append'), content: z.array(textBlock).min(1) }).strict();
 const meta = z.record(z.string(), z.unknown());
+/** ACP v1's HTTP MCP server entry: Learn's own loopback server, reached with one ACP session's Bearer token. */
+const mcpServer = z.object({
+  type: z.literal('http'),
+  name: z.literal('learn'),
+  url: z.string().regex(/^http:\/\/127\.0\.0\.1:\d{1,5}\/mcp$/),
+  headers: z.tuple([z.object({ name: z.literal('Authorization'), value: z.string().regex(/^Bearer [0-9a-f]{64}$/) }).strict()]),
+}).strict();
 const sessionSetup = {
   cwd: z.string().min(1),
-  // Built by the MCP transport, which owns their shape.
-  mcpServers: z.array(z.unknown()),
+  // Learn's server or none (the login check): an agent is never handed another one.
+  mcpServers: z.array(mcpServer).max(1),
   systemPrompt: systemPrompt.optional(),
   _meta: meta.optional(),
 };
@@ -101,6 +108,7 @@ export const acpOut = {
     }).strict(),
     clientInfo: z.object({ name: z.literal('Learn'), version: z.string().min(1).max(64) }).strict(),
   }).strict(),
+  mcpServer,
   newSessionParams: z.object(sessionSetup).strict(),
   resumeParams: z.object({ sessionId, ...sessionSetup }).strict(),
   setModeParams: z.object({ sessionId, modeId: z.literal('default') }).strict(),

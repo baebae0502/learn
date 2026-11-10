@@ -129,6 +129,7 @@ describe('acpIn: incoming messages are read loosely', () => {
 });
 
 describe('acpOut: what Learn sends is strict', () => {
+  const SERVER = { type: 'http', name: 'learn', url: 'http://127.0.0.1:4000/mcp', headers: [{ name: 'Authorization', value: `Bearer ${'ab'.repeat(32)}` }] };
   const init = {
     protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false }, clientInfo: { name: 'Learn', version: '0.1.0' },
   };
@@ -136,7 +137,7 @@ describe('acpOut: what Learn sends is strict', () => {
   it('builds each message Learn sends', () => {
     const system = { mode: 'append', content: [text('You are the study tutor')] };
     expect(acpOut.initializeParams.parse(init)).toEqual(init);
-    const session = { cwd: '/w/c1', mcpServers: [{ type: 'http', name: 'learn' }], systemPrompt: system, _meta: { claudeCode: { options: { tools: [] } } } };
+    const session = { cwd: '/w/c1', mcpServers: [SERVER], systemPrompt: system, _meta: { claudeCode: { options: { tools: [] } } } };
     expect(acpOut.newSessionParams.parse(session)).toEqual(session);
     expect(acpOut.resumeParams.parse({ sessionId: 's1', cwd: '/w/c1', mcpServers: [] })).toEqual({ sessionId: 's1', cwd: '/w/c1', mcpServers: [] });
     expect(acpOut.setModeParams.parse({ sessionId: 's1', modeId: 'default' })).toEqual({ sessionId: 's1', modeId: 'default' });
@@ -155,6 +156,10 @@ describe('acpOut: what Learn sends is strict', () => {
     ['an unknown key in session/new', acpOut.newSessionParams, { cwd: '/w', mcpServers: [], extra: 1 }],
     ['a system prompt that replaces', acpOut.newSessionParams, { cwd: '/w', mcpServers: [], systemPrompt: { mode: 'override', content: [text('x')] } }],
     ['an unknown key in a resume', acpOut.resumeParams, { sessionId: 's1', cwd: '/w', mcpServers: [], extra: 1 }],
+    ['an MCP server of another shape', acpOut.newSessionParams, { cwd: '/w', mcpServers: [{ type: 'http', name: 'learn' }] }],
+    ['an MCP server off the loopback', acpOut.newSessionParams, { cwd: '/w', mcpServers: [{ ...SERVER, url: 'http://10.0.0.1:4000/mcp' }] }],
+    ['an MCP server with another header', acpOut.resumeParams, { sessionId: 's1', cwd: '/w', mcpServers: [{ ...SERVER, headers: [...SERVER.headers, { name: 'X', value: 'y' }] }] }],
+    ['a second MCP server', acpOut.newSessionParams, { cwd: '/w', mcpServers: [SERVER, SERVER] }],
     ['a mode other than default', acpOut.setModeParams, { sessionId: 's1', modeId: 'bypassPermissions' }],
     ['an image block in a prompt', acpOut.promptParams, { sessionId: 's1', prompt: [{ type: 'image', data: 'AA', mimeType: 'image/png' }] }],
     ['an empty prompt', acpOut.promptParams, { sessionId: 's1', prompt: [] }],

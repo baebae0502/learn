@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
-import { distinctPdfs, importPaths, launch, seedBodyText, textExtraction, textIdle, textStats } from '../e2e/helpers';
+import { distinctPdfs, importPaths, launch, seedBodyText, textExtraction, textIdle, textState, textStats } from '../e2e/helpers';
 import { writeJson } from './capture';
 import { limitFailures, type Limit } from './budget';
 import { median, percentile } from './percentile';
@@ -118,6 +118,10 @@ test('body search over 1,000 PDFs, and the table while twenty papers index', { t
     expect(imported).toHaveLength(20);
     const before = await textStats(s.app);
     await textExtraction(s.app, 'now');
+    // How the index started (its first job starts inside the call above) and, after textIdle, how it ended: kept on every run,
+    // so a run that passes still shows whether each step of the main window's first idle returned. The first snapshot keeps
+    // the start even when a longer run fills the trail (it keeps the newest 64 steps).
+    const started = await textState(s.app);
     const scroll = await s.page.evaluate(async () => {
       const target = document.querySelector<HTMLElement>('[data-testid="library-scroller"]')!;
       if (target.scrollHeight <= target.clientHeight + 1) throw new Error('the table does not scroll');
@@ -140,6 +144,8 @@ test('body search over 1,000 PDFs, and the table while twenty papers index', { t
     expect(scroll.scrolledTo, 'the table scrolled').toBeGreaterThan(0);
     await textIdle(s.app);
     const after = await textStats(s.app);
+    const indexState = { started, idle: await textState(s.app) };
+    await testInfo.attach('textState', { body: JSON.stringify(indexState, null, 2), contentType: 'application/json' });
     expect(after.pagesWritten - before.pagesWritten, 'twenty papers of 100 pages were read').toBe(2000);
 
     const scrollFrames = scroll.deltas.map(tenth);
@@ -166,9 +172,10 @@ test('body search over 1,000 PDFs, and the table while twenty papers index', { t
       overBudget: Object.entries(values).filter(([k, v]) => v > BUDGET[k as keyof typeof BUDGET]).map(([k]) => k),
       platform: `${process.platform}-${process.arch}`,
       ci: process.env['CI'] ?? null,
+      textState: indexState,
     };
     writeJson('search-perf.json', result, 'M7c body search: search.body and search.pages p95 over 1,000 PDFs, search.pages on a 1,000-page book, the table scroll while twenty papers index, throughput, DB size');
-    console.log('[measure] search-perf', JSON.stringify({ values, bookPagesMs: result.bookPagesMs, firstQueryMs: result.firstQueryMs, dbBytes, seedMs, throughput, batchMs: result.batchMs }));
+    console.log('[measure] search-perf', JSON.stringify({ values, bookPagesMs: result.bookPagesMs, firstQueryMs: result.firstQueryMs, dbBytes, seedMs, throughput, batchMs: result.batchMs, firstIdle: indexState.idle.main?.firstIdle ?? null }));
     expect(throughput.pagesWrittenWhileScrolling, 'the index was working while the table scrolled').toBeGreaterThan(0);
 
     if (process.platform === 'linux' && process.env['CI']) {

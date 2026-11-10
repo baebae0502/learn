@@ -304,6 +304,23 @@ describe('searchDirs', () => {
     expect(linux).not.toContain('/opt/homebrew/bin');
   });
 
+  it('gives the spec\'s known folders by default, exactly and in order, per platform', () => {
+    const home = tempRoot();
+    for (const v of ['v20.1.0', 'v22.0.0']) fs.mkdirSync(path.join(home, '.nvm', 'versions', 'node', v, 'bin'), { recursive: true });
+    fs.mkdirSync(path.join(home, '.local', 'share', 'fnm', 'node-versions', 'v24.0.0', 'installation', 'bin'), { recursive: true });
+    const h = (p: string) => path.join(home, p);
+    const common = [
+      h('.local/bin'), h('.claude/local'), h('.npm-global/bin'), h('.volta/bin'), h('.bun/bin'),
+    ];
+    const tail = [
+      h('.nvm/versions/node/v22.0.0/bin'), h('.nvm/versions/node/v20.1.0/bin'), h('.local/share/fnm/node-versions/v24.0.0/installation/bin'),
+      h('.asdf/shims'), h('.local/share/mise/shims'),
+    ];
+    const env = { PATH: '/usr/bin' };
+    expect(searchDirs({ env, home, platform: 'darwin', searchPath: null })).toEqual(['/usr/bin', '/opt/homebrew/bin', '/usr/local/bin', ...common, h('Library/pnpm'), ...tail]);
+    expect(searchDirs({ env, home, platform: 'linux', searchPath: null })).toEqual(['/usr/bin', '/usr/local/bin', ...common, ...tail]);
+  });
+
   it('lists nvm and fnm node versions highest first and appends the login shell\'s PATH last', () => {
     const home = tempRoot();
     for (const v of ['v18.2.0', 'v22.19.0', 'v20.10.1']) fs.mkdirSync(path.join(home, '.nvm', 'versions', 'node', v, 'bin'), { recursive: true });

@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { _electron as electron, expect, type ElectronApplication, type Locator, type Page, type TestInfo } from '@playwright/test';
+import { _electron as electron, expect, test, type ElectronApplication, type Locator, type Page, type TestInfo } from '@playwright/test';
 import { COMMANDS, menuItemId, type CommandArgs, type CommandId } from '../../packages/domain/src/commands';
 import type { LearnApi, UpdateMetadataInput } from '../../packages/domain/src/ipc';
 import type { JobProgress } from '../../packages/domain/src/backup';
@@ -12,6 +12,7 @@ import { settingsContentHeight } from '../../apps/desktop/src/main/settings-geom
 import type { FsyncProbeInput, FsyncProbeResult, SeedAssetsInput, SeedAssetsResult } from '../../apps/desktop/src/main/test-hooks';
 import type { SeedBodyTextInput } from '../../apps/desktop/src/main/text/seed-body-text';
 import { compareShots, isTranslucent, sidebarFallback, type Pixels } from './shot-compare';
+import { describeTextState, jobCounts, type TextStateSnapshot } from './text-state';
 
 /** What the image reader shows (viewers/readerScope.tsx learnImageHook): its state, whose it is, and the picture point at the stage's centre. */
 export interface ImageReaderState {
@@ -1850,14 +1851,64 @@ type WithTextSchedulerHooks = {
     textHold(input: { afterPages: number | null }): void;
     textHeld(): boolean;
     textStats(): { batchMs: number[]; pagesWritten: number; activeMs: number };
+    textState(): TextStateSnapshot;
   };
 };
 /** PDF items with their body text already stored, without waiting for the worker; announces one import. */
 export const seedBodyText = (app: ElectronApplication, input: SeedBodyTextInput) => app.evaluate((_e, arg) => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.seedBodyText(arg), input);
 /** Under E2E the body-text scheduler starts paused: 'now' runs it without the five-second delay (the startup check is still waited for). */
 export const textExtraction = (app: ElectronApplication, mode: 'pause' | 'resume' | 'now') => app.evaluate((_e, arg) => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textExtraction(arg), mode);
-/** Resolves when no PDF outside the trash has a queued job and nothing runs. */
-export const textIdle = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textIdle());
+/** textIdle's longest wait unless a test says otherwise: search-perf reads 2,000 pages, 28 s on a Mac runner. */
+export const TEXT_IDLE_MS = 240_000;
+/** How long the state a timed-out textIdle reports may take: main that does not answer is the finding then. */
+const TEXT_STATE_ANSWER_MS = 10_000;
+/** The default wait: TEXT_IDLE_MS, or half the test's own timeout when that is shorter, so this message comes before the test's. */
+function textIdleTimeout(): number {
+  let testTimeout = 0;
+  try {
+    testTimeout = test.info().timeout;
+  } catch {
+    // Not inside a test.
+  }
+  return testTimeout > 0 ? Math.min(TEXT_IDLE_MS, Math.floor(testTimeout / 2)) : TEXT_IDLE_MS;
+}
+/**
+ * Resolves when no PDF outside the trash has a queued job and nothing runs. A run that never ends throws after `timeout` ms
+ * with the scheduler's state (textState) and the jobs counted by state and attempts, instead of waiting for the test's timeout.
+ */
+export async function textIdle(app: ElectronApplication, opts: { timeout?: number } = {}): Promise<void> {
+  const timeout = opts.timeout ?? textIdleTimeout();
+  const idle = app.evaluate(() => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textIdle()).then(() => true);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), timeout);
+  });
+  try {
+    if (await Promise.race([idle, late])) return;
+  } finally {
+    clearTimeout(timer);
+  }
+  throw new Error(`textIdle: the body text was not idle after ${timeout} ms\n${await textReport(app)}`);
+}
+/** What a timed-out textIdle says: the jobs' counts and textState, or that main did not answer them in time. */
+async function textReport(app: ElectronApplication): Promise<string> {
+  const answer = <T>(asked: Promise<T>, what: string): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error(`main did not answer ${what} within ${TEXT_STATE_ANSWER_MS} ms`)), TEXT_STATE_ANSWER_MS);
+    });
+    return Promise.race([asked, late]).finally(() => clearTimeout(timer));
+  };
+  try {
+    const jobs = await answer(textJobs(app), 'textJobs');
+    const state = await answer(textState(app), 'textState');
+    return `jobs (state/attempts: count): ${JSON.stringify(jobCounts(jobs))}\n${describeTextState(state)}`;
+  } catch (e) {
+    return `no state: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+/** The body-text scheduler's flags and trail, and main's steps its first start waits on (codes only). */
+export const textState = (app: ElectronApplication): Promise<TextStateSnapshot> => app.evaluate(() => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textState());
 export const pageTextCount = (app: ElectronApplication, input: { itemId: string } | { sha256: string }) => app.evaluate((_e, arg) => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.pageTextCount(arg), input);
 export const textJobs = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textJobs());
 export const textHold = (app: ElectronApplication, afterPages: number | null) => app.evaluate((_e, arg) => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textHold({ afterPages: arg }), afterPages);

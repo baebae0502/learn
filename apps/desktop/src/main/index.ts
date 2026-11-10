@@ -1,6 +1,6 @@
 // First: ESM evaluates imports in order, so the cold-start marks module runs before anything else (its value is
 // performance.timeOrigin either way).
-import { markPerf } from './perf';
+import { markPerf, perf } from './perf';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -736,6 +736,15 @@ if (!app.requestSingleInstanceLock()) {
           assetsDir: pdfjsAssetsDir(here),
           scheduler: () => text,
           repo: () => deps.getContext().text,
+          // What the scheduler's first start waits for, as main saw it.
+          main: () => ({
+            firstIdle,
+            checkStart: perf.checkStart,
+            checkEnd: perf.checkEnd,
+            auto: autoCheck,
+            lane: jobs.busy(),
+            imports: imports.state().state,
+          }),
           shaOf: (itemId) => {
             const item = ctx?.repo.getItem(itemId);
             return (item && ctx?.repo.getAsset(item.assetId)?.sha256) || null;

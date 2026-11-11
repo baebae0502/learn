@@ -79,8 +79,8 @@ describe('acpIn: incoming messages are read loosely', () => {
       usage: { inputTokens: 10, outputTokens: 20, cachedReadTokens: 5, totalTokens: 35 },
     })).toEqual({ stopReason: 'end_turn', usage: { inputTokens: 10, outputTokens: 20 }, _meta: {} });
     expect(acpIn.promptResult.parse({
-      stopReason: 'end_turn', _meta: { anything: 1, quota: { plan: 'max', model_usage: [{ model: 'main', token_count: 5000, cost: 1 }] } },
-    })).toEqual({ stopReason: 'end_turn', _meta: { quota: { model_usage: [{ model: 'main', token_count: 5000 }] } } });
+      stopReason: 'end_turn', _meta: { anything: 1, quota: { plan: 'max', model_usage: [{ model: 'main', token_count: { totalTokens: 5000, outputTokens: 3 }, cost: 1 }] } },
+    })).toEqual({ stopReason: 'end_turn', _meta: { quota: { model_usage: [{ model: 'main', token_count: { totalTokens: 5000 } }] } } });
     expect(acpIn.permissionRequest.parse({
       sessionId: 's1', ...extra, toolCall: { toolCallId: 't', title: 'Bash' },
       options: [{ optionId: 'reject', kind: 'reject_once', name: 'Reject', ...extra }],
@@ -91,14 +91,19 @@ describe('acpIn: incoming messages are read loosely', () => {
     expect(acpIn.promptResult.safeParse({ stopReason: 'end_turn', usage: null, _meta: { quota: { model_usage: [] } } }).success).toBe(true);
   });
 
+  it('usage and model usage are display-only: a wrong type reads as absent, the result still passes', () => {
+    expect(acpIn.promptResult.parse({ stopReason: 'end_turn', usage: { inputTokens: 1.5, outputTokens: 2 } })).toEqual({ stopReason: 'end_turn', usage: { inputTokens: null, outputTokens: 2 } });
+    expect(acpIn.promptResult.parse({ stopReason: 'end_turn', usage: 'x', _meta: 5 })).toEqual({ stopReason: 'end_turn', usage: null, _meta: null });
+    expect(acpIn.promptResult.parse({ stopReason: 'end_turn', _meta: { quota: { model_usage: [{ model: 3, token_count: { totalTokens: 1 } }, { model: 'm', token_count: 900 }] } } }))
+      .toEqual({ stopReason: 'end_turn', _meta: { quota: { model_usage: [null, null] } } });
+  });
+
   it.each([
     ['a session id that is a number', acpIn.newSessionResult, { sessionId: 5 }],
     ['an empty session id', acpIn.newSessionResult, { sessionId: '' }],
     ['a session id over 256 characters', acpIn.newSessionResult, { sessionId: 's'.repeat(257) }],
     ['a stop reason that is a number', acpIn.promptResult, { stopReason: 7 }],
     ['a stop reason over 64 characters', acpIn.promptResult, { stopReason: 'x'.repeat(65) }],
-    ['token counts that are not integers', acpIn.promptResult, { stopReason: 'end_turn', usage: { inputTokens: 1.5 } }],
-    ['a model name that is not a string', acpIn.promptResult, { stopReason: 'end_turn', _meta: { quota: { model_usage: [{ model: 3, token_count: 1 }] } } }],
     ['chunk text that is a number', acpIn.messageChunk, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 3 } }],
     ['a text chunk without its text', acpIn.messageChunk, { sessionUpdate: 'agent_message_chunk', content: { type: 'text' } }],
     ['a tool name that is not a string', acpIn.toolCall, { sessionUpdate: 'tool_call', toolCallId: 't', _meta: { claudeCode: { toolName: 1 } } }],

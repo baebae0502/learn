@@ -279,6 +279,7 @@ async function makeRig(o: RigOptions = {}) {
     log: readLog,
     message: (id: string) => repo.message(id)!,
     model: (id: string) => db.prepare('SELECT model FROM messages WHERE id = ?').pluck().get(id) as string | null,
+    tokens: (id: string) => db.prepare('SELECT input_tokens AS input, output_tokens AS output FROM messages WHERE id = ?').get(id) as { input: number | null; output: number | null },
     reads: (id: string) => repo.toolReads(id).map((r) => ({ tool: r.tool, outcome: r.outcome, from: r.pageFrom, to: r.pageTo, code: r.errorCode })),
     rows: () => db.prepare('SELECT COUNT(*) FROM messages').pluck().get() as number,
     conversations: () => db.prepare('SELECT COUNT(*) FROM conversations').pluck().get() as number,
@@ -487,6 +488,7 @@ const CASES: Record<FakeScript, { name: string; run: () => Promise<void> }> = {
       expect(answer.text).toContain(firstWords(bodyTextPage(SEED, 0, 5, 1500)));
       expect(r.streamed(asked.tutorMessageId)).toBe(answer.text);
       expect(r.model(asked.tutorMessageId)).toBe('fake-model');
+      expect(r.tokens(asked.tutorMessageId)).toEqual({ input: 1_200, output: 400 });
       r.expectQuietLog([answer.text.slice(0, 40), firstWords(bodyTextPage(SEED, 0, 4, 1500)), '어텐션이 뭐야?', PASSAGE]);
       await r.finish();
     },

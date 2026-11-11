@@ -115,6 +115,10 @@ describe.skipIf(!LIVE)('Claude Code over ACP, isolated (live: LEARN_AGENT_LIVE=1
     const at = textAt.get(a.tutorMessageId);
     return at === undefined ? null : at - a.askedAt;
   };
+  /** A turn that did not finish is logged whole (code, phase) before the assertion fails, so the run says why. */
+  const logEnd = (label: string, end: Done | Failed): void => {
+    if (end.kind !== 'done') console.log(`[live] ${label} did not finish: ${JSON.stringify(end)}`);
+  };
   const verifiedOf = (e: Done | Failed) => (e.kind === 'done' ? e.sources.filter((s) => s.pageIndex !== null) : []);
 
   beforeAll(async () => {
@@ -122,6 +126,9 @@ describe.skipIf(!LIVE)('Claude Code over ACP, isolated (live: LEARN_AGENT_LIVE=1
     userData = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-acp-live-'));
     home = os.homedir();
     const liveHome = process.env.LEARN_AGENT_LIVE_HOME;
+    if (liveHome === undefined || liveHome === '' || !path.isAbsolute(liveHome)) {
+      throw new Error('LEARN_AGENT_LIVE_HOME must be set to an absolute path: the isolated login folder, never the user\'s own agent folders');
+    }
     // This test is a live run of an unpackaged build by definition: the isolated login folder, never the user's own.
     tHome = tutorHome(userData, { live: true, liveHome });
     console.log(`[live] userData ${userData}`);
@@ -233,7 +240,8 @@ describe.skipIf(!LIVE)('Claude Code over ACP, isolated (live: LEARN_AGENT_LIVE=1
       conversationId = a.conversationId;
       const end = await ended(a.tutorMessageId);
       console.log(`[live] lock "${sentence}": ${end.kind === 'done' ? end.status : end.code}, first text ${firstTextMs(a)} ms`);
-      expect(end.kind === 'failed' ? end.code : null).not.toBe('AGENT_LOCKDOWN');
+      logEnd(`lock "${sentence}"`, end);
+      expect(end.kind).toBe('done');
     }
     expect(lockdowns).toEqual([]);
   }, 600_000);
@@ -244,6 +252,7 @@ describe.skipIf(!LIVE)('Claude Code over ACP, isolated (live: LEARN_AGENT_LIVE=1
     const end = await ended(a.tutorMessageId);
     const pid = children.at(-1)?.child.pid;
     console.log(`[live] paper: first text ${firstTextMs(a)} ms, end ${Date.now() - a.askedAt} ms, group RSS ${pid === undefined ? '—' : groupRssMb(pid)} MB`);
+    logEnd('paper', end);
     expect(end).toMatchObject({ kind: 'done', status: 'complete' });
     expect(verifiedOf(end).length).toBeGreaterThanOrEqual(1);
     expect(repo.toolReads(a.tutorMessageId).some((r) => r.tool === 'read_pdf_pages' && r.outcome === 'ok')).toBe(true);
@@ -258,7 +267,8 @@ describe.skipIf(!LIVE)('Claude Code over ACP, isolated (live: LEARN_AGENT_LIVE=1
     const reads = repo.toolReads(a.tutorMessageId);
     const refused = reads.filter((r) => r.outcome === 'refused');
     console.log(`[live] injection: ${end.kind === 'done' ? end.status : end.code}; tool reads ${reads.map((r) => `${r.tool}:${r.outcome}${r.errorCode ? `:${r.errorCode}` : ''}`).join(' ')}`);
-    expect(end.kind === 'failed' ? end.code : null).not.toBe('AGENT_LOCKDOWN');
+    logEnd('injection', end);
+    expect(end.kind).toBe('done');
     expect(lockdowns).toEqual([]);
     // A refused read is Learn's refusal record; what came back is this material's revision only.
     expect(reads.filter((r) => r.outcome !== 'refused' && r.outcome !== 'failed' && r.revisionId !== injected.revisionId)).toEqual([]);
@@ -276,6 +286,7 @@ describe.skipIf(!LIVE)('Claude Code over ACP, isolated (live: LEARN_AGENT_LIVE=1
     const end = await ended(a.tutorMessageId, 30_000);
     const permissions = info.mock.calls.filter((c) => String(c[0]).startsWith('[tutor] permission-refused')).length;
     console.log(`[live] stop: ${end.kind === 'done' ? `${end.status}/${end.stopReason}` : end.code} after ${Date.now() - stoppedAt} ms; permission requests so far ${permissions}`);
+    logEnd('stop', end);
     expect(end).toMatchObject({ kind: 'done', status: 'stopped', stopReason: 'cancelled' });
     expect(Date.now() - stoppedAt).toBeLessThan(3_000);
   }, 300_000);
@@ -284,6 +295,7 @@ describe.skipIf(!LIVE)('Claude Code over ACP, isolated (live: LEARN_AGENT_LIVE=1
     if (!loggedIn) ctx.skip();
     const q1 = await ask(paper, '3쪽을 읽고 한 문장으로 요약해 줘. 인용해 줘.');
     const e1 = await ended(q1.tutorMessageId);
+    logEnd('resume, first answer', e1);
     expect(e1).toMatchObject({ kind: 'done', status: 'complete' });
     const stored = repo.conversation(q1.conversationId)!.agentSessionId;
     service.killAgent();
@@ -292,6 +304,7 @@ describe.skipIf(!LIVE)('Claude Code over ACP, isolated (live: LEARN_AGENT_LIVE=1
     const e2 = await ended(q2.tutorMessageId);
     const after = repo.conversation(q1.conversationId)!.agentSessionId;
     console.log(`[live] resume: ${after === stored ? 'the stored session was resumed' : 'a new session (resume failed or was not offered)'}; first text ${firstTextMs(q2)} ms`);
+    logEnd('resume, second answer', e2);
     expect(e2).toMatchObject({ kind: 'done', status: 'complete' });
     const sent = repo.thread(q1.conversationId).messages.find((m) => m.id === q2.userMessageId)!.sent;
     expect(sent?.preamble).toBe(true);

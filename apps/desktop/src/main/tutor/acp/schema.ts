@@ -32,14 +32,17 @@ const initializeResult = z.object({
 
 const newSessionResult = z.object({ sessionId });
 
-const tokens = z.number().int().min(0).nullish();
+// Usage and model usage are display-only: a field of the wrong type reads as absent (.catch), never as a protocol error.
+const tokens = z.number().int().min(0).nullish().catch(null);
+/** Claude's model_usage entry: token_count is an object whose totalTokens ranks the models; any other shape drops the entry. */
+const modelUsage = z.object({ model: z.string(), token_count: z.object({ totalTokens: z.number().int().min(0) }) }).nullable().catch(null);
 const promptResult = z.object({
   stopReason: z.string().min(1).max(64),
   // Not part of ACP v1's result, but both adapters put it here; null when a turn failed offline.
-  usage: z.object({ inputTokens: tokens, outputTokens: tokens }).nullish(),
+  usage: z.object({ inputTokens: tokens, outputTokens: tokens }).nullish().catch(null),
   _meta: z.object({
-    quota: z.object({ model_usage: z.array(z.object({ model: z.string(), token_count: z.number() })).nullish() }).nullish(),
-  }).nullish(),
+    quota: z.object({ model_usage: z.array(modelUsage).nullish().catch(null) }).nullish().catch(null),
+  }).nullish().catch(null),
 });
 
 const sessionUpdate = z.object({

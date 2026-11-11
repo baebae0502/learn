@@ -12,7 +12,7 @@ export type AuthStatus = 'none' | 'account';
 export interface ToolCallInfo { toolCallId: string; title: string | null; kind: string | null; toolName: string | null; rawInput: unknown }
 /** activity: any other session/update (usage_update, session_info_update, …) — it restarts the update timers and is dropped. */
 export type SessionUpdate = { kind: 'text'; text: string } | { kind: 'tool'; call: ToolCallInfo; learn: boolean } | { kind: 'activity' };
-/** model: the _meta.quota.model_usage entry with the largest token_count; tokens: the result's top-level usage. */
+/** model: the _meta.quota.model_usage entry with the largest token_count.totalTokens; tokens: the result's top-level usage. */
 export interface PromptOutcome { stopReason: StopReason | null; lockdown: boolean; model: string | null; inputTokens: number | null; outputTokens: number | null }
 export interface AcpSessionParams { cwd: string; mcpServers: AcpMcpServer[]; meta?: Record<string, unknown>; systemPrompt?: { mode: 'append'; content: Array<{ type: 'text'; text: string }> } }
 export interface AcpClient {
@@ -248,8 +248,8 @@ export function createAcpClient(peer: JsonRpcPeer, o: {
         if (turn === mine) turn = null;
       }
       const r = read(acpIn.promptResult, raw);
-      let top: { model: string; token_count: number } | null = null;
-      for (const u of r._meta?.quota?.model_usage ?? []) if (!top || u.token_count > top.token_count) top = u;
+      let top: { model: string; total: number } | null = null;
+      for (const u of r._meta?.quota?.model_usage ?? []) if (u && (!top || u.token_count.totalTokens > top.total)) top = { model: u.model, total: u.token_count.totalTokens };
       return {
         stopReason: isAcpStop(r.stopReason) ? r.stopReason : null,
         lockdown: lockedDown,

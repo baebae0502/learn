@@ -483,6 +483,9 @@ function run(cfg: Config): void {
     }
   }
 
+  const count = (totalTokens: number, inputTokens: number, outputTokens: number): Json =>
+    ({ totalTokens, inputTokens, cachedInputTokens: 0, cachedWriteTokens: 0, outputTokens, reasoningOutputTokens: 0 });
+
   async function prompt(params: Json): Promise<Json> {
     const sessionId = String(params.sessionId);
     const blocks = (Array.isArray(params.prompt) ? params.prompt : []).map(asJson).map((b) => ({ type: String(b.type), text: typeof b.text === 'string' ? b.text : '' }));
@@ -496,7 +499,13 @@ function run(cfg: Config): void {
       return {
         stopReason,
         usage: { inputTokens: 1_200, outputTokens: 400, cachedReadTokens: 0, cachedWriteTokens: 0, totalTokens: 1_600 },
-        _meta: { quota: { model_usage: [{ model: 'fake-model', token_count: 1_600 }, { model: 'fake-title-model', token_count: 90 }] } },
+        // Claude's shape: token_count is an object, and the model with the largest total is the answering one.
+        _meta: {
+          quota: {
+            token_count: count(1_600, 1_200, 400),
+            model_usage: [{ model: 'fake-title-model', token_count: count(90, 80, 10) }, { model: 'fake-model', token_count: count(1_600, 1_200, 400) }],
+          },
+        },
       };
     } finally {
       if (turn === t) turn = null;

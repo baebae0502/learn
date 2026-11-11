@@ -191,18 +191,40 @@ describe('createAcpClient', () => {
     }
   });
 
-  it('the model is the model_usage entry with the most tokens; the tokens are the result\'s top-level usage', async () => {
+  it('the model is the model_usage entry with the largest total; the tokens are the result\'s top-level usage', async () => {
     const h = setup();
+    const count = (totalTokens: number) => ({ totalTokens, inputTokens: 1, cachedInputTokens: 0, cachedWriteTokens: 0, outputTokens: 2, reasoningOutputTokens: 0 });
     h.script['session/prompt'] = () => ({
       stopReason: 'end_turn',
       usage: { inputTokens: 10, outputTokens: 20, cachedReadTokens: 3, totalTokens: 33 },
-      _meta: { quota: { model_usage: [{ model: 'small', token_count: 900 }, { model: 'main', token_count: 5000 }] } },
+      _meta: { quota: { token_count: count(5000), model_usage: [{ model: 'small', token_count: count(900) }, { model: 'main', token_count: count(5000) }] } },
     });
     await expect(h.ask()).resolves.toEqual({ stopReason: 'end_turn', lockdown: false, model: 'main', inputTokens: 10, outputTokens: 20 });
     h.script['session/prompt'] = () => ({ stopReason: 'end_turn', usage: null, _meta: { quota: { model_usage: [] } } });
     await expect(h.ask()).resolves.toEqual({ stopReason: 'end_turn', lockdown: false, model: null, inputTokens: null, outputTokens: null });
-    h.script['session/prompt'] = () => ({ stopReason: 'end_turn', _meta: { quota: { model_usage: [{ model: 'm'.repeat(129), token_count: 1 }] } } });
+    h.script['session/prompt'] = () => ({ stopReason: 'end_turn', _meta: { quota: { model_usage: [{ model: 'm'.repeat(129), token_count: count(1) }] } } });
     await expect(h.ask()).resolves.toMatchObject({ model: null });
+  });
+
+  it('model usage is display-only: an entry whose token_count is not the object is ignored, never AGENT_PROTOCOL', async () => {
+    const h = setup();
+    const count = (totalTokens: unknown) => ({ totalTokens });
+    const answer = (quota: unknown, usage: unknown = { inputTokens: 1, outputTokens: 2 }) => { h.script['session/prompt'] = () => ({ stopReason: 'end_turn', usage, _meta: { quota } }); return h.ask(); };
+    await expect(answer({ model_usage: [{ model: 'm', token_count: 900 }] })).resolves.toMatchObject({ stopReason: 'end_turn', model: null, inputTokens: 1 });
+    await expect(answer({ model_usage: [{ model: 'm' }] })).resolves.toMatchObject({ model: null });
+    await expect(answer({ model_usage: [{ model: 'a', token_count: count('x') }, { model: 'b', token_count: count(-1) }, { model: 'c', token_count: count(1.5) }, { model: 'd', token_count: count(7) }] })).resolves.toMatchObject({ model: 'd' });
+    await expect(answer({ model_usage: [{ model: 5, token_count: count(7) }, null, 'x'] })).resolves.toMatchObject({ model: null });
+    await expect(answer({ model_usage: 'nope', token_count: 'nope' })).resolves.toMatchObject({ model: null });
+    await expect(answer('nope')).resolves.toMatchObject({ model: null });
+    await expect(answer(undefined, { inputTokens: 'six', outputTokens: -1 })).resolves.toMatchObject({ inputTokens: null, outputTokens: null });
+    await expect(answer(undefined, 'nope')).resolves.toMatchObject({ stopReason: 'end_turn', inputTokens: null, outputTokens: null });
+    expect(h.fatal).toEqual([]);
+  });
+
+  it('a stopReason of the wrong type is still AGENT_PROTOCOL', async () => {
+    const h = setup();
+    h.script['session/prompt'] = () => ({ stopReason: 7 });
+    await expect(h.ask()).rejects.toMatchObject({ code: 'AGENT_PROTOCOL' });
   });
 
   it('an error answer to session/prompt rejects with its RpcError, code and data as they came', async () => {

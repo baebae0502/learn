@@ -63,6 +63,8 @@ export interface CommandEnv extends CommandContextState {
   setInspectorMode(mode: 'info' | 'tutor'): void;
   /** 에이전트 고르기…: this tab's tutor shows the chooser (the right panel opens on 튜터 if it is not). */
   chooseAgent(): void;
+  /** 새 세션: this tab's tutor goes to a new empty session (the one it showed stays in the session list). */
+  newSession(): void;
   /** ⌘/ (Task 6). */
   showShortcuts(): void;
   /** ⌘K (Task 9): opens the palette, or selects its field when it is already open. */
@@ -264,6 +266,7 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'view.inspectorInfo': (env) => env.setInspectorMode('info'),
   'view.inspectorTutor': (env) => env.setInspectorMode('tutor'),
   'tutor.chooseAgent': (env) => env.chooseAgent(),
+  'tutor.newSession': (env) => env.newSession(),
   'app.shortcuts': (env) => env.showShortcuts(),
   'app.palette': (env) => env.openPalette(),
   'app.settings': (env) => env.openSettings(),
@@ -332,6 +335,7 @@ export function contextOf(env: CommandEnv): CommandContextState {
     ...(env.inspector ? { inspector: env.inspector } : {}),
     ...(env.pdfOpen && env.inspectorMode ? { inspectorMode: env.inspectorMode } : {}),
     ...(env.pdfOpen && env.tutorConsented ? { tutorConsented: true } : {}),
+    ...(env.pdfOpen && env.tutorHasMessages ? { tutorHasMessages: true } : {}),
     ...(env.importRunning ? { importRunning: true } : {}),
     ...(env.backupRunning ? { backupRunning: true } : {}),
     ...(env.restoreRunning ? { restoreRunning: true } : {}),

@@ -45,6 +45,10 @@ export const keys = {
   bodyProgress: ['search', 'progress'] as const,
   /** The tutor's agents report of this run (tutor:agents): kept for the run, read again by the chooser's buttons and after a failed login or lockdown. */
   tutorAgents: ['tutor', 'agents'] as const,
+  /** The tutor's sessions (spec 12): an item's list, the recent ones, one session's thread. sessions:changed and an item's trash, restore and purge mark all of them stale. */
+  sessionsList: (itemId: string) => ['sessions', 'list', itemId] as const,
+  sessionsRecent: ['sessions', 'recent'] as const,
+  sessionThread: (conversationId: string) => ['sessions', 'get', conversationId] as const,
 };
 
 export const useAppInfo = () => useQuery({ queryKey: keys.info, queryFn: () => unwrap(api().app.info()) });
@@ -113,6 +117,7 @@ export const libraryChanges = createChangeHandler({
     else for (const id of ids) void queryClient.invalidateQueries({ queryKey: keys.reading(id) });
   },
   invalidateBody: () => void queryClient.invalidateQueries({ queryKey: ['search'] }),
+  invalidateSessions: () => void queryClient.invalidateQueries({ queryKey: ['sessions'] }),
   whenIdle,
   setTimer: (fn, ms) => setTimeout(fn, ms),
   clearTimer: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
@@ -120,6 +125,11 @@ export const libraryChanges = createChangeHandler({
 });
 export function useLibrarySync(): void {
   useLearnEvent('libraryChanged', libraryChanges.onChange);
+}
+
+/** sessions:changed: main created, ended, renamed, deleted or restored a session — every sessions answer is read again where it is shown (spec 12). */
+export function useSessionsSync(): void {
+  useLearnEvent('sessions:changed', () => void queryClient.invalidateQueries({ queryKey: ['sessions'] }));
 }
 
 /** prefsChanged carries the whole new prefs object (any window may have changed them). */

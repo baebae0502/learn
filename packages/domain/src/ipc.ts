@@ -139,6 +139,8 @@ export const commandContextInput = z
     inspectorMode: z.enum(['info', 'tutor']).optional(),
     /** The tutor's consent is recorded: 에이전트 고르기… is on; absent otherwise. */
     tutorConsented: z.boolean().optional(),
+    /** The tutor shows the active tab's session and it has a question: 새 세션 is on; absent otherwise. */
+    tutorHasMessages: z.boolean().optional(),
     textSize: z.union([z.literal(12), z.literal(13), z.literal(14), z.literal(15)]),
     libraryCount: contextCount,
     selectionCount: contextCount,

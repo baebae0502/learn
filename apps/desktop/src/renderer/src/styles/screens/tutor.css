@@ -341,4 +341,379 @@
   .tutor-foot .btn.leading {
     margin-left: calc(var(--space-8) * -1);
   }
+
+  /* ---- The session (spec 8.2, 8.3; design-spec 2.6; mockup .tu-scroll, .tu-msg, .cite, .tool, .tu-scope, .tu-sticky, .tu-latest) ---- */
+
+  /* The new empty session: the pane's empty state in the column. */
+  .tutor-empty {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* The column: the log scrolls; the session's name and 최신으로 sit over its top and bottom edges. */
+  .tutor-convo {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .tutor-log {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+  .tutor-log:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: calc(var(--focus-ring-width) * -1);
+  }
+  /* Turns 16 apart, 16 at the sides, 12 above the composer (design-spec 2.6). */
+  .tutor-log-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-16);
+    padding: var(--space-16) var(--space-16) var(--space-12);
+  }
+  .tutor-session-head {
+    display: flex;
+    flex-direction: column;
+    gap: 2px; /* local: the mockup's title stack */
+    min-width: 0;
+  }
+  .tutor-session-head .t {
+    display: block;
+    font: var(--type-headline);
+  }
+  .tutor-session-head .m {
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  /* The session's name once the head line has scrolled away: one row under the panel head, over the column's top. */
+  .tutor-sticky {
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    height: var(--row-height);
+    padding: 0 var(--space-16);
+    border-bottom: 1px solid var(--separator);
+    background: var(--bg-content);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  .tutor-sticky[hidden] {
+    display: none;
+  }
+  .tutor-sticky .ellipsis {
+    min-width: 0;
+  }
+
+  /* A turn: 8 between its parts. */
+  .tutor-msg {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+    min-width: 0;
+  }
+  /* The user's turn on the right in the accent wash (88 % at most); its tail corner bottom right. */
+  .tutor-msg.user {
+    align-items: flex-end;
+  }
+  .tutor-msg.user .bubble {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+    max-width: 88%;
+    min-width: 0;
+    padding: var(--space-8) var(--space-12);
+    border-radius: var(--radius-xl) var(--radius-xl) var(--radius-sm) var(--radius-xl);
+    background: var(--accent-soft);
+    font: var(--type-paragraph);
+  }
+  .tutor-msg.user .bubble p {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  /* The passage the question carried: 2 px rule, secondary footnote, two lines, its page's chip beside it. */
+  .tutor-quote {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-8);
+    padding-left: var(--space-8);
+    border-left: 2px solid var(--border-strong);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  .tutor-quote .q {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .tutor-quote .cite {
+    margin: -1px 0 0;
+  }
+  /* The tutor's turn on the left in --fill-hover; full width while the answer comes; its tail corner bottom left. Tools, the foot and
+     the lines under it span the column. */
+  .tutor-msg.tutor {
+    align-items: flex-start;
+  }
+  .tutor-msg.tutor > :not(.body) {
+    align-self: stretch;
+  }
+  .tutor-msg.tutor .body {
+    max-width: 100%;
+    min-width: 0;
+    padding: var(--space-8) var(--space-12);
+    border-radius: var(--radius-xl) var(--radius-xl) var(--radius-xl) var(--radius-sm);
+    background: var(--fill-hover);
+    color: var(--text-primary);
+    font: var(--type-paragraph);
+    overflow-wrap: anywhere;
+  }
+  .tutor-msg.tutor.is-streaming .body {
+    width: 100%;
+  }
+  .tutor-msg .body :is(p, ul, ol, blockquote, pre) {
+    margin: 0;
+  }
+  .tutor-msg .body > * + *,
+  .tutor-msg .body blockquote > * + * {
+    margin-top: var(--space-8);
+  }
+  .tutor-msg .body :is(ul, ol) {
+    padding-left: var(--space-20);
+  }
+  .tutor-msg .body li + li,
+  .tutor-msg .body li > :is(ul, ol) {
+    margin-top: 2px; /* local: the mockup's list rhythm */
+  }
+  .tutor-msg .body strong {
+    font-weight: var(--weight-semibold);
+  }
+  .tutor-msg .body code {
+    font: var(--type-mono);
+  }
+  /* A code block: monospace, no highlighting, scrolled sideways rather than wrapped. */
+  .tutor-msg .body .answer-code {
+    overflow-x: auto;
+    padding: var(--space-8);
+    border-radius: var(--radius-md);
+    background: var(--fill-pressed);
+    white-space: pre;
+    overflow-wrap: normal;
+  }
+  .tutor-msg .body blockquote {
+    padding-left: var(--space-8);
+    border-left: 2px solid var(--border-strong);
+    color: var(--text-secondary);
+  }
+  /* Where the streamed answer is being written (mockup .stream-caret). */
+  .stream-caret {
+    display: inline-block;
+    width: 2px; /* local: the field caret */
+    height: 15px; /* local: cap height + descender of 13 px text, as the field caret */
+    margin-left: 2px; /* local: the field caret */
+    vertical-align: -2px;
+    border-radius: 1px;
+    background: var(--accent-ring);
+  }
+
+  /* A citation chip: a place in the item. In a bubble it sits on --bg-content, its hover and press one fill step up (design-spec 2.6). */
+  .cite {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px; /* local: glyph to label in an inline chip */
+    height: 18px; /* local: inline chip that fits the 20 px paragraph line */
+    padding: 0 var(--space-4);
+    margin-left: var(--space-4);
+    border-radius: var(--radius-sm);
+    background-color: var(--accent-soft);
+    color: var(--accent-text);
+    font: var(--type-footnote);
+    font-weight: var(--weight-medium);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    vertical-align: 1px;
+    cursor: default;
+    outline: none;
+  }
+  .cite .icon {
+    color: inherit;
+  }
+  .tutor-msg :is(.bubble, .body) .cite {
+    background-color: var(--bg-content);
+  }
+  .tutor-msg :is(.bubble, .body) .cite[data-cite='go'][data-hovered] {
+    background-image: linear-gradient(var(--fill-pressed), var(--fill-pressed));
+  }
+  .tutor-msg :is(.bubble, .body) .cite[data-cite='go'][data-pressed] {
+    background-image: linear-gradient(var(--fill-selected), var(--fill-selected));
+    color: light-dark(var(--accent-pressed), var(--accent-text)); /* local: 5.18:1 in light (mockup) */
+  }
+  /* Inside ring, like rows and tabs: an inline chip must not reach into the lines above and below. */
+  .cite:is([data-focus-visible], :focus-visible) {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: calc(var(--focus-ring-width) * -1);
+  }
+  /* Still checking (J41): no warning colour, nothing to press — the page's words wait for the answer's end. */
+  .tutor-msg :is(.bubble, .body) .cite.is-checking {
+    color: var(--text-secondary);
+    font-weight: var(--weight-regular);
+  }
+  /* Its revision is gone: dimmed, nothing to press. */
+  .cite.is-disabled {
+    opacity: 0.45;
+  }
+  /* Not verified: the tutor pointed at a page Learn's tools did not return in this turn. */
+  .tutor-msg :is(.bubble, .body) .cite.is-unverified {
+    background-color: var(--warning-soft);
+    color: var(--warning-text);
+  }
+  /* The word before a chip and what follows it stay on its line. */
+  .cite-tail {
+    white-space: nowrap;
+  }
+
+  /* Tool chips over an answer: what Learn's tools returned in this turn. A status, not a button. */
+  .tutor-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+  }
+  .tool {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-6);
+    height: 22px; /* local: the mockup's tool chip */
+    padding: 0 var(--space-8);
+    border-radius: var(--radius-md);
+    box-shadow: inset 0 0 0 1px var(--separator-on-surface);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+    white-space: nowrap;
+    outline: none;
+  }
+  .tool .icon {
+    color: var(--text-tertiary);
+  }
+  .tool .spinner {
+    width: 12px; /* local: 12 px spinner in a chip */
+    height: 12px; /* local: 12 px spinner in a chip */
+    border-width: 1.5px; /* local: 12 px spinner in a chip */
+  }
+  .tool[data-tone='warning'],
+  .tool[data-tone='warning'] .icon {
+    color: var(--warning-text);
+  }
+  .tool[data-tone='danger'],
+  .tool[data-tone='danger'] .icon {
+    color: var(--danger-text);
+  }
+  .tool:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  /* The sent-scope line at the user bubble's right end, and its list across the column. */
+  .tutor-scope-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--space-8);
+    align-self: stretch;
+  }
+  .tutor-scope {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-6);
+    height: 22px; /* local: the mockup's scope line */
+    margin-right: calc(var(--space-4) * -1);
+    padding: 0 var(--space-4);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+    white-space: nowrap;
+    outline: none;
+  }
+  .tutor-scope .icon {
+    color: var(--text-tertiary);
+  }
+  .tutor-scope .num {
+    font-variant-numeric: tabular-nums;
+  }
+  .tutor-scope[data-hovered] {
+    background: var(--fill-hover);
+  }
+  .tutor-scope[data-pressed] {
+    background: var(--fill-pressed);
+  }
+  .tutor-scope[data-focus-visible] {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: calc(var(--focus-ring-width) * -1);
+  }
+  .tutor-scope-list {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: var(--space-12);
+    row-gap: var(--space-4);
+    align-self: stretch;
+    margin: calc(var(--space-4) * -1) 0 0;
+    padding: var(--space-8) var(--space-12);
+    border-radius: var(--radius-md);
+    box-shadow: inset 0 0 0 1px var(--separator-on-surface);
+    font: var(--type-footnote);
+  }
+  .tutor-scope-list dt {
+    color: var(--text-secondary);
+  }
+  .tutor-scope-list dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .tutor-scope-list dd.agent {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+  }
+
+  /* Under an answer: copy, the line of how it ended, whose answer it is. */
+  .tutor-foot-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    margin-left: calc(var(--space-4) * -1);
+  }
+  .tutor-foot-row .tutor-ended,
+  .tutor-foot-row .tutor-by {
+    padding: 0 var(--space-4);
+  }
+
+  /* 최신으로: a zero-height row at the column's bottom, the button centred on it 8 above the composer. */
+  .tutor-latest-row {
+    flex: none;
+    position: relative;
+    z-index: 2;
+    height: 0;
+    display: flex;
+    justify-content: center;
+  }
+  .tutor-latest-row .btn {
+    position: absolute;
+    bottom: var(--space-8);
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-e1);
+  }
 }

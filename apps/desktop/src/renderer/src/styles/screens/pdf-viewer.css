@@ -55,6 +55,11 @@
     background-clip: content-box;
     box-shadow: var(--shadow-page);
   }
+  /* The page a pressed citation points to (spec 7, mockup .cite-page): the thumbnail's current-page grammar on the page itself — a
+     2 px ring, no fill — for a moment (PdfViewHandle.flashPage). Page precision only: Learn verifies pages, not passages. */
+  .pdfViewer .page.cite-page {
+    box-shadow: 0 0 0 2px var(--accent-ring), var(--shadow-page);
+  }
   /* A sideways flow (pdf.js's .scrollHorizontal): the pages stand in one row, 12 between them, 12 above and below and 24 at the ends
      (the mockup); the first page's 24 is the room placement.ts gives it, the pages after it have 12 before them. */
   .pdfViewer.scrollHorizontal {

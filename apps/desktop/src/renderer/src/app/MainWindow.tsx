@@ -11,7 +11,7 @@ import { splitTrashSelection, trashSelectionCount, withTrashTargets } from '../t
 import { leaveTrashView, useInTrash, useLeaveEmptyTrash, useTrash } from '../trash/useTrashSource';
 import { useReportContext } from '../commands/useReportContext';
 import { useMenuCommands } from '../commands/useMenuCommands';
-import { keys, useItems, useLibrarySync, usePrefs } from '../data/queries';
+import { keys, useItems, useLibrarySync, usePrefs, useSessionsSync } from '../data/queries';
 import { queryClient } from '../data/query-client';
 import { useBusyScreen } from '../library/busyScreen';
 import { visibleColumns } from '../library/columns';
@@ -55,6 +55,9 @@ import { showInspectorMode, useInspectorHidden, useToggleInspector } from '../sh
 import { useInspectorMode } from '../shell/inspectorMode';
 import { useTutorPrefs } from '../tutor/useTutorPrefs';
 import { useAgentsReread } from '../tutor/useAgents';
+import { useTutorPanelState } from '../tutor/TutorPanel';
+import { useTutorTab } from '../tutor/tutorStore';
+import { useTurnEvents } from '../tutor/useTurnEvents';
 import { useTutorView } from '../tutor/useTutorView';
 import { useTabsPersistence } from './useTabsPersistence';
 import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell/useSidebar';
@@ -113,6 +116,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   useApplyPrefs();
   useWindowState();
   useLibrarySync();
+  useSessionsSync();
   useBodyProgressSync();
   const scopeReady = useRestoreView();
   usePanePersistence();
@@ -395,8 +399,16 @@ export function MainWindow(_props: { info: AppInfo }) {
   const inspectorHidden = useInspectorHidden(showsInspector);
   // The right panel's mode: the reader's remembered one (튜터 until one is chosen), the library's 정보 alone.
   const inspectorMode = useInspectorMode();
-  // No session is shown yet (the tutor draws the card, the off state and the chooser, none of which has a session): the one place that tells main is here, with the active tab's value.
-  useTutorView(null);
+  // The session the active tab's tutor shows, while it can be seen (not the card, the off state, the chooser, 정보 or a folded panel):
+  // the one place that tells main is here, with the active tab's value (P-5).
+  const tutorState = useTutorPanelState();
+  const tutorConversation = useTutorTab((s) => s.conversationId);
+  const tutorShown = view.kind === 'reader' && showsInspector && !inspectorHidden && inspectorMode === 'tutor' && tutorState === 'ready';
+  useTutorView(tutorShown ? { itemId: view.itemId, conversationId: tutorConversation } : null);
+  // 새 세션 needs a session with a question on screen.
+  const tutorHasMessages = tutorShown && tutorConversation !== null;
+  // What main says about answers goes to the tab that shows their session, shown or not.
+  useTurnEvents();
   // The consent main recorded: 에이전트 고르기… needs it.
   const tutorConsented = useTutorPrefs().consent !== null;
   // A turn that failed on the login or the lockdown makes the agents report of this run stale, whatever the panel shows.
@@ -471,6 +483,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     // The reader's right panel mode, reported while a PDF is open (⌃⌘1 / ⌃⌘2 and the menu bar follow it).
     ...(pdfOpen ? { inspectorMode } : {}),
     ...(tutorConsented ? { tutorConsented: true } : {}),
+    ...(tutorHasMessages ? { tutorHasMessages: true } : {}),
     // ⌘+ / ⌘− stop at 15 / 12 and ⌘0 is off at 13 (prefs.fontSize; the default until prefs are read).
     textSize,
     libraryCount: count,
@@ -560,6 +573,8 @@ export function MainWindow(_props: { info: AppInfo }) {
       currentScope().tutor.getState().setChoosing(true);
       showInspectorMode('tutor');
     },
+    // The shown tab's tutor goes to a new empty session; the one it showed stays in the session list.
+    newSession: () => currentScope().tutor.getState().setConversation(null),
     showShortcuts: () => void showShortcuts(),
     checkLibrary: () => checkLibrary(false),
     openPalette,
@@ -584,7 +599,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, pdfOpen, imageDrawn, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, inspectorMode, tutorConsented, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAtPage, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, pdfOpen, imageDrawn, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, inspectorMode, tutorConsented, tutorHasMessages, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAtPage, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);

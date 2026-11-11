@@ -1,11 +1,15 @@
 import { useEffect, useRef, type KeyboardEvent } from 'react';
+import { SquarePen } from 'lucide-react';
 import { acceleratorLabel, commandById } from '@learn/domain';
+import { useCommands } from '../commands/CommandProvider';
 import { chooseInspectorMode } from '../shell/inspectorMode';
 import { focusPaneNamed } from '../shell/panes';
 import { usePanelFocusRequest } from '../shell/panelFocus';
 import type { InspectorMode } from '../shell/layout';
 import { t } from '../strings';
-import { TutorPanel } from '../tutor/TutorPanel';
+import { TutorPanel, useTutorPanelState } from '../tutor/TutorPanel';
+import { useTutorTab } from '../tutor/tutorStore';
+import { IconButton } from '../ui/Button';
 import { currentPlatform } from '../ui/platform';
 import { perfMarkLatest } from '../ui/perfMarks';
 import { usePaintedOnce } from '../ui/usePaintedOnce';
@@ -22,8 +26,31 @@ const TABS = [
 const tabId = (mode: InspectorMode): string => `inspector-tab-${mode}`;
 const PANEL_ID = 'inspector-tabpanel';
 
-/** The reader's head (44): the mode segment, 정보 | 튜터. One tab stop, the arrow keys move between the two. */
+/**
+ * 새 세션 at the head's right while the tutor shows the tab's session (spec 8.1, 8.2): it runs tutor.newSession, and is disabled with its
+ * reason while the session has no question yet.
+ */
+function NewSession() {
+  const { run, isEnabled } = useCommands();
+  const empty = useTutorTab((s) => s.conversationId === null);
+  return (
+    <IconButton
+      icon={SquarePen}
+      label={t.tutor.newSession.label}
+      onPress={() => run('tutor.newSession')}
+      isDisabled={!isEnabled('tutor.newSession')}
+      disabledReason={empty ? t.tutor.newSession.empty : t.common.busy}
+      testId="tutor-new-session"
+    />
+  );
+}
+
+/**
+ * The reader's head (44): the mode segment, 정보 | 튜터 — one tab stop, the arrow keys move between the two; in tutor mode with the tab's
+ * session shown, 새 세션 at the right.
+ */
 function ModeHead({ mode }: { mode: InspectorMode }) {
+  const session = useTutorPanelState() === 'ready';
   const refs = useRef<Partial<Record<InspectorMode, HTMLButtonElement | null>>>({});
   const pick = (next: InspectorMode, focus: boolean) => {
     chooseInspectorMode(next);
@@ -63,6 +90,12 @@ function ModeHead({ mode }: { mode: InspectorMode }) {
           );
         })}
       </div>
+      {mode === 'tutor' && session && (
+        <>
+          <span className="spacer" />
+          <NewSession />
+        </>
+      )}
     </div>
   );
 }

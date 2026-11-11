@@ -1,8 +1,12 @@
 // The tutor's copy (spec 13: 합니다체; U+00A0 binds a determiner to its noun, a kind to its count, "Claude Code" and "이 Mac" into one
 // piece). T1a has one real agent and one company: the card says Claude Code and Anthropic, as the approved mockup does.
-// Rows join this file with the task that draws them; this one holds the mode segment, the consent card, the off state and the agent chooser.
+// Rows join this file with the task that draws them: the mode segment, the consent card, the off state, the agent chooser, and the
+// conversation (Task 17: the empty session, the chips, the sent-scope line and list, the lines under an answer, 최신으로).
 import { SPIKE_FACTS, type AgentId } from '@learn/domain';
 import { euroRo } from './josa';
+
+/** A run of pages as the chips write it: "42" or "41–42" (1-based). */
+const pages = (from: number, to: number): string => (from === to ? `${from}` : `${from}–${to}`);
 
 const AGENT_NAMES: Readonly<Record<AgentId, string>> = { claude: 'Claude Code', fake: '가짜 에이전트' };
 
@@ -70,6 +74,66 @@ export const tutor = {
     failedTip: '에이전트를 확인하지 못했습니다',
     fakeBand: '가짜 에이전트 · 정해 둔 답을 돌려줍니다(개발·데모 빌드)',
   },
+  /** The panel head's 새 세션 (spec 8.2): disabled with its reason while the session has no question. */
+  newSession: { label: '새\u00a0세션', empty: '지금 세션이 비어 있습니다' },
+  /** The new empty session (spec 8.2, 13): its title is the item's; Task 20 adds the texts of a PDF without readable body text. */
+  empty: { readable: '이\u00a0자료에 대해 물어보세요. 본문에서 구간을 선택하면 질문에 붙고, 답에는 근거가 된 쪽이 함께 표시됩니다.' },
+  /** The conversation column (spec 8.3): its name, 최신으로, and what the hidden status says once at a turn's end (J56). */
+  conversation: { label: '대화', latest: '최신으로', received: '답을 받았습니다', stopped: '답을 중지했습니다' },
+  /** Citation chips (spec 7, 8.3, 13; the approved "42쪽"). */
+  cite: {
+    page: (n: number) => `${n}쪽`,
+    go: (n: number) => `${n}쪽으로 이동`,
+    checking: '확인 중',
+    checkingTip: '인용을 확인하는 중입니다',
+    none: '출처 없음',
+    noneTip: (n: number) => `확인되지 않은 인용 · 튜터가 ${n}쪽을 가리켰지만 이번 답에서 그\u00a0쪽을 읽지 않았습니다`,
+    outsideTip: (n: number) => `확인되지 않은 인용 · ${n}쪽은 이\u00a0자료에 없습니다`,
+    lostTip: '이\u00a0쪽이 있던 판본을 찾을 수 없습니다',
+  },
+  /** The tool chips over an answer (spec 8.3, 13): what Learn's tools did in the turn; a status with its tooltip. */
+  tools: {
+    selection: '선택한 구간 확인',
+    selectionTip: '질문에 붙인 구간과 위치를 확인했습니다',
+    position: '위치 확인',
+    positionTip: '사용자가 보던 쪽과 자료를 확인했습니다',
+    outline: '목차 확인',
+    outlineTip: '목차를 확인했습니다',
+    read: (from: number, to: number) => `${pages(from, to)}쪽 읽음`,
+    readTip: (from: number, to: number) => `${pages(from, to)}쪽 본문을 읽었습니다`,
+    reading: (from: number, to: number) => `${pages(from, to)}쪽 읽는 중`,
+    refused: '범위 밖 요청을 거절함',
+    refusedTip: '이\u00a0대화의 범위 밖 자료를 읽으려 해 거절했습니다',
+    unread: '쪽을 읽지 못함',
+    unreadTip: '본문을 아직 읽을 수 없어 쪽을 돌려주지 못했습니다',
+  },
+  /** The sent-scope line under a question and its list (spec 8.5, J45): what went out, what the agent was let read, the pages it read. */
+  scope: {
+    selection: (n: number) => `선택\u00a0${n}`,
+    material: '자료\u00a01',
+    name: (n: number) => `보낸 것 선택 ${n}개, 읽게 열어 둔 것 자료 1개 — 누르면 목록이 열립니다`,
+    sent: '보낸 것',
+    open: '읽게 열어 둔 것',
+    read: '읽은 쪽',
+    agent: '에이전트',
+    question: '질문',
+    selectionAt: (n: number) => `선택한 구간 · ${n}쪽`,
+    replayed: (n: number) => `앞선 대화 ${n}개`,
+    reground: '원문 근거 요청',
+    pages: (from: number, to: number) => `${pages(from, to)}쪽`,
+    none: '없음',
+  },
+  /** Under an answer (spec 8.3, 13): copying it, and the one line of how it ended. */
+  answer: {
+    copy: '답 복사',
+    copied: '복사했습니다',
+    stopped: '중지함',
+    cut: '답이 길이 한도에서 끊겼습니다.',
+    steps: '에이전트가 한 답에서 할 수 있는 단계를 다 썼습니다.',
+    refused: '에이전트가 이\u00a0질문에 답하지 않았습니다.',
+  },
+  /** The copied answer's cites (citationCopyText): "(42쪽)", "(출처 없음)". */
+  copy: { page: (n: number) => `(${n}쪽)`, none: '(출처 없음)' },
   /** An agent's name as a sentence has it: "Claude Code" is one piece. Anything but a known agent reads as the fake's neutral name. */
   agentName: (id: AgentId): string => AGENT_NAMES[id] ?? AGENT_NAMES.fake,
 } as const;

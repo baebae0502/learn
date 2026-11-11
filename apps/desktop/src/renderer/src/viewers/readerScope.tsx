@@ -5,7 +5,7 @@ import { createReaderStore, type ImageState, type ReaderStore } from './pdf/read
 import { readWindowParams } from '../ui/platform';
 import { createSelectionStore, type SelectionStore } from '../translation/useSelectionText';
 import { createTranslationStore, type TranslationStore } from '../translation/store';
-import { createTutorTabStore, type TutorTabStore } from '../tutor/tutorStore';
+import { createTutorTabStore, forgetTutorTab, type TutorTabStore } from '../tutor/tutorStore';
 
 /**
  * Everything one open document keeps on screen: its reader state, its find bar, its text selection and the translation of it,
@@ -17,7 +17,7 @@ export interface ReaderScope {
   readonly find: StoreApi<FindStore>;
   readonly selection: StoreApi<SelectionStore>;
   readonly translation: StoreApi<TranslationStore>;
-  /** The tutor panel's own state for this tab (the session it shows, 나중에): memory only. */
+  /** The tutor panel's own state for this tab (the session it shows, its live answer, the chooser asked for). */
   readonly tutor: StoreApi<TutorTabStore>;
   readonly pageField: { current: HTMLInputElement | null };
   /** The picture point at the image stage's centre (0–1), kept by the image reader as it moves; not state, so a scroll re-renders nothing. */
@@ -26,7 +26,7 @@ export interface ReaderScope {
 
 export function createReaderScope(id: string): ReaderScope {
   return {
-    id, reader: createReaderStore(), find: createFindStore(), selection: createSelectionStore(), translation: createTranslationStore(), tutor: createTutorTabStore(), pageField: { current: null }, imageCentre: { current: null },
+    id, reader: createReaderStore(), find: createFindStore(), selection: createSelectionStore(), translation: createTranslationStore(), tutor: createTutorTabStore(id), pageField: { current: null }, imageCentre: { current: null },
   };
 }
 
@@ -48,6 +48,7 @@ export const readerScopes = (() => {
       const scope = all.get(id);
       if (!scope) return;
       all.delete(id);
+      forgetTutorTab(id);
       if (active === scope) setActiveReaderScope(null);
     },
     ids: (): string[] => [...all.keys()],

@@ -45,6 +45,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   toggleInspector: vi.fn(),
   setInspectorMode: vi.fn(),
   chooseAgent: vi.fn(),
+  newSession: vi.fn(),
   showShortcuts: vi.fn(),
   openPalette: vi.fn(),
   showInFolder: vi.fn(),
@@ -389,6 +390,23 @@ describe('renderer command registry', () => {
     expect(reportedContext(e)).toMatchObject({ tutorConsented: true });
     expect(reportedContext(env({ view: 'viewer', pdfOpen: true }))).not.toHaveProperty('tutorConsented');
     expect(reportedContext(env({ view: 'viewer', tutorConsented: true }))).not.toHaveProperty('tutorConsented');
+  });
+  it('새 세션 runs only while the tutor shows a session with a question, and the context reports that only with a PDF open', () => {
+    const e = env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor', tutorHasMessages: true });
+    expect(runCommand('tutor.newSession', e)).toBe(true);
+    expect(e.newSession).toHaveBeenCalledTimes(1);
+    for (const off of [
+      env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor' }), // an empty session
+      env({ view: 'viewer', pdfOpen: true, inspectorMode: 'info', tutorHasMessages: true }), // 정보 is shown
+      env({ view: 'viewer', inspectorMode: 'tutor', tutorHasMessages: true }), // no PDF open
+      env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor', tutorHasMessages: true, blocked: true }),
+    ]) {
+      expect(runCommand('tutor.newSession', off)).toBe(false);
+      expect(off.newSession).not.toHaveBeenCalled();
+    }
+    expect(reportedContext(e)).toMatchObject({ tutorHasMessages: true });
+    expect(reportedContext(env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor' }))).not.toHaveProperty('tutorHasMessages');
+    expect(reportedContext(env({ view: 'viewer', tutorHasMessages: true }))).not.toHaveProperty('tutorHasMessages');
   });
   it('⌘F finds in the reader and quick-searches in the library; ⌘G ⇧⌘G ⌘E and the sidebar lists run on the open PDF only', () => {
     const e = env({ view: 'viewer', pdfOpen: true });

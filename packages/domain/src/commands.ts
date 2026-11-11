@@ -80,6 +80,7 @@ export type CommandId =
   | 'view.inspectorTutor'
   | 'translation.translateSelection'
   | 'tutor.chooseAgent'
+  | 'tutor.newSession'
   | 'app.shortcuts'
   | 'app.palette'
   | 'app.settings'
@@ -497,6 +498,11 @@ export const COMMANDS: readonly CommandSpec[] = [
     id: 'tutor.chooseAgent', label: '에이전트 고르기…', contexts: ['viewer'],
     keywords: ['에이전트', '튜터', '고르기', '선택', 'agent', 'tutor', 'claude'],
   },
+  // A new empty session in this tab's tutor (T1a, spec 8.2, 11): the palette and the panel head's button; no key (J60).
+  {
+    id: 'tutor.newSession', label: '새\u00a0세션', contexts: ['viewer'],
+    keywords: ['새 세션', '세션', '튜터', '대화', '새로', 'new session', 'tutor', 'chat'],
+  },
   // 정렬 기준 ▸ (spec 5.2): the keyboard-only sort. Its rows are the shown columns and the two directions, built by main
   // from the reported context; a pick sets the sort of the view shown. Not in the palette: a run there carries no value.
   { id: 'library.sortBy', label: '정렬 기준', menu: { menu: 'view', group: 2, order: 3 }, contexts: ['library'], submenu: 'sortColumns', palette: false },
@@ -702,6 +708,8 @@ export interface CommandContextState {
   inspectorMode?: 'info' | 'tutor';
   /** The tutor's consent is recorded (prefs.tutor.consent): 에이전트 고르기… needs it. Absent before. */
   tutorConsented?: boolean;
+  /** The tutor shows the active tab's session and it has a question: 새 세션 needs it. Absent otherwise. */
+  tutorHasMessages?: boolean;
   /** UI text size in pt (prefs.fontSize, Task 10): ⌘+ / ⌘− stop at 15 / 12, ⌘0 only away from 13. */
   textSize: 12 | 13 | 14 | 15;
   /** Items in the library; 0 is the empty library (nothing to find or inspect). */
@@ -916,6 +924,7 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'view.inspectorInfo': pdfOpen,
   'view.inspectorTutor': pdfOpen,
   'tutor.chooseAgent': (c) => c.tutorConsented === true && c.pdfOpen === true,
+  'tutor.newSession': (c) => c.inspectorMode === 'tutor' && c.tutorHasMessages === true,
   'translation.translateSelection': (c) => c.pdfOpen === true && c.pdfSelection === true && c.translationOff !== true,
   // The sort acts on the table, which the empty library does not have (its first-run screen replaces it).
   'library.sortBy': (c) => c.libraryCount > 0,

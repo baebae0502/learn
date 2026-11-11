@@ -19,6 +19,11 @@
     flex: none;
     white-space: nowrap;
   }
+  /* A label alone may be a sentence (a status chip's explanation, spec 13): it wraps inside the 280 instead of running past the box. */
+  .tooltip-label:only-child {
+    flex: 0 1 auto;
+    white-space: normal;
+  }
   /* Reason of an icon button disabled with one, in the shortcut's place (ui/Tooltip.tsx). */
   .tooltip-reason {
     min-width: 0;

@@ -6,11 +6,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { COMMANDS, commandById, type CommandArgs, type CommandId } from '../../packages/domain/src/commands';
-import { consentAndChoose } from './tutor-helpers';
+import { askViaApi, consentAndChoose, turnEnded } from './tutor-helpers';
 import {
   FIXTURES, assignTag, clickToCloseSheet, closeSheet, confirmCalls, createCollection, enabledMenuCommands, expectWindow, importPause, importPaths, isCloseNoise, importResume, importWaiting, imageState, launch, makeTags,
   libraryTab, menuItemEnabled, menuSnapshot, openDialogCalls, openItem, organizeSnapshot, readerTab, recordedPopups, rowByTitle, runMenuCommand, runPalette, saveDialogCalls, sheetReleased, shellCalls, specialRow, stubConfirm,
-  stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, stubSaveDialog, stubShell, tagChip, trashItems, treeRow, waitImportIdle,
+  stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, stubSaveDialog, stubShell, tagChip, textExtraction, textIdle, trashItems, treeRow, waitImportIdle,
   type MenuNode,
 } from './helpers';
 
@@ -118,10 +118,11 @@ const M7B_COMMANDS: readonly CommandId[] = [
 const M7C_COMMANDS: readonly CommandId[] = ['reader.imageBackgroundLight', 'reader.imageBackgroundDark', 'reader.imageBackgroundChecker'] as CommandId[];
 
 /**
- * T1a's commands (the tutor, spec 11): each one is run here — the menu bar's in the reader pass below, 에이전트 고르기… (the palette's) after the consent — and none is left to another test. Later
- * tasks add theirs here — the ledger's three assertions below read this list.
+ * T1a's commands (the tutor, spec 11): each one is run here — the menu bar's in the reader pass below, 에이전트 고르기… (the palette's) after the
+ * consent, 새 세션 (the palette's) after a question — and none is left to another test. Later tasks add theirs here — the ledger's three
+ * assertions below read this list.
  */
-const T1A_COMMANDS: readonly CommandId[] = ['view.inspectorInfo', 'view.inspectorTutor', 'tutor.chooseAgent'];
+const T1A_COMMANDS: readonly CommandId[] = ['view.inspectorInfo', 'view.inspectorTutor', 'tutor.chooseAgent', 'tutor.newSession'];
 
 /**
  * Enabled in the library with one row selected, but running them here would trash the one sample the rest of the loop
@@ -752,6 +753,38 @@ test('every registry command runs without a page error (library and reader menus
       await expect(page.getByTestId('inspector')).toHaveAttribute('data-mode', 'tutor');
       await expect(page.getByTestId('tutor-chooser')).toBeVisible();
       ran.add('tutor.chooseAgent');
+      await runMenuCommand(app, 'view.inspectorInfo');
+      await runMenuCommand(app, 'tab.close');
+      await expect(page.getByTestId('pdf-viewer')).toHaveCount(0);
+    }
+
+    // 새 세션 (T1a, the palette's and the tutor head's): off on a new empty session; once a question made a session (askViaApi, the
+    // composer's call), the palette runs it and the tutor shows a new empty session.
+    {
+      await textExtraction(app, 'now');
+      await textIdle(app);
+      await openItem(page, 'sample');
+      await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
+      await runMenuCommand(app, 'view.inspectorTutor');
+      await expect(page.getByTestId('tutor-empty')).toBeVisible(); // consented and the fake chosen in the block above
+      // The palette lists only what can run: not 새 세션 yet.
+      await runMenuCommand(app, 'app.palette');
+      await page.getByTestId('palette-input').fill('새 세션');
+      await expect(page.locator('[data-testid="palette-item"][data-command-id="tutor.newSession"]')).toHaveCount(0);
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('palette-input')).toHaveCount(0);
+      const pages = Number(await page.getByTestId('pdf-viewer').getAttribute('data-pages'));
+      const itemId = await page.evaluate(async () => {
+        const r = await window.learn.library.list();
+        return r.ok ? r.data.find((i) => i.title === 'sample')!.id : '';
+      });
+      const asked = await askViaApi(page, { itemId, conversationId: null, text: '이 자료는 무엇을 다루나요?', selection: null, reader: { pageIndex: 0, pageCount: pages, outline: [], outlineComplete: true, outlineTotal: 0 } });
+      if ('busyWith' in asked) throw new Error('the question waited for another answer');
+      await expect(page.getByTestId('tutor-question')).toBeVisible();
+      await turnEnded(page, asked.conversationId, asked.tutorMessageId);
+      await runPalette(page, app, '새 세션', 'tutor.newSession');
+      await expect(page.getByTestId('tutor-empty')).toBeVisible();
+      ran.add('tutor.newSession');
       await runMenuCommand(app, 'view.inspectorInfo');
       await runMenuCommand(app, 'tab.close');
       await expect(page.getByTestId('pdf-viewer')).toHaveCount(0);

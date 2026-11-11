@@ -36,6 +36,8 @@ export interface PdfViewHandle {
   goToPage(pageNumber: number): void;
   /** A jump (a thumbnail, the page field): the place left is recorded for back, then the page is placed. */
   jumpToPage(pageNumber: number): void;
+  /** The page a pressed citation points to (0-based), outlined for CITE_FLASH_MS (.cite-page): the page only, never a passage (spec 7). */
+  flashPage(pageIndex: number): void;
   historyBack(): void;
   historyForward(): void;
   next(): void;
@@ -58,6 +60,9 @@ export interface PdfViewHandle {
   eventBus(): EventBus | null;
   linkService(): PDFLinkService | null;
 }
+
+/** How long flashPage outlines its page. */
+export const CITE_FLASH_MS = 1500;
 
 /** A page to show once the reader is placed (a 본문 일치 row, spec 5.8), and what its find bar then searches for (one word of the query). */
 export interface PendingJump {

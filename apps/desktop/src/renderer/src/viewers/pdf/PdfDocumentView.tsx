@@ -8,7 +8,7 @@ import { Icon } from '../../ui/Icon';
 import { pdfViewerModule, pdfjs } from '../pdfjs';
 import { readWindowParams } from '../../ui/platform';
 import { watchDevicePixelRatio } from './displayChange';
-import { INITIAL_PDF, useReader, type PdfPlace, type PdfViewHandle, type ZoomValue } from './readerStore';
+import { CITE_FLASH_MS, INITIAL_PDF, useReader, type PdfPlace, type PdfViewHandle, type ZoomValue } from './readerStore';
 import { goBack, goForward, recordJump } from './history';
 import { linkHistory } from './historyAdapter';
 import { usePageColor } from './usePageColor';
@@ -341,6 +341,14 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
           if (page >= 1 && page <= viewer.pagesCount) jump({ pageNumber: page }, false, false);
           viewer.update();
         };
+        /** The page a pressed citation outlines for a moment, and the timer that takes the outline off. */
+        let flashed: { div: HTMLElement; timer: ReturnType<typeof setTimeout> } | null = null;
+        const unflash = () => {
+          if (flashed === null) return;
+          clearTimeout(flashed.timer);
+          flashed.div.classList.remove('cite-page');
+          flashed = null;
+        };
         const handle: PdfViewHandle = {
           place,
           goToPage: (n) => place({ pageNumber: n }),
@@ -352,6 +360,13 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
               recordHere();
             }
             place({ pageNumber: n });
+          },
+          flashPage: (pageIndex) => {
+            unflash();
+            const div = viewer.getPageView(pageIndex)?.div;
+            if (!div) return;
+            div.classList.add('cite-page');
+            flashed = { div, timer: setTimeout(unflash, CITE_FLASH_MS) };
           },
           historyBack: () => step('back'),
           historyForward: () => step('forward'),
@@ -570,6 +585,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
         };
         teardown = () => {
           onShown.current = null;
+          unflash();
           container.removeEventListener('scroll', onScroll);
           // Before the viewer lets go of the document: a fit scheduled for the next frame would draw pages of a document that is going away.
           stageObserver.disconnect();

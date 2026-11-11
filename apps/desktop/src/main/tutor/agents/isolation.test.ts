@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ToolCallInfo } from '../acp/client';
 import { RpcError } from '../acp/jsonrpc';
-import { ENV_ALLOW, agentEnv, agentHome, historyDirs, idleDir, isLearnToolCall, isLoginRequired, launchSpec, loginCommand, probeDir, sessionMeta, systemPromptParam, tmpDir, tutorHome, workDir } from './isolation';
+import { ENV_ALLOW, ROOT_MARKER, agentCwd, agentEnv, agentHome, historyDirs, idleDir, isLearnToolCall, isLoginRequired, launchSpec, loginCommand, probeDir, sessionMeta, systemPromptParam, tmpDir, tutorHome, workDir } from './isolation';
 
 const made: string[] = [];
 const tempRoot = () => {
@@ -20,14 +20,36 @@ const mode = (p: string) => fs.statSync(p).mode & 0o777;
 describe('isolation', () => {
   it('hands Claude Code an allow-listed environment: its Learn-only folder, its own temp folder, no API key, the proxy kept', () => {
     const base = { PATH: '/x', HOME: '/h', USER: 'u', LANG: 'ko_KR.UTF-8', HTTPS_PROXY: 'http://p:1', ANTHROPIC_API_KEY: 'k', OPENAI_API_KEY: 'k', CODEX_API_KEY: 'k', MY_API_KEY: 'k', SECRET: 's' };
-    const env = agentEnv('claude', base, { path: '/found', agentHome: '/u/Tutor/agents/claude', tmpDir: '/u/Tutor/tmp', cliPath: '/found/claude' });
+    const env = agentEnv('claude', base, { path: '/found', agentHome: '/u/Tutor/agents/claude', tmpDir: '/u/Tutor/tmp', ceiling: '/u/Tutor', cliPath: '/found/claude' });
     expect(Object.keys(env).filter((k) => /API_KEY|SECRET/.test(k))).toEqual([]);
     expect(env).toEqual({
       PATH: '/found', HOME: '/h', USER: 'u', LANG: 'ko_KR.UTF-8', HTTPS_PROXY: 'http://p:1',
       CLAUDE_CONFIG_DIR: '/u/Tutor/agents/claude', CLAUDE_CODE_EXECUTABLE: '/found/claude', ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
-      DISABLE_AUTOUPDATER: '1', CLAUDE_CODE_TMPDIR: '/u/Tutor/tmp', ELECTRON_RUN_AS_NODE: '1', NO_PROXY: '127.0.0.1,localhost',
+      DISABLE_AUTOUPDATER: '1', CLAUDE_CODE_TMPDIR: '/u/Tutor/tmp', GIT_CEILING_DIRECTORIES: '/u/Tutor', ELECTRON_RUN_AS_NODE: '1', NO_PROXY: '127.0.0.1,localhost',
     });
     expect({ meta: sessionMeta('claude'), system: systemPromptParam('I') }).toMatchSnapshot();
+  });
+
+  it('makes an agent folder with Learn\'s empty .git in it, both private, and a second call changes nothing', () => {
+    const dir = path.join(tempRoot(), 'a', 'idle');
+    expect(agentCwd(dir)).toBe(dir);
+    expect(agentCwd(dir)).toBe(dir);
+    expect(fs.readdirSync(dir)).toEqual([ROOT_MARKER]);
+    expect(fs.statSync(path.join(dir, ROOT_MARKER)).isDirectory()).toBe(true);
+    expect(fs.readdirSync(path.join(dir, ROOT_MARKER))).toEqual([]);
+    expect(mode(dir)).toBe(0o700);
+    expect(mode(path.join(dir, ROOT_MARKER))).toBe(0o700);
+    const w = workDir(tempRoot(), 'c1');
+    expect(fs.readdirSync(w)).toEqual([ROOT_MARKER]);
+  });
+
+  it('fences git at Learn\'s folder whatever the base environment says, and the fake gets no GIT_ key', () => {
+    const base = { PATH: '/x', GIT_CEILING_DIRECTORIES: '/elsewhere', GIT_DIR: '/g' };
+    const env = agentEnv('claude', base, { path: '/p', agentHome: '/a', tmpDir: '/t', ceiling: '/u/Tutor', cliPath: '/c' });
+    expect(env.GIT_CEILING_DIRECTORIES).toBe('/u/Tutor');
+    expect(env.GIT_DIR).toBeUndefined();
+    const fake = agentEnv('fake', base, { path: '/p', agentHome: '/a', tmpDir: '/t', ceiling: '/u/Tutor', cliPath: null, fake: { script: '/s', log: null } });
+    expect(Object.keys(fake).filter((k) => k.startsWith('GIT_'))).toEqual([]);
   });
 
   it('names the record folders by both rules the CLI may use, and refuses a Claude launch without its CLI', () => {
@@ -36,14 +58,14 @@ describe('isolation', () => {
       '/a/projects/-Users-a-Library-Application Support-Learn-Tutor-work-x-y', '/h/.cache/claude-cli-nodejs/-Users-a-Library-Application Support-Learn-Tutor-work-x-y', '/h/Library/Caches/claude-cli-nodejs/-Users-a-Library-Application Support-Learn-Tutor-work-x-y',
       '/a/projects/-Users-a-Library-Application-Support-Learn-Tutor-work-x-y', '/h/.cache/claude-cli-nodejs/-Users-a-Library-Application-Support-Learn-Tutor-work-x-y', '/h/Library/Caches/claude-cli-nodejs/-Users-a-Library-Application-Support-Learn-Tutor-work-x-y',
     ]);
-    expect(() => agentEnv('claude', { PATH: '/x' }, { path: '/p', agentHome: '/a', tmpDir: '/t', cliPath: null })).toThrow();
+    expect(() => agentEnv('claude', { PATH: '/x' }, { path: '/p', agentHome: '/a', tmpDir: '/t', ceiling: '/c', cliPath: null })).toThrow();
   });
 
   it('hands the fake agent its script and log instead of the isolation variables', () => {
     const base = { PATH: '/x', HOME: '/h', LEARN_FAKE_AGENT_SCRIPT: 'ignored', ANTHROPIC_API_KEY: 'k' };
-    const env = agentEnv('fake', base, { path: '/p', agentHome: '/a', tmpDir: '/t', cliPath: null, fake: { script: '/s.json', log: '/l.log' } });
+    const env = agentEnv('fake', base, { path: '/p', agentHome: '/a', tmpDir: '/t', ceiling: '/c', cliPath: null, fake: { script: '/s.json', log: '/l.log' } });
     expect(env).toEqual({ PATH: '/p', HOME: '/h', ELECTRON_RUN_AS_NODE: '1', LEARN_FAKE_AGENT_SCRIPT: '/s.json', LEARN_FAKE_AGENT_LOG: '/l.log', NO_PROXY: '127.0.0.1,localhost' });
-    expect(agentEnv('fake', base, { path: '/p', agentHome: '/a', tmpDir: '/t', cliPath: null, fake: { script: '/s.json', log: null } }).LEARN_FAKE_AGENT_LOG).toBeUndefined();
+    expect(agentEnv('fake', base, { path: '/p', agentHome: '/a', tmpDir: '/t', ceiling: '/c', cliPath: null, fake: { script: '/s.json', log: null } }).LEARN_FAKE_AGENT_LOG).toBeUndefined();
     expect(ENV_ALLOW).toEqual(['PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LC_ALL', 'TMPDIR', 'HTTPS_PROXY', 'HTTP_PROXY']);
     expect(sessionMeta('fake')).toEqual({ learnFake: true });
   });
@@ -60,7 +82,7 @@ describe('isolation', () => {
     expect(historyDirs({ agentHome: '/u/Tutor/agents/claude', work: '/u/Tutor/work/abc.d', home: '/h' })).toEqual([
       '/u/Tutor/agents/claude/projects/-u-Tutor-work-abc-d', '/h/.cache/claude-cli-nodejs/-u-Tutor-work-abc-d', '/h/Library/Caches/claude-cli-nodejs/-u-Tutor-work-abc-d',
     ]);
-    const env = agentEnv('claude', { PATH: '/x', HOME: '/h', XDG_CACHE_HOME: '/c' }, { path: '/found', agentHome: '/a', tmpDir: '/t', cliPath: '/found/claude' });
+    const env = agentEnv('claude', { PATH: '/x', HOME: '/h', XDG_CACHE_HOME: '/c' }, { path: '/found', agentHome: '/a', tmpDir: '/t', ceiling: '/c', cliPath: '/found/claude' });
     expect(env.XDG_CACHE_HOME).toBeUndefined(); // so the CLI writes under ~/.cache, where historyDirs looks
     expect(historyDirs({ agentHome: '/a', work: '/w', home: env.HOME! })[1]).toBe('/h/.cache/claude-cli-nodejs/-w');
   });

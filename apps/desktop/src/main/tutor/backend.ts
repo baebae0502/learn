@@ -5,7 +5,7 @@ import { createPeer, type JsonRpcPeer } from './acp/jsonrpc';
 import { AGENT_CATALOG } from './agents/catalog';
 import type { AgentDetector } from './agents/detect';
 import {
-  agentEnv, agentHome, idleDir, isLearnToolCall, isLoginRequired, launchSpec, probeDir, sessionMeta, systemPromptParam, tmpDir, workDir, type LaunchSpec,
+  agentCwd, agentEnv, agentHome, ceilingDir, idleDir, isLearnToolCall, isLoginRequired, launchSpec, probeDir, sessionMeta, systemPromptParam, tmpDir, workDir, type LaunchSpec,
 } from './agents/isolation';
 import type { ChildPort } from './agents/spawn';
 import type { SessionKey, Supervisor } from './agents/supervisor';
@@ -94,10 +94,6 @@ function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-const madeDir = (dir: string): string => {
-  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  return dir;
-};
 
 export function createAcpBackend(d: AcpBackendDeps): TutorBackend {
   const states = new WeakMap<AgentSession, SessionState>();
@@ -109,6 +105,7 @@ export function createAcpBackend(d: AcpBackendDeps): TutorBackend {
       path: found === 'fake' ? (d.env.PATH ?? '') : found.path,
       agentHome: agentHome(d.tutorHome, agent),
       tmpDir: tmpDir(d.userData),
+      ceiling: ceilingDir(d.userData),
       cliPath: found === 'fake' ? null : found.cliPath,
       ...(agent === 'fake' ? { fake: d.fake() } : {}),
     });
@@ -123,7 +120,7 @@ export function createAcpBackend(d: AcpBackendDeps): TutorBackend {
     if (status?.state !== 'ready') throw new LearnError('AGENT_NOT_READY', 'The agent is not ready.');
     try {
       // The process's own folder is empty; the conversation's folder goes to the ACP session.
-      return launchFor(agent, madeDir(idleDir(d.userData)));
+      return launchFor(agent, agentCwd(idleDir(d.userData)));
     } catch (e) {
       throw startFailure(e);
     }
@@ -274,7 +271,7 @@ export function createAcpBackend(d: AcpBackendDeps): TutorBackend {
       let spec: LaunchSpec;
       let cwd: string;
       try {
-        cwd = madeDir(probeDir(d.userData));
+        cwd = agentCwd(probeDir(d.userData));
         spec = launchFor(agent, cwd);
       } catch (e) {
         tutorLog('probe-failed', { code: codeOf(e) });

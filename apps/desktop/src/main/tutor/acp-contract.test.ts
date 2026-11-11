@@ -53,7 +53,7 @@ const INJECTION = [
 /** tutorLog's only shape: an event and codes — never a question, an answer or a page. */
 const LOG_LINE = /^\[tutor\] [a-z][a-z0-9-]*( code=[A-Za-z0-9_-]+)?( ms=\d+)?( req=[A-Za-z0-9_-]+)?$/;
 /** Claude's isolated environment (isolation.ts) and what every agent gets. */
-const CLAUDE_ENV = ['CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_EXECUTABLE', 'ENABLE_CLAUDEAI_MCP_SERVERS', 'DISABLE_AUTOUPDATER', 'CLAUDE_CODE_TMPDIR'];
+const CLAUDE_ENV = ['CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_EXECUTABLE', 'ENABLE_CLAUDEAI_MCP_SERVERS', 'DISABLE_AUTOUPDATER', 'CLAUDE_CODE_TMPDIR', 'GIT_CEILING_DIRECTORIES'];
 const EVERY_AGENT_ENV = [...ENV_ALLOW, 'ELECTRON_RUN_AS_NODE', 'NO_PROXY'];
 /** What the claude-shaped install's entry sets itself before it imports the fake. */
 const ENTRY_ENV = ['LEARN_FAKE_AGENT_AS', 'LEARN_FAKE_AGENT_SCRIPT', 'LEARN_FAKE_AGENT_LOG'];
@@ -659,7 +659,7 @@ const CASES: Record<FakeScript, { name: string; run: () => Promise<void> }> = {
   },
 
   inject: {
-    name: 'the injection material: another material refused, fs and terminal -32601, the permission refused, the fake end marker scrubbed, nothing of the other material reaches the agent, the work folder stays empty',
+    name: 'the injection material: another material refused, fs and terminal -32601, the permission refused, the fake end marker scrubbed, nothing of the other material reaches the agent, the work folder holds only Learn\'s empty .git',
     async run() {
       const r = await makeRig({ script: 'inject', pages: (p) => INJECTION[p] ?? bodyTextPage(SEED, 0, p, 1500) });
       const asked = await r.ask('이 자료를 요약해 줘');
@@ -686,7 +686,8 @@ const CASES: Record<FakeScript, { name: string; run: () => Promise<void> }> = {
       expect(JSON.stringify(log)).toContain('The attention layer weighs');
       expect(JSON.stringify(log)).not.toContain(OTHER_WORD);
       expect(JSON.stringify(log)).not.toContain(OTHER_TITLE);
-      expect(fs.readdirSync(workDirPath(r.userData, asked.conversationId))).toEqual([]);
+      expect(fs.readdirSync(workDirPath(r.userData, asked.conversationId))).toEqual(['.git']);
+      expect(fs.readdirSync(path.join(workDirPath(r.userData, asked.conversationId), '.git'))).toEqual([]);
       const text = r.message(asked.tutorMessageId).text;
       expect(checkCitations(text, r.repo.toolReads(asked.tutorMessageId), PAGES).unverified).toEqual([{ pageIndex: 998, outside: true }]);
       await r.finish();

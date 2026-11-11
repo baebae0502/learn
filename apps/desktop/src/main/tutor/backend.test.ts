@@ -267,7 +267,7 @@ describe('the ACP backend', () => {
     expect(s.scope).toMatchObject({ ...SCOPE_INIT, bindMcpSession: AGENT_CATALOG[0]!.mcpSessionBinding, activeTurn: null });
   });
 
-  it('warming a new empty session stops after initialize; the process runs in the empty idle folder and Claude gets a private temp folder (R4)', async () => {
+  it('warming a new empty session stops after initialize; the process runs in the idle folder holding only the empty .git and Claude gets a private temp folder (R4)', async () => {
     const { backend, agentSaw, log, children, rekey } = harness();
     const s = await backend.start({ key: { itemId: ITEM, conversationId: null }, agent: 'claude', conversation: null });
     expect(agentSaw('initialize')).toHaveLength(1);
@@ -276,7 +276,7 @@ describe('the ACP backend', () => {
     const idle = path.join(USERDATA, 'Tutor', 'idle');
     const tmp = path.join(USERDATA, 'Tutor', 'tmp');
     expect(log.specs[0]).toMatchObject({ command: '/learn/electron', args: [fs.realpathSync(ADAPTER)], cwd: idle });
-    expect(fs.readdirSync(idle)).toEqual([]);
+    expect(fs.readdirSync(idle)).toEqual(['.git']);
     expect(mode(tmp)).toBe(0o700);
     expect(log.specs[0]!.env).toMatchObject({ CLAUDE_CODE_TMPDIR: tmp, CLAUDE_CONFIG_DIR: path.join(USERDATA, 'Tutor', 'agents', 'claude'), PATH: DETECTED.path });
     expect(log.specs[0]!.env.ANTHROPIC_API_KEY).toBeUndefined();
@@ -519,6 +519,7 @@ describe('the ACP backend', () => {
       expect(h.agentSaw('session/prompt')).toEqual([]);
       expect(h.log.specs[0]!.cwd).toBe(path.join(USERDATA, 'Tutor', 'probe'));
       expect(fs.statSync(path.join(USERDATA, 'Tutor', 'probe')).isDirectory()).toBe(true);
+      expect(fs.readdirSync(path.join(USERDATA, 'Tutor', 'probe'))).toEqual(['.git']);
     });
 
     it('kind account: a session/new with the lockdown _meta in the probe folder and the default mode, then ok — no prompt', async () => {

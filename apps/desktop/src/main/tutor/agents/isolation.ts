@@ -15,6 +15,17 @@ const privateDir = (dir: string): string => {
   return dir;
 };
 
+/** Claude Code takes the first `.git` above its cwd as the project root, even an empty one; Learn's own stops that search at the agent's folder. */
+export const ROOT_MARKER = '.git';
+/** A folder for an agent's cwd: private, holding only Learn's empty root marker. Idempotent. */
+export function agentCwd(dir: string): string {
+  privateDir(dir);
+  privateDir(path.join(dir, ROOT_MARKER));
+  return dir;
+}
+/** The folder git is fenced at: it never looks above it. */
+export const ceilingDir = (userData: string): string => path.join(userData, 'Tutor');
+
 /** The live run's login folder only when main says it is a live run of an unpackaged app; this function never reads the environment. */
 export function tutorHome(userData: string, o: { live: boolean; liveHome: string | undefined }): string {
   return o.live && o.liveHome !== undefined && path.isAbsolute(o.liveHome) ? o.liveHome : path.join(userData, 'Tutor');
@@ -27,7 +38,7 @@ export function workDirPath(userData: string, conversationId: string): string {
   if (!/^[A-Za-z0-9._-]+$/.test(conversationId) || conversationId === '.' || conversationId === '..') throw new Error('invalid conversation id');
   return path.join(userData, 'Tutor', 'work', conversationId);
 }
-export const workDir = (userData: string, conversationId: string): string => privateDir(workDirPath(userData, conversationId));
+export const workDir = (userData: string, conversationId: string): string => agentCwd(workDirPath(userData, conversationId));
 export const idleDir = (userData: string): string => path.join(userData, 'Tutor', 'idle');
 export const probeDir = (userData: string): string => path.join(userData, 'Tutor', 'probe');
 export const tmpDir = (userData: string): string => privateDir(path.join(userData, 'Tutor', 'tmp'));
@@ -37,7 +48,7 @@ export interface LaunchSpec { command: string; args: string[]; env: Record<strin
 export function agentEnv(
   agent: AgentId,
   base: NodeJS.ProcessEnv,
-  o: { path: string; agentHome: string; tmpDir: string; cliPath: string | null; fake?: { script: string; log: string | null } },
+  o: { path: string; agentHome: string; tmpDir: string; ceiling: string; cliPath: string | null; fake?: { script: string; log: string | null } },
 ): Record<string, string> {
   const env: Record<string, string> = {};
   for (const key of ENV_ALLOW) {
@@ -60,6 +71,7 @@ export function agentEnv(
   env.ENABLE_CLAUDEAI_MCP_SERVERS = 'false';
   env.DISABLE_AUTOUPDATER = '1';
   env.CLAUDE_CODE_TMPDIR = o.tmpDir;
+  env.GIT_CEILING_DIRECTORIES = o.ceiling;
   return env;
 }
 

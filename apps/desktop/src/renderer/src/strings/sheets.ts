@@ -27,7 +27,7 @@ export const sheets = {
     rotate: '시계 / 반시계 방향으로 회전',
     nav: '썸네일 / 목차 보기',
     history: '뒤로 / 앞으로',
-    inspectorModes: '오른쪽 패널 모드: 정보 / 튜터',
+    inspectorModes: '정보 / 튜터 보기',
   },
   tabNumbersTo: '부터 ',
   /** The keys the ⌘K palette and every sheet understand (design-spec 7.4); sheets/shortcuts.ts spells them per platform. */

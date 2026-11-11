@@ -3,7 +3,7 @@
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { expectNoSeriousA11y } from './a11y';
-import { FIXTURES, importPaths, ipcCalls, launch, mainWindow, openItem, tutorProcesses } from './helpers';
+import { FIXTURES, expectTooltipText, hoverLikeUser, importPaths, ipcCalls, launch, mainWindow, openItem, tutorProcesses } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const UNSET = { env: { LEARN_E2E_SETTINGS: '' } };
@@ -71,6 +71,55 @@ test('the card comes first and nothing runs before 동의; 나중에 turns the t
     expect((await ipcCalls(app))['tutor:consent']).toBe(1);
     expect(await tutorCalls(app)).toEqual([]);
     expect((await tutorProcesses(app)).count).toBe(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the focus follows every state change of the panel, with the keyboard: 나중에 → 튜터 켜기… → 동의 → the selected tab', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo), UNSET);
+  try {
+    await (await mainWindow(app)).evaluate((w) => w.setContentSize(1440, w.getContentSize()[1]!));
+    await openPaper(page);
+    const card = page.getByTestId('tutor-consent');
+    await expect(card).toBeVisible();
+    // Into the panel by F6 and Tab to the card's buttons: the keyboard's way, no .focus().
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    for (let i = 0; i < 4; i++) {
+      await page.keyboard.press('F6');
+      if (await page.evaluate(() => document.activeElement?.closest('[data-pane]')?.getAttribute('data-pane') === 'inspector')) break;
+    }
+    await expect(page.getByRole('tab', { name: '튜터' })).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(card.getByRole('button', { name: '나중에' })).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('tutor-off')).toBeVisible();
+    await expect(page.getByRole('button', { name: '튜터 켜기…' })).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(card).toBeVisible();
+    await expect(card.getByRole('button', { name: '동의' })).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect.poll(async () => ((await prefs(page)) as { data: { tutor: { consent: { version: number } | null } } }).data.tutor.consent?.version).toBe(1);
+    await expect(card).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: '튜터' })).toBeFocused();
+    expect((await ipcCalls(app))['tutor:consent']).toBe(1);
+  } finally {
+    await app.close();
+  }
+});
+
+test('동의 has its tooltip, and a click and ↩ together send one consent', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo), UNSET);
+  try {
+    await (await mainWindow(app)).evaluate((w) => w.setContentSize(1440, w.getContentSize()[1]!));
+    await openPaper(page);
+    const agree = page.getByTestId('tutor-consent-agree');
+    await expect(agree).toBeVisible();
+    await hoverLikeUser(page, 'tutor-consent-agree');
+    await expectTooltipText(page, '동의 — 카드에 포커스가 있으면 ↩', 'tutor-consent-agree');
+    await agree.dblclick();
+    await expect.poll(async () => ((await prefs(page)) as { data: { tutor: { consent: unknown } } }).data.tutor.consent).not.toBeNull();
+    expect((await ipcCalls(app))['tutor:consent']).toBe(1);
   } finally {
     await app.close();
   }

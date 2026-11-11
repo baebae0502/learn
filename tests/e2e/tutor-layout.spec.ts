@@ -5,6 +5,8 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import { FIXTURES, dragAlong, importPaths, ipcCalls, launch, mainWindow, menuSnapshot, openItem, readerToolbarMin, runMenuCommand, type MenuNode } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
+const SAMPLE = path.join(FIXTURES, 'sample.pdf');
+const MP4 = path.join(FIXTURES, 'sample-h264-aac.mp4');
 /** The default of the reader's right panel is 튜터: these specs launch with no setting seeded (helpers.launch seeds 정보 for the others). */
 const UNSET = { env: { LEARN_E2E_SETTINGS: '' } };
 
@@ -59,7 +61,7 @@ test('a first reader opens on 튜터 with the consent card; ⌃⌘1 shows 정보
     await app.close();
 
     ({ app, page } = await launch(...dirs(testInfo), UNSET));
-    if ((await page.getByTestId('pdf-viewer').count()) === 0) await openItem(page, 'paper-100');
+    // The reader tab comes back with the window: waited for, not looked for once.
     await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
     await expect(page.getByTestId('inspector')).toHaveAttribute('data-mode', 'info'); // remembered
     await expect(page.getByTestId('translation-section')).toBeVisible();
@@ -109,7 +111,7 @@ test('each mode keeps its own width, which a restart keeps too', async ({}, test
     await contentWidth(app, 1440);
     await openPaper(page);
     const drag = async (by: number) => {
-      const box = (await page.getByRole('separator', { name: '항목 패널' }).boundingBox())!;
+      const box = (await page.getByRole('separator', { name: '오른쪽 패널' }).boundingBox())!;
       const x = box.x + box.width / 2;
       await dragAlong(page, x, x - by, box.y + box.height / 2);
     };
@@ -131,7 +133,6 @@ test('each mode keeps its own width, which a restart keeps too', async ({}, test
     await app.close();
 
     ({ app, page } = await launch(...dirs(testInfo), UNSET));
-    if ((await page.getByTestId('pdf-viewer').count()) === 0) await openItem(page, 'paper-100');
     await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
     await expect.poll(() => slotWidth(page)).toBe(infoWide); // 정보 was the mode at quit
     await runMenuCommand(app, 'view.inspectorTutor');
@@ -248,26 +249,57 @@ test('in a narrow window the tutor narrows to 320 before it folds, then the side
   }
 });
 
-test('a tab that is not shown does not answer to the window changing size, and its tutor state is its own', async ({}, testInfo) => {
+test('나중에 is for the run: every PDF tab shows the off state, and 튜터 켜기… brings the card back in every tab (R21)', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo), UNSET);
   try {
     await contentWidth(app, 1280);
-    await openPaper(page);
-    // 나중에 on this tab only: the state is the tab's (memory, J44), and the library tab has no tutor to show it in.
+    await importPaths(page, [PAPER, SAMPLE]);
+    await openItem(page, 'paper-100');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
+    await expect(page.getByTestId('tutor-consent')).toBeVisible(); // positive control: a tab starts on the card
     await page.getByTestId('tutor-consent-later').click();
     await expect(page.getByTestId('tutor-off')).toBeVisible();
     await page.locator('[data-testid="tab"][data-item-id="library"]').click();
     await expect(page.getByTestId('library-table')).toBeVisible();
     await expect(page.getByTestId('inspector-modes')).toHaveCount(0);
     await expect(page.getByTestId('tutor-panel')).toHaveCount(0);
-    // While the library shows, the reader tab's tutor is not on screen: a resize tells main nothing about a session.
-    await contentWidth(app, 1060);
-    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(1060);
-    await contentWidth(app, 1280);
-    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(1280);
     expect((await ipcCalls(app))['tutor:view'] ?? 0).toBe(0);
+    await openItem(page, 'sample');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
+    await expect(page.getByTestId('tutor-off')).toBeVisible(); // a second tab: the run's choice, not the card again
+    await expect(page.getByTestId('tutor-consent')).toHaveCount(0);
+    await page.getByTestId('tutor-turn-on').click();
+    await expect(page.getByTestId('tutor-consent')).toBeVisible();
     await page.locator('[data-testid="tab"]:not([data-item-id="library"])').first().click();
-    await expect(page.getByTestId('tutor-off')).toBeVisible(); // 나중에 is still this tab's
+    await expect(page.getByTestId('tutor-consent')).toBeVisible(); // and in the first tab too
+  } finally {
+    await app.close();
+  }
+});
+
+test('a tutor shown on demand pushes the sidebar away only beside a PDF: a video tab has the sidebar back (960)', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo), UNSET);
+  try {
+    await contentWidth(app, 960);
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(960);
+    await importPaths(page, [PAPER, MP4]);
+    await openItem(page, 'paper-100');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
+    await runMenuCommand(app, 'view.toggleInspector');
+    await expect.poll(() => shell(page, 'data-inspector')).toBe('shown');
+    await expect.poll(() => shell(page, 'data-sidebar')).toBe('hidden');
+    await expect.poll(() => menuLabel(app, 'view.toggleSidebar')).toBe('사이드바 보기');
+    await page.locator('[data-testid="tab"][data-item-id="library"]').click();
+    await openItem(page, 'sample-h264-aac');
+    await expect(page.getByTestId('pdf-viewer')).toHaveCount(0);
+    await expect.poll(() => page.locator('[data-testid="tab"][aria-selected="true"]').getAttribute('data-item-id')).not.toBe('library');
+    await expect.poll(() => shell(page, 'data-inspector')).toBeNull(); // no right panel in a video tab
+    await expect.poll(() => shell(page, 'data-sidebar')).toBe('shown');
+    await expect.poll(() => menuLabel(app, 'view.toggleSidebar')).toBe('사이드바 가리기');
+    // Back on the PDF tab the tutor is still shown on demand and pushes the sidebar again.
+    await page.locator('[data-testid="tab"]:has-text("paper-100")').click();
+    await expect.poll(() => shell(page, 'data-inspector')).toBe('shown');
+    await expect.poll(() => shell(page, 'data-sidebar')).toBe('hidden');
   } finally {
     await app.close();
   }

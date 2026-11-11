@@ -5,7 +5,7 @@ import { lastInput } from '../ui/inputModality';
 import { quietUntilInput } from '../ui/tooltipGate';
 import { hiddenPanes, inspectorContentMin, toggledInspector, type InspectorMode } from './layout';
 import { chooseInspectorMode, inspectorModeNow, useInspectorMode } from './inspectorMode';
-import { focusPaneNamed } from './panes';
+import { usePanelFocusRequest } from './panelFocus';
 import { useViewportWidth } from './useViewportWidth';
 
 /** DOM id and test id of the toolbar toggle (inspector/InspectorToggle.tsx): where a fold hands a keyboard focus. */
@@ -65,22 +65,14 @@ export function revealInspector(mode: InspectorMode = inspectorModeNow()): void 
   if (hiddenPanes(panes, innerWidth, true, min, mode).inspector) setInspector(toggledInspector(panes, innerWidth, min, mode));
 }
 
-/** Frames ⌃⌘2 waits for the tutor to be on screen (a folded panel opens a frame after its mode is set) before it gives up the focus. */
-const FOCUS_FRAMES = 30;
-
 /**
  * ⌃⌘1 / ⌃⌘2 (the registry handler): the choice is remembered, a folded panel opens, and the tutor takes the focus at its first control
- * (the input field, once the panel has one) — the focus is where F6 would land.
+ * (the input field, once the panel has one) — the focus is where F6 would land. The focus is a request the panel answers when it is
+ * on screen (Inspector, useFocusRequest), not a wait of the handler's.
  */
 export function showInspectorMode(mode: InspectorMode): void {
   chooseInspectorMode(mode);
   revealInspector(mode);
-  if (mode !== 'tutor') return;
-  let frames = 0;
-  const land = () => {
-    const shown = document.querySelector('[data-testid="inspector"]')?.getAttribute('data-mode') === 'tutor';
-    if (shown && focusPaneNamed('inspector')) return;
-    if (++frames < FOCUS_FRAMES) requestAnimationFrame(land);
-  };
-  requestAnimationFrame(land);
+  if (mode === 'tutor') usePanelFocusRequest.getState().request();
+  else usePanelFocusRequest.getState().done();
 }

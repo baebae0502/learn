@@ -29,6 +29,9 @@ export interface ShellState {
   inspector: PaneState;
   /** The right panel's width in 튜터 mode (the info mode's is `inspector.width`); remembered in the same layout.panes record. */
   tutorWidth: number;
+  /** The view has a right panel now (the Shell reports it): without one nothing pushes the sidebar away. */
+  inspectorPresent: boolean;
+  setInspectorPresent(present: boolean): void;
   /** The ⌘K palette is open (palette/Palette.tsx). */
   paletteOpen: boolean;
   /** What had the focus when this opening of the palette began (a picked command runs from it); null while closed. */
@@ -79,6 +82,8 @@ export const useShell = create<ShellState>()((set) => {
     sidebar: { width: SIDEBAR.default, collapsed: false, forceShown: false },
     inspector: { width: INSPECTOR.default, collapsed: false, forceShown: false },
     tutorWidth: TUTOR.default,
+    inspectorPresent: false,
+    setInspectorPresent: (inspectorPresent) => set({ inspectorPresent }),
     paletteOpen: false,
     paletteOpener: null,
     dropOverlay: false,

@@ -62,9 +62,10 @@ export const inspectorAutoCollapses = (p: PanesState, viewportWidth: number, con
  * The sidebar is out of sight: folded by the user or by the window, or — tutor mode only — pushed away by a tutor the user
  * showed in a window too narrow for both (the pane shown last wins, spec 8.10). Nothing is stored for the last.
  */
-export function sidebarHiddenIn(p: PanesState, viewportWidth: number, contentMin: number = CONTENT_MIN, mode: InspectorMode = 'info'): boolean {
+export function sidebarHiddenIn(p: PanesState, viewportWidth: number, contentMin: number = CONTENT_MIN, mode: InspectorMode = 'info', inspectorPresent = true): boolean {
   if (sidebarHidden(p.sidebar, viewportWidth)) return true;
-  return mode === 'tutor' && p.inspector.forceShown && !p.sidebar.forceShown && inspectorAutoCollapses(p, viewportWidth, contentMin, mode);
+  // A view without a right panel (a video, a picture, a PDF that is not open) has nothing to push the sidebar away for.
+  return inspectorPresent && mode === 'tutor' && p.inspector.forceShown && !p.sidebar.forceShown && inspectorAutoCollapses(p, viewportWidth, contentMin, mode);
 }
 
 /** What the content column and the right panel share: the window less a shown sidebar (the toolbar's width too). */
@@ -85,7 +86,7 @@ export function slotWidthFor(mode: InspectorMode, p: PanesState, viewportWidth: 
  */
 export function hiddenPanes(p: PanesState, viewportWidth: number, inspectorPresent: boolean, contentMin: number = CONTENT_MIN, mode: InspectorMode = 'info'): { sidebar: boolean; inspector: boolean } {
   const inspector = !inspectorPresent || p.inspector.collapsed || (inspectorAutoCollapses(p, viewportWidth, contentMin, mode) && !p.inspector.forceShown);
-  return { sidebar: sidebarHiddenIn(p, viewportWidth, contentMin, mode), inspector };
+  return { sidebar: sidebarHiddenIn(p, viewportWidth, contentMin, mode, inspectorPresent), inspector };
 }
 
 export function toggledSidebar(s: SidebarState, viewportWidth: number): SidebarState {
@@ -99,8 +100,8 @@ export function toggledSidebar(s: SidebarState, viewportWidth: number): SidebarS
  * ⌃⌘S in the reader's tutor mode: the sidebar's rules, and the pane shown last wins. A sidebar brought back beside a tutor that
  * was shown on demand folds that tutor (it does not fit beside it); a sidebar the tutor had pushed away simply comes back.
  */
-export function toggledSidebarWithTutor(p: PanesState, viewportWidth: number, mode: InspectorMode, contentMin: number = READER_CONTENT_MIN): PanesState {
-  const pushedAway = mode === 'tutor' && sidebarHiddenIn(p, viewportWidth, contentMin, mode) && !sidebarHidden(p.sidebar, viewportWidth);
+export function toggledSidebarWithTutor(p: PanesState, viewportWidth: number, mode: InspectorMode, contentMin: number = READER_CONTENT_MIN, inspectorPresent = true): PanesState {
+  const pushedAway = mode === 'tutor' && sidebarHiddenIn(p, viewportWidth, contentMin, mode, inspectorPresent) && !sidebarHidden(p.sidebar, viewportWidth);
   const next: PanesState = pushedAway ? { ...p, inspector: { ...p.inspector, forceShown: false } } : { ...p, sidebar: toggledSidebar(p.sidebar, viewportWidth) };
   if (mode !== 'tutor' || !p.inspector.forceShown || next.inspector.forceShown === false || sidebarHidden(next.sidebar, viewportWidth)) return next;
   return inspectorAutoCollapses(next, viewportWidth, contentMin, mode) ? { ...next, inspector: { ...next.inspector, forceShown: false } } : next;

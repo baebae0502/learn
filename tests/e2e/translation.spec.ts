@@ -285,7 +285,7 @@ test('a drag that shuts the reader panel leaves the toggle off and the state hid
     const shell = page.getByTestId('shell');
     await expect(shell).toHaveAttribute('data-inspector', 'shown');
     await expect.poll(() => panelState(page)).toMatchObject({ width: 320, inside: true, expanded: 'true' });
-    const sep = (await page.getByRole('separator', { name: '항목 패널' }).boundingBox())!;
+    const sep = (await page.getByRole('separator', { name: '오른쪽 패널' }).boundingBox())!;
     const y = sep.y + sep.height / 2;
     await page.mouse.move(sep.x + sep.width / 2, y);
     await page.mouse.down();

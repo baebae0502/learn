@@ -70,8 +70,8 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
   });
   it('lists ⌃⌘1 / ⌃⌘2 as one line, the reader\'s right panel modes, under 리더', () => {
     const viewer = shortcutGroups('darwin', 'viewer').find((g) => g.title === '리더')!;
-    const row = viewer.rows.find((r) => r.label === '오른쪽 패널 모드: 정보 / 튜터');
-    expect(row).toEqual({ label: '오른쪽 패널 모드: 정보 / 튜터', keys: ['⌃', '⌘', '1'], pairKeys: ['⌃', '⌘', '2'], spoken: '⌃⌘1 / ⌃⌘2' });
+    const row = viewer.rows.find((r) => r.label === '정보 / 튜터 보기');
+    expect(row).toEqual({ label: '정보 / 튜터 보기', keys: ['⌃', '⌘', '1'], pairKeys: ['⌃', '⌘', '2'], spoken: '⌃⌘1 / ⌃⌘2' });
     expect(shortcutGroups('darwin', 'viewer').flatMap((g) => g.rows).filter((r) => r.spoken.includes('⌃⌘1')).length).toBe(1);
   });
   it('uses the Linux bindings off macOS', () => {

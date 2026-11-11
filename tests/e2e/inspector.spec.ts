@@ -283,7 +283,7 @@ test('layout B: the toolbar spans the content and the item panel, which starts u
     await expectSameShot(page, testInfo, await top88(), empty, 'panel hidden');
     expect(Number.isInteger(await toggleX()), 'the toggle is on a whole pixel with the panel hidden').toBe(true);
     await runMenuCommand(app, 'view.toggleInspector');
-    await expect(page.getByRole('separator', { name: '항목 패널' })).toHaveCount(1); // the handle is named after its pane
+    await expect(page.getByRole('separator', { name: '오른쪽 패널' })).toHaveCount(1); // the handle is named after its pane
   } finally {
     await app.close();
   }

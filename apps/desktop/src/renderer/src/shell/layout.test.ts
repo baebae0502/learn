@@ -173,6 +173,14 @@ describe('the tutor mode of the right panel (spec 8.1, 8.10)', () => {
     expect(sidebarOn.sidebar).toMatchObject({ collapsed: false });
     expect(sidebarOn.inspector.forceShown).toBe(false);
   });
+  it('a tutor shown on demand pushes the sidebar away only where a right panel exists', () => {
+    const shown = { ...panes(), inspector: toggledInspector(panes(), 960, READER_CONTENT_MIN, 'tutor') };
+    expect(sidebarHiddenIn(shown, 960, READER_CONTENT_MIN, 'tutor', true)).toBe(true);
+    expect(sidebarHiddenIn(shown, 960, READER_CONTENT_MIN, 'tutor', false)).toBe(false); // a video, a picture, no open PDF
+    expect(hiddenPanes(shown, 960, false, READER_CONTENT_MIN, 'tutor')).toEqual({ sidebar: false, inspector: true });
+    // ⌃⌘S there is the sidebar's own toggle: it hides the sidebar, it does not "bring it back".
+    expect(toggledSidebarWithTutor(shown, 960, 'tutor', READER_CONTENT_MIN, false).sidebar.collapsed).toBe(true);
+  });
   it('a drag in the tutor mode keeps the reader at 440 and stays within 320–560', () => {
     expect(draggedInspectorWidth(panes(), 1300, 700, READER_CONTENT_MIN, 'tutor')).toBe(560);
     expect(draggedInspectorWidth(panes(), 1100, 600, READER_CONTENT_MIN, 'tutor')).toBe(420);

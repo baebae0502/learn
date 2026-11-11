@@ -1,6 +1,8 @@
-import { useRef, type KeyboardEvent } from 'react';
+import { useEffect, useRef, type KeyboardEvent } from 'react';
 import { acceleratorLabel, commandById } from '@learn/domain';
 import { chooseInspectorMode } from '../shell/inspectorMode';
+import { focusPaneNamed } from '../shell/panes';
+import { usePanelFocusRequest } from '../shell/panelFocus';
 import type { InspectorMode } from '../shell/layout';
 import { t } from '../strings';
 import { TutorPanel } from '../tutor/TutorPanel';
@@ -66,6 +68,29 @@ function ModeHead({ mode }: { mode: InspectorMode }) {
 }
 
 /**
+ * Answers ⌃⌘2: once the tutor is shown and the panel can take the focus (its slot open, not inert, wider than nothing), the focus goes to
+ * its first control and the request ends. A slot that is still opening is waited for by its size changing, not by a count of frames.
+ */
+function useFocusRequest(mode: InspectorMode): void {
+  const pending = usePanelFocusRequest((s) => s.pending);
+  const done = usePanelFocusRequest((s) => s.done);
+  useEffect(() => {
+    if (!pending || mode !== 'tutor') return;
+    const land = (): boolean => {
+      if (!focusPaneNamed('inspector')) return false;
+      done();
+      return true;
+    };
+    if (land()) return;
+    const pane = document.querySelector('[data-pane="inspector"]');
+    if (!pane) return;
+    const watch = new ResizeObserver(() => void (land() && watch.disconnect()));
+    watch.observe(pane);
+    return () => watch.disconnect();
+  }, [pending, mode, done]);
+}
+
+/**
  * The right panel's contents for one mode (its slot, width and folding are the shell's). The reader's has the 정보 | 튜터 segment in
  * its head (`switchable`); the library's is the info panel alone (spec 8.1).
  */
@@ -75,6 +100,7 @@ export function Inspector({ mode, switchable = false }: { mode: InspectorMode; s
   // The panel's frame comes with the rows; its content one painted frame later, so a first drop's rows and the panel's
   // statistics are not one long frame (spec 8, the drop stall).
   const painted = usePaintedOnce();
+  useFocusRequest(mode);
   const content = mode === 'tutor' ? <TutorPanel /> : painted ? <InfoPane /> : null;
   return (
     <div className="inspector-body" data-testid="inspector" data-mode={mode}>

@@ -422,14 +422,14 @@ if (!app.requestSingleInstanceLock()) {
     const libraryRoot = resolveLibraryRoot({ envDir: process.env['LEARN_LIBRARY_DIR'], prefs: prefs.get(), userData: app.getPath('userData') });
     try {
       ctx = await openLibraryContext(libraryRoot);
-      // E2E only: settings a suite starts from, where none is stored (before the window reads them).
-      if (isE2E(app.isPackaged, process.env)) seedE2ESettings(ctx.settings, process.env['LEARN_E2E_SETTINGS']);
       if (menuUsesOrganize) menuRebuild.request(); // the menu bar was built before the library opened
     } catch (e) {
       const le = toLearnError(e, mainStrings.library.openFailed);
       libraryError = { code: le.code, message: le.message };
       console.error(`[library] open failed: ${le.code}`);
     }
+    // E2E only: settings a suite starts from, where none is stored (before the window reads them). A bad seed throws here, outside the library's own failure.
+    if (ctx && isE2E(app.isPackaged, process.env)) seedE2ESettings(ctx.settings, process.env['LEARN_E2E_SETTINGS']);
     handleAppProtocol({ getContext: () => ctx, rendererDir: path.join(here, '../renderer'), devOrigin });
 
     // A sheet — our sheet window or a native dialog — keeps its parent the main window (chrome undimmed) until the parent

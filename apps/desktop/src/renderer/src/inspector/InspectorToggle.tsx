@@ -8,7 +8,7 @@ import { currentPlatform } from '../ui/platform';
 
 /**
  * The toolbar's last control (design-spec 2.4, library.html libraryHeader): on = --fill-pressed. Named by what a press
- * does now, as the 보기 menu says it (항목 패널 가리기 / 항목 패널 보기); disabled with the reason while work holds the window or the first list is loading (`pending`).
+ * does now, as the 보기 menu says it (오른쪽 패널 가리기 / 오른쪽 패널 보기); disabled with the reason while work holds the window or the first list is loading (`pending`).
  */
 export function InspectorToggle({ pending = false }: { pending?: boolean }) {
   const { env, run, isEnabled } = useCommands();

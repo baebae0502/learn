@@ -10,7 +10,8 @@ export interface SettingsStore {
  * E2E only (LEARN_E2E=1, never packaged): LEARN_E2E_SETTINGS is a JSON object of library settings that are written at launch where
  * none is stored yet, before the window opens. A suite that is not about a setting's default starts from the value it needs (the
  * reader's right panel on 정보) without a reload; the specs of the default itself launch with the variable empty.
- * A value that is not valid for its key, or a key that does not exist, is skipped; nothing here can overwrite a stored value.
+ * A key that does not exist, a value that is not valid for its key, or text that is not a JSON object throws, naming the key: a mistyped
+ * seed must not quietly seed nothing. Nothing here overwrites a stored value; a failure of the store itself is its own error.
  */
 export function seedE2ESettings(store: SettingsStore, raw: string | undefined): SettingKey[] {
   if (raw === undefined || raw.trim() === '') return [];
@@ -18,18 +19,21 @@ export function seedE2ESettings(store: SettingsStore, raw: string | undefined): 
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return [];
+    throw new Error('LEARN_E2E_SETTINGS is not JSON');
   }
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return [];
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('LEARN_E2E_SETTINGS is not a JSON object');
   const seeded: SettingKey[] = [];
   for (const [key, value] of Object.entries(parsed)) {
-    if (!isSettingKey(key) || store.get(key) !== undefined) continue;
+    if (!isSettingKey(key)) throw new Error(`LEARN_E2E_SETTINGS: unknown setting "${key}"`);
+    if (store.get(key) !== undefined) continue;
+    let valid: unknown;
     try {
-      store.set(key, parseSetting(key, value));
-      seeded.push(key);
+      valid = parseSetting(key, value);
     } catch {
-      // not valid for its key: left unset
+      throw new Error(`LEARN_E2E_SETTINGS: the value for "${key}" is not valid`);
     }
+    store.set(key, valid);
+    seeded.push(key);
   }
   return seeded;
 }

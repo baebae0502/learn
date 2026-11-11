@@ -579,7 +579,7 @@ test('palette: empty query, 자료 results (palette.html), commands only, no res
       await expect(s.page.getByTestId('palette-search-library')).toBeVisible();
       await shoot(s.page, `palette-${theme}`, { style: BEHIND_PALETTE });
       if (theme === 'light') {
-        // ㄱ: several command rows (빠른 검색 by its 검색, 항목 패널 by 가리기), the <mark> in accent text on the rows the cursor is not on.
+        // ㄱ: several command rows (빠른 검색 by its 검색, 오른쪽 패널 by 가리기), the <mark> in accent text on the rows the cursor is not on.
         await input.fill('ㄱ');
         await expect(s.page.getByTestId('palette-item').nth(2)).toBeVisible();
         await expect(s.page.locator('[data-testid="palette-item"]:not([data-focused]) mark').first()).toBeVisible();

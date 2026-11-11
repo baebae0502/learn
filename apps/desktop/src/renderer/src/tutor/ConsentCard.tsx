@@ -3,6 +3,7 @@ import { EyeOff, FolderCog, GraduationCap, KeyRound, Send, ShieldCheck, type Luc
 import { t } from '../strings';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
+import { Tooltip } from '../ui/Tooltip';
 
 const { consent } = t.tutor;
 
@@ -50,9 +51,11 @@ export function ConsentCard({ onAgree, onLater }: { onAgree(): void; onLater(): 
         <Button onPress={onLater} testId="tutor-consent-later">
           {consent.later}
         </Button>
-        <Button variant="primary" onPress={onAgree} testId="tutor-consent-agree">
-          {consent.agree}
-        </Button>
+        <Tooltip label={consent.agreeTip}>
+          <Button variant="primary" onPress={onAgree} testId="tutor-consent-agree">
+            {consent.agree}
+          </Button>
+        </Tooltip>
       </div>
     </section>
   );

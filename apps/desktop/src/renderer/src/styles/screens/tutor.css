@@ -74,7 +74,8 @@
   }
   .tutor-text {
     margin: 0;
-    font: var(--type-body);
+    color: var(--text-secondary);
+    font: var(--type-paragraph);
     text-wrap: pretty;
   }
   .tutor-text.small {

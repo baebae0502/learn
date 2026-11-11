@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Group, Panel, Separator, usePanelRef, type Layout, type LayoutChangedMeta, type PanelImperativeHandle } from 'react-resizable-panels';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
@@ -35,9 +35,11 @@ export function Shell(props: { sidebar: ReactNode; sidebarFoot?: ReactNode; laun
   const mode = useInspectorMode();
   const panes = { sidebar, inspector, tutorWidth };
   // In the tutor mode a slot shown on demand pushes the sidebar away (spec 8.10): the sidebar's fold reads the slot too.
-  const hidden = sidebarHiddenIn(panes, viewportWidth, contentMin, mode);
   const present = props.inspector !== undefined;
+  const hidden = sidebarHiddenIn(panes, viewportWidth, contentMin, mode, present);
   const inspectorHidden = hiddenPanes(panes, viewportWidth, present, contentMin, mode).inspector;
+  const setInspectorPresent = useShell((s) => s.setInspectorPresent);
+  useLayoutEffect(() => setInspectorPresent(present), [present, setInspectorPresent]);
   const slotWidth = slotWidthFor(mode, panes, viewportWidth, contentMin);
   useKeepFocusAcrossFold(hidden);
   useKeepFocusOnInspectorFold(inspectorHidden);

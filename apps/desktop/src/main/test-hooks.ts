@@ -458,7 +458,7 @@ export function readFakeLog(file: string): FakeLogEntry[] {
 
 /** What the tutor hooks reach (index.ts, E2E only, once the library is open). */
 export interface TutorHooksDeps {
-  service: Pick<TutorService, 'setTimeouts' | 'processes' | 'resetProcessMax' | 'killAgent'>;
+  service: Pick<TutorService, 'setTimeouts' | 'processes' | 'resetProcessMax' | 'killAgent' | 'failNextAgents'>;
   /** The script the next fake start runs; a live fake that is not answering is closed. */
   setFakeScript(name: FakeScript): void;
   fakeLog(): FakeLogEntry[];
@@ -553,6 +553,8 @@ export interface LearnTestHooks {
   tutorProcesses(input?: { resetMax?: true }): { count: number; max: number; conversationIds: Array<string | null> };
   /** SIGKILL to the agent's group now, as a crash mid-answer. */
   tutorKillAgent(): void;
+  /** The next `n` tutor:agents calls fail (a detection that threw). */
+  tutorFailAgents(n: number): void;
   /** Finished sessions of one PDF (seedSessions), announced once. */
   seedSessions(input: SeedSessionsInput): { conversationIds: string[] };
   /** The tool reads recorded on an answer, in order. */
@@ -839,6 +841,7 @@ export function installTestHooks(deps: {
       return t.service.processes();
     },
     tutorKillAgent: () => tutor('tutorKillAgent').service.killAgent(),
+    tutorFailAgents: (n) => tutor('tutorFailAgents').service.failNextAgents(n),
     seedSessions: (input) => tutor('seedSessions').seed(input),
     toolReads: (messageId) => tutor('toolReads').sessions().toolReads(messageId),
   };

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { AgentId, AgentsReport } from '@learn/domain';
+import { create } from 'zustand';
+import type { AgentId, AgentsReport, TutorAgentsInput } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { keys } from '../data/queries';
 import { queryClient } from '../data/query-client';
@@ -8,6 +9,9 @@ import { useLearnEvent } from '../events';
 
 /** How long a detection runs before the screen says it is searching (spec 8.7). */
 export const SEARCHING_MS = 300;
+
+/** The state of a recheck or a search, one for the whole window: every screen that reads the report sees the same one. */
+const useRun = create<{ busy: boolean; failed: boolean }>()(() => ({ busy: false, failed: false }));
 
 /** `on`, but only once it has held for `ms`. */
 function useAfter(on: boolean, ms: number): boolean {
@@ -24,44 +28,57 @@ function useAfter(on: boolean, ms: number): boolean {
 }
 
 /**
- * The agents report of this run (spec 4.3): read when a screen that needs it is shown (`mode: 'cached'` — main detects once and keeps it),
- * kept for the whole run in the query cache, and read again after a turn failed on a login or a lockdown (main corrects its report before
- * it sends that `failed`, Task 12, so the report read again says 로그인 필요 with its command, or the lockdown). Only mounted after consent
- * (the chooser, the composer's agent button): nothing is asked of main before. `recheck` is one agent's row, `research` the whole search;
- * while one runs, a second press is ignored and the list that is there stays.
+ * One agent's row or the whole search, on main. The report that was being read is dropped first (an older answer must not land over a
+ * newer one), a second press while one runs is ignored, and a failure keeps the list that is there and says so (`failed`).
  */
-export function useAgents(): { report: AgentsReport | null; searching: boolean; recheck(agent: AgentId): void; research(): void } {
-  const query = useQuery({
-    queryKey: keys.tutorAgents,
-    queryFn: () => unwrap(api().tutor.agents({ mode: 'cached' })),
-    staleTime: Infinity,
-    gcTime: Infinity,
-    retry: false,
-    retryOnMount: false,
-  });
-  const [busy, setBusy] = useState(false);
-  const running = useRef(false);
-  const run = useCallback((input: Parameters<ReturnType<typeof api>['tutor']['agents']>[0]) => {
-    if (running.current) return;
-    running.current = true;
-    setBusy(true);
-    unwrap(api().tutor.agents(input))
-      .then((report) => void queryClient.setQueryData(keys.tutorAgents, report))
-      // The list that is there stays; log the code only.
-      .catch((e: unknown) => console.warn(`[tutor] agents failed: ${(e as { code?: string }).code ?? 'INTERNAL'}`))
-      .finally(() => {
-        running.current = false;
-        setBusy(false);
-      });
-  }, []);
+function run(input: TutorAgentsInput): void {
+  if (useRun.getState().busy) return;
+  useRun.setState({ busy: true, failed: false });
+  void queryClient.cancelQueries({ queryKey: keys.tutorAgents });
+  unwrap(api().tutor.agents(input))
+    .then((report) => {
+      queryClient.setQueryData(keys.tutorAgents, report);
+      useRun.setState({ busy: false, failed: false });
+    })
+    .catch((e: unknown) => {
+      console.warn(`[tutor] agents failed: ${(e as { code?: string }).code ?? 'INTERNAL'}`);
+      useRun.setState({ busy: false, failed: true });
+    });
+}
+
+/**
+ * Once per window (MainWindow): a turn that failed on the login or on the lockdown makes the report of this run stale. Main corrects
+ * its own report before it sends that `failed`, so the next read says 로그인 필요 with its command, or the lockdown. The report is marked
+ * stale whether a screen shows it or not: the next one that does reads it again.
+ */
+export function useAgentsReread(): void {
   useLearnEvent('tutor:turn', (e) => {
     if (e.kind === 'failed' && (e.code === 'AGENT_LOGIN' || e.code === 'AGENT_LOCKDOWN')) void queryClient.invalidateQueries({ queryKey: keys.tutorAgents });
   });
-  const searching = useAfter(busy || query.isFetching, SEARCHING_MS);
+}
+
+/**
+ * The agents report of this run (spec 4.3), kept in the query cache for the whole run. `enabled`: read (`mode: 'cached'` — main detects
+ * once and keeps it) only while a screen that shows it can be seen, so a folded panel asks nothing; a failed read is tried again when
+ * it is shown again. `recheck` is one agent's row, `research` the whole search; while one runs the list that is there stays.
+ * `failed`: the last read or press did not get an answer.
+ */
+export function useAgents(enabled: boolean): { report: AgentsReport | null; searching: boolean; failed: boolean; recheck(agent: AgentId): void; research(): void } {
+  const query = useQuery({
+    queryKey: keys.tutorAgents,
+    queryFn: () => unwrap(api().tutor.agents({ mode: 'cached' })),
+    enabled,
+    staleTime: Infinity,
+    gcTime: Infinity,
+    retry: false,
+  });
+  const { busy, failed: runFailed } = useRun();
+  const searching = useAfter(busy || (enabled && query.isFetching), SEARCHING_MS);
   return {
     report: query.data ?? null,
     searching,
-    recheck: useCallback((agent: AgentId) => run({ mode: 'recheck', agent }), [run]),
-    research: useCallback(() => run({ mode: 'research' }), [run]),
+    failed: runFailed || (query.isError && query.data === undefined),
+    recheck: useCallback((agent: AgentId) => run({ mode: 'recheck', agent }), []),
+    research: useCallback(() => run({ mode: 'research' }), []),
   };
 }

@@ -51,6 +51,20 @@ describe('prefs store', () => {
     expect(store.set({ theme: undefined, density: 'compact' })).toEqual({ ...DEFAULTS, theme: 'light', density: 'compact' });
   });
 
+  it('reads a stored fake agent as none where the build has no fake agent, and leaves the file as it was', () => {
+    const tutor = { consent: { version: 1, at: '2026-11-12T00:00:00.000Z' }, agent: 'fake' };
+    fs.writeFileSync(file(), JSON.stringify({ tutor }));
+    const packaged = openPrefsStore(dir, { fakeAvailable: false });
+    expect(packaged.get().tutor).toMatchObject({ agent: null });
+    expect(packaged.get().tutor.consent).not.toBeNull();
+    // A change of something else returns the same view, and the stored file keeps what the dev build chose.
+    expect(packaged.set({ theme: 'dark' }).tutor.agent).toBeNull();
+    expect(JSON.parse(fs.readFileSync(file(), 'utf8')).tutor.agent).toBe('fake');
+    // Where the fake exists (the default), nothing changes; a real agent is never touched.
+    expect(openPrefsStore(dir).get().tutor.agent).toBe('fake');
+    fs.writeFileSync(file(), JSON.stringify({ tutor: { ...tutor, agent: 'claude' } }));
+    expect(openPrefsStore(dir, { fakeAvailable: false }).get().tutor.agent).toBe('claude');
+  });
   it('get() returns a copy', () => {
     const store = openPrefsStore(dir);
     (store.get() as { theme: string }).theme = 'dark';

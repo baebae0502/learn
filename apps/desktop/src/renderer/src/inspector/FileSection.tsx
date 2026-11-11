@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { Copy } from 'lucide-react';
 import type { ItemDetail } from '@learn/domain';
 import { useAppInfo } from '../data/queries';
@@ -6,13 +5,10 @@ import { formatSize, homeRelative } from '../format';
 import { t } from '../strings';
 import { IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
-import { showToast } from '../ui/toasts';
+import { useCopyFeedback } from '../ui/useCopyFeedback';
 import { bodyLineFor } from './bodyText';
 import { EditedCopies } from './EditedCopies';
 import { Section } from './Section';
-
-/** How long the copy button says 복사했습니다 (spec §5.3). */
-export const COPIED_MS = 1500;
 
 interface FileRow {
   field: 'storage' | 'size' | 'originalName' | 'location';
@@ -72,23 +68,10 @@ export function FileSection({ detail, trashed = false, missing = false }: { deta
 
 /** 전체 SHA-256 복사: the clipboard gets the whole value; the tooltip confirms for 1.5 s, and no toast (spec §5.3). */
 function CopyButton({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), COPIED_MS);
-    return () => clearTimeout(timer);
-  }, [copied]);
-  const copy = () =>
-    navigator.clipboard.writeText(value).then(
-      () => setCopied(true),
-      (e: unknown) => {
-        console.warn(`[inspector] copy failed: ${(e as Error)?.name ?? 'Error'}`);
-        showToast({ kind: 'error', title: t.inspector.copyFailedTitle, body: t.inspector.copyFailedBody, testId: 'copy-failed' });
-      },
-    );
+  const { copied, copy } = useCopyFeedback('inspector');
   return (
     <>
-      <IconButton icon={Copy} size="small" label={copied ? t.inspector.copied : t.inspector.copySha} tooltipOpen={copied} onPress={() => void copy()} testId="copy-sha" />
+      <IconButton icon={Copy} size="small" label={copied ? t.inspector.copied : t.inspector.copySha} tooltipOpen={copied} onPress={() => copy(value)} testId="copy-sha" />
       {/* A tooltip is not read out: the confirmation is said in a polite live region too. */}
       <span className="visually-hidden" role="status">
         {copied ? t.inspector.copied : ''}

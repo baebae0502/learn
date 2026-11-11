@@ -22,7 +22,7 @@ const SELECTOR: Record<Landing, string> = {
  * main records (J9): the chooser is what asks, and it is mounted only after. The focus follows each state change, so the button that
  * was pressed never leaves it on <body>; after 동의 it lands in the chooser.
  */
-export function TutorPanel() {
+export function TutorPanel({ visible }: { visible: boolean }) {
   const prefs = useTutorPrefs();
   const consented = prefs.consent !== null;
   const choosing = useTutorTab((s) => s.choosing);
@@ -71,7 +71,7 @@ export function TutorPanel() {
       )}
       {state === 'off' && <TutorOff onTurnOn={turnOn} />}
       {consented && prefs.agent === 'fake' && <FakeBand />}
-      {state === 'chooser' && <AgentChooser focusRequest={chooserFocus} onStarted={() => setChoosing(false)} />}
+      {state === 'chooser' && <AgentChooser visible={visible} focusRequest={chooserFocus} onStarted={() => setChoosing(false)} />}
     </div>
   );
 }

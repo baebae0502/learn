@@ -39,6 +39,8 @@ export interface TutorService {
   reground(i: TutorRetryInput): Promise<{ userMessageId: string; tutorMessageId: string }>;
   removeWorkFolders(conversationIds: readonly string[]): Promise<void>;
   setTimeouts(t: Partial<{ firstUpdateMs: number; betweenMs: number; idleMs: number }>): void;
+  /** E2E only (test hook): the next `n` tutor:agents calls fail with INTERNAL, as a detection that threw. */
+  failNextAgents(n: number): void;
   processes(): { count: number; max: number; conversationIds: Array<string | null> };
   resetProcessMax(): void;
   killAgent(): void;
@@ -86,6 +88,7 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
   const timeouts = { firstUpdateMs: TUTOR_TIMEOUTS.firstUpdateMs as number, betweenMs: TUTOR_TIMEOUTS.betweenMs as number, turnMs: TUTOR_TIMEOUTS.turnMs as number };
   let active: Turn | null = null;
   let shuttingDown = false;
+  let agentsFailures = 0;
 
   const repo = () => d.context().conversations;
   const tutorPrefs = () => d.prefs.get().tutor;
@@ -340,6 +343,10 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
     async agents(i) {
       if (shuttingDown) throw quitting();
       requireConsent();
+      if (agentsFailures > 0) {
+        agentsFailures -= 1;
+        throw new LearnError('INTERNAL', 'The agents could not be read.');
+      }
       return d.detector.report(i.mode, i.agent);
     },
 
@@ -488,6 +495,10 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
           }
         }
       }
+    },
+
+    failNextAgents(n) {
+      agentsFailures = n;
     },
 
     setTimeouts(t) {

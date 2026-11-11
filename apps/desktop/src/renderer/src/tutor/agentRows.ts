@@ -10,7 +10,7 @@ export interface AgentRowView {
   /** The flag's words (the fake's is its "개발용" badge). */
   flag: string;
   description: string;
-  /** What the row's command button copies; null: no command. */
+  /** The row's primary action: copy an install command, copy the login command, or only a recheck; null: none (ready, the fake). */
   action: 'copy-install' | 'copy-login' | 'recheck' | null;
   /** The row has a "다시 확인" button. */
   recheck: boolean;

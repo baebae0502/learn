@@ -37,6 +37,7 @@ function fakeService() {
     processes: vi.fn(() => ({ count: 0, max: 0, conversationIds: [] })),
     resetProcessMax: vi.fn(() => {}),
     killAgent: vi.fn(() => {}),
+    failNextAgents: vi.fn(() => {}),
     shutdown: vi.fn(async () => {}),
   } satisfies TutorService;
 }

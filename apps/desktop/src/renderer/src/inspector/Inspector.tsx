@@ -94,16 +94,16 @@ function useFocusRequest(mode: InspectorMode): void {
 
 /**
  * The right panel's contents for one mode (its slot, width and folding are the shell's). The reader's has the 정보 | 튜터 segment in
- * its head (`switchable`); the library's is the info panel alone (spec 8.1).
+ * its head (`switchable`); the library's is the info panel alone (spec 8.1). `hidden`: the slot is folded (the content stays mounted, out of sight).
  */
-export function Inspector({ mode, switchable = false }: { mode: InspectorMode; switchable?: boolean }) {
+export function Inspector({ mode, switchable = false, hidden = false }: { mode: InspectorMode; switchable?: boolean; hidden?: boolean }) {
   // Where a long frame's script time goes (the drop stall profile): the item panel's render began here.
   perfMarkLatest('inspector:render');
   // The panel's frame comes with the rows; its content one painted frame later, so a first drop's rows and the panel's
   // statistics are not one long frame (spec 8, the drop stall).
   const painted = usePaintedOnce();
   useFocusRequest(mode);
-  const content = mode === 'tutor' ? <TutorPanel /> : painted ? <InfoPane /> : null;
+  const content = mode === 'tutor' ? <TutorPanel visible={!hidden} /> : painted ? <InfoPane /> : null;
   return (
     <div className="inspector-body" data-testid="inspector" data-mode={mode}>
       {switchable && <ModeHead mode={mode} />}

@@ -1,7 +1,8 @@
 // The tutor's copy (spec 13: 합니다체; U+00A0 binds a determiner to its noun, a kind to its count, "Claude Code" and "이 Mac" into one
 // piece). T1a has one real agent and one company: the card says Claude Code and Anthropic, as the approved mockup does.
-// Rows join this file with the task that draws them; this one holds the mode segment, the consent card and the off state.
+// Rows join this file with the task that draws them; this one holds the mode segment, the consent card, the off state and the agent chooser.
 import { SPIKE_FACTS, type AgentId } from '@learn/domain';
+import { euroRo } from './josa';
 
 const AGENT_NAMES: Readonly<Record<AgentId, string>> = { claude: 'Claude Code', fake: '가짜 에이전트' };
 
@@ -60,10 +61,13 @@ export const tutor = {
     researchTip: '설치된 에이전트를 다시 찾습니다',
     searching: '에이전트를 찾는 중…',
     start: '시작',
-    startWith: (name: string) => `${name}로 시작`,
+    startWith: (name: string) => `${name}${euroRo(name)} 시작`,
     startTip: '↩',
     notReady: 'Claude Code가 준비되지 않았습니다 — 안내를 따른 뒤 다시 확인하세요',
     searchingTip: '에이전트를 찾는 중입니다',
+    /** Not approved copy: the controller's ruling for a read that got no answer. */
+    failedLine: '에이전트를 확인하지 못했습니다. 다시 찾기를 누르세요.',
+    failedTip: '에이전트를 확인하지 못했습니다',
     fakeBand: '가짜 에이전트 · 정해 둔 답을 돌려줍니다(개발·데모 빌드)',
   },
   /** An agent's name as a sentence has it: "Claude Code" is one piece. Anything but a known agent reads as the fake's neutral name. */

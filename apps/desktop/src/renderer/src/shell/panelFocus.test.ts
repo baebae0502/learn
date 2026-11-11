@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { useShell } from '../state/shell-store';
 import { FOCUS_REQUEST_MS, usePanelFocusRequest } from './panelFocus';
 
 afterEach(() => {
@@ -32,5 +33,14 @@ describe('the panel focus request (⌃⌘2)', () => {
     usePanelFocusRequest.getState().request();
     vi.advanceTimersByTime(20);
     expect(usePanelFocusRequest.getState().pending).toBe(true);
+  });
+  it('ends when another tab is shown, and not for a change that leaves the active tab', () => {
+    const tabs = useShell.getState().tabs;
+    usePanelFocusRequest.getState().request();
+    useShell.setState({ tabs: { ...tabs } });
+    expect(usePanelFocusRequest.getState().pending).toBe(true);
+    useShell.setState({ tabs: { ...tabs, active: 'reader-tab-b' } });
+    expect(usePanelFocusRequest.getState().pending).toBe(false);
+    useShell.setState({ tabs });
   });
 });

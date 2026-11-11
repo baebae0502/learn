@@ -1954,6 +1954,8 @@ export const tutorProcesses = (app: ElectronApplication, input?: { resetMax?: tr
   app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.tutorProcesses(arg ?? undefined), input ?? null);
 /** SIGKILL to the agent's group now. */
 export const tutorKillAgent = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithTutorHooks).__learnTest.tutorKillAgent());
+/** The next `n` tutor:agents calls fail, as a detection that threw. */
+export const tutorFailAgents = (app: ElectronApplication, n: number) => app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.tutorFailAgents(arg), n);
 /** Finished sessions of one PDF (the performance fixture), announced once. */
 export const seedSessions = (app: ElectronApplication, input: SeedSessionsInput) => app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.seedSessions(arg), input);
 /** The tool reads recorded on an answer, in order. */

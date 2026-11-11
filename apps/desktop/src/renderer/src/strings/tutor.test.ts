@@ -31,4 +31,8 @@ describe('the tutor copy (approved mockup, 2026-11-12)', () => {
     expect(tutor.consent.notSent.text).toContain('다른 자료');
     expect(JSON.stringify(tutor)).not.toMatch(/ACP|MCP|어댑터|백엔드|토큰|프로세스/);
   });
+  it('names the agent that starts with the right particle', () => {
+    expect(tutor.agents.startWith(tutor.agentName('claude'))).toBe('Claude\u00a0Code로 시작');
+    expect(tutor.agents.startWith('Learn 앱')).toBe('Learn 앱으로 시작');
+  });
 });

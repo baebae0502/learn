@@ -66,7 +66,7 @@ function AgentRow({ row, state, disabled, onRecheck }: RowProps) {
       )}
       {row.command !== null && (
         <span className="a-cmd">
-          <CommandText command={row.command} testId="agent-copy" />
+          <CommandText command={row.command} testId="agent-copy" isDisabled={disabled} />
         </span>
       )}
     </div>
@@ -76,11 +76,12 @@ function AgentRow({ row, state, disabled, onRecheck }: RowProps) {
 /**
  * The first screen after consent, and 에이전트 고르기… (spec 8.7, approved mockup state 3): Claude Code's row in its state, the fake agent in
  * the development group where the build has one, 다시 찾기 and the start. The radio group is the only way to choose; the start is ↩ from it.
+ * `visible`: the panel can be seen; a folded one reads nothing (spec 4.3: detection when the chooser is shown).
  * `focusRequest`: after 동의 the focus comes here — onto the chosen (else the first usable) radio, else the region itself until the report
  * is in; read once the chooser is on screen, and cleared when it has landed or the user went elsewhere.
  */
-export function AgentChooser({ onStarted, focusRequest }: { onStarted(): void; focusRequest: MutableRefObject<boolean> }) {
-  const { report, searching, recheck, research } = useAgents();
+export function AgentChooser({ onStarted, focusRequest, visible }: { onStarted(): void; focusRequest: MutableRefObject<boolean>; visible: boolean }) {
+  const { report, searching, failed, recheck, research } = useAgents(visible);
   const current = useTutorPrefs().agent;
   const [picked, setPicked] = useState<AgentId | null>(null);
   const starting = useRef(false);
@@ -107,11 +108,31 @@ export function AgentChooser({ onStarted, focusRequest }: { onStarted(): void; f
     if (radio) {
       radio.focus();
       focusRequest.current = false;
-    } else if (report !== null && !searching) {
-      (box.querySelector<HTMLElement>('[data-testid="agent-research"]') ?? box).focus();
+    } else if ((report !== null || failed) && !searching) {
+      (box.parentElement?.querySelector<HTMLElement>('[data-testid="agent-research"]') ?? box).focus();
       focusRequest.current = false;
     } else box.focus();
-  }, [focusRequest, report, searching, chosen]);
+  }, [focusRequest, report, searching, failed, chosen]);
+
+  // A button that was pressed is disabled while the search runs, which drops its focus: when the search ends the focus is back on it.
+  const restore = useRef<string | null>(null);
+  const hold = (selector: string, run: () => void) => () => {
+    restore.current = document.activeElement !== null && document.activeElement.matches(selector) ? selector : null;
+    run();
+  };
+  const pending = useRef<string | null>(null);
+  useEffect(() => {
+    if (searching) {
+      pending.current = restore.current;
+      restore.current = null;
+      return;
+    }
+    const selector = pending.current;
+    pending.current = null;
+    if (selector !== null && (document.activeElement === null || document.activeElement === document.body)) {
+      region.current?.parentElement?.querySelector<HTMLElement>(selector)?.focus();
+    }
+  }, [searching]);
 
   const start = () => {
     if (chosen === null || starting.current || searching) return;
@@ -142,17 +163,23 @@ export function AgentChooser({ onStarted, focusRequest }: { onStarted(): void; f
             {agents.searching}
           </div>
         )}
+        {failed && (
+          <p className="tutor-note" role="status" data-testid="agent-failed">
+            <Icon icon={TriangleAlert} size="sm" />
+            {agents.failedLine}
+          </p>
+        )}
         <RadioGroup aria-label={agents.groupLabel} value={chosen} onChange={(v) => setPicked(v as AgentId)} isDisabled={searching} className="agent-groups" data-searching={searching ? '' : undefined}>
           {rows.length > 0 && (
             <div className="agent-group">
               {rows.map(({ s, row }) => (
-                <AgentRow key={row.id} row={row} state={s.state} disabled={searching} onRecheck={() => recheck(row.id)} />
+                <AgentRow key={row.id} row={row} state={s.state} disabled={searching} onRecheck={hold(`[data-agent="${row.id}"] [data-testid="agent-recheck"]`, () => recheck(row.id))} />
               ))}
             </div>
           )}
           {fake && (
-            <div className="agent-dev" data-testid="agent-dev-group">
-              <div className="group-label">{agents.devGroup}</div>
+            <div className="agent-dev" data-testid="agent-dev-group" role="group" aria-labelledby="agent-dev-label">
+              <div className="group-label" id="agent-dev-label">{agents.devGroup}</div>
               <div className="agent-group dev">
                 <AgentRow row={fake.row} state={fake.s.state} disabled={searching} onRecheck={() => undefined} />
               </div>
@@ -162,7 +189,7 @@ export function AgentChooser({ onStarted, focusRequest }: { onStarted(): void; f
       </div>
       <div className="tutor-foot">
         <Tooltip label={agents.researchTip}>
-          <Button variant="plain" leading onPress={research} isDisabled={searching} testId="agent-research">
+          <Button variant="plain" leading onPress={hold('[data-testid="agent-research"]', research)} isDisabled={searching} testId="agent-research">
             {agents.research}
           </Button>
         </Tooltip>
@@ -174,7 +201,7 @@ export function AgentChooser({ onStarted, focusRequest }: { onStarted(): void; f
             </Button>
           </Tooltip>
         ) : (
-          <Button variant="primary" isDisabled disabledReason={searching ? agents.searchingTip : agents.notReady} testId="agent-start">
+          <Button variant="primary" isDisabled disabledReason={searching ? agents.searchingTip : failed && chosenRow === null ? agents.failedTip : agents.notReady} testId="agent-start">
             {agents.start}
           </Button>
         )}

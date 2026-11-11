@@ -132,14 +132,22 @@ function writeAtomic(file: string, body: string): void {
   fsyncDir(path.dirname(file));
 }
 
-export function openPrefsStore(dir: string, opts: { now?: () => Date } = {}): PrefsStore {
+/**
+ * `fakeAvailable: false` (a packaged build): an agent chosen in a development or demo build that shares this folder reads as none, so
+ * the tutor asks again instead of showing the fake. The file keeps it; a development build still finds its choice.
+ */
+const viewOf = (prefs: Prefs, fakeAvailable: boolean): Prefs =>
+  !fakeAvailable && prefs.tutor.agent === 'fake' ? { ...prefs, tutor: { ...prefs.tutor, agent: null } } : { ...prefs };
+
+export function openPrefsStore(dir: string, opts: { now?: () => Date; fakeAvailable?: boolean } = {}): PrefsStore {
+  const fakeAvailable = opts.fakeAvailable ?? true;
   const file = path.join(dir, PREFS_FILE);
   const loaded = load(dir, opts.now ?? (() => new Date()));
   let current = loaded.prefs;
   let stored = loaded.stored;
   return {
     readOnly: loaded.readOnly,
-    get: () => ({ ...current }),
+    get: () => viewOf(current, fakeAvailable),
     set(patch) {
       if (loaded.readOnly) {
         throw new LearnError('PREFS_UNAVAILABLE', mainStrings.prefs.readOnly);
@@ -160,7 +168,7 @@ export function openPrefsStore(dir: string, opts: { now?: () => Date } = {}): Pr
       writeAtomic(file, `${JSON.stringify(nextStored, null, 2)}\n`);
       stored = nextStored;
       current = { ...current, ...defined };
-      return { ...current };
+      return viewOf(current, fakeAvailable);
     },
   };
 }

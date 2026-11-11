@@ -54,6 +54,7 @@ import { Shell } from '../shell/Shell';
 import { showInspectorMode, useInspectorHidden, useToggleInspector } from '../shell/useInspector';
 import { useInspectorMode } from '../shell/inspectorMode';
 import { useTutorPrefs } from '../tutor/useTutorPrefs';
+import { useAgentsReread } from '../tutor/useAgents';
 import { useTutorView } from '../tutor/useTutorView';
 import { useTabsPersistence } from './useTabsPersistence';
 import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell/useSidebar';
@@ -398,6 +399,8 @@ export function MainWindow(_props: { info: AppInfo }) {
   useTutorView(null);
   // The consent main recorded: 에이전트 고르기… needs it.
   const tutorConsented = useTutorPrefs().consent !== null;
+  // A turn that failed on the login or the lockdown makes the agents report of this run stale, whatever the panel shows.
+  useAgentsReread();
   // Text of the page is selected: 선택한 글 번역 is on (translation/useSelectionText.ts).
   const pdfSelection = useSelection((s) => s.text !== '');
   // Translation is switched off (the settings window, the pop-up's 사용 안 함): 선택한 글 번역 does nothing then. Not yet chosen asks, so it stays on.
@@ -715,7 +718,7 @@ export function MainWindow(_props: { info: AppInfo }) {
         launcher={<Launcher />}
         toolbar={toolbar}
         head={view.kind === 'library' && tabsOpen ? libraryBar('head') : undefined}
-        inspector={showsInspector ? <Inspector mode={inspectorMode} switchable={view.kind === 'reader'} /> : undefined}
+        inspector={showsInspector ? <Inspector mode={inspectorMode} switchable={view.kind === 'reader'} hidden={inspectorHidden} /> : undefined}
         overlays={
           <>
             <Palette />

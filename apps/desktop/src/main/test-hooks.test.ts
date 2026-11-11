@@ -632,6 +632,7 @@ describe('the tutor hooks (spec 12)', () => {
         }),
         resetProcessMax: vi.fn(() => void order.push('resetMax')),
         killAgent: vi.fn(),
+        failNextAgents: vi.fn(),
       },
       setFakeScript: vi.fn(),
       fakeLog: vi.fn(() => log),
@@ -655,6 +656,8 @@ describe('the tutor hooks (spec 12)', () => {
     expect(order).toEqual(['processes', 'resetMax', 'processes']);
     h.tutorKillAgent();
     expect(tutor.service.killAgent).toHaveBeenCalledTimes(1);
+    h.tutorFailAgents(2);
+    expect(tutor.service.failNextAgents).toHaveBeenCalledWith(2);
     const input = { itemId: 'i', sessions: 2, messagesPerSession: 4, citationsPerAnswer: 3 };
     expect(h.seedSessions(input)).toEqual({ conversationIds: ['a', 'b'] });
     expect(tutor.seed).toHaveBeenCalledWith(input);

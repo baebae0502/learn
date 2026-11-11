@@ -145,7 +145,7 @@
   .tutor-title {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 2px; /* local: the title's tight stack */
   }
   .tutor-section-title {
     margin: 0;
@@ -157,11 +157,25 @@
   .agent-groups {
     display: flex;
     flex-direction: column;
-    gap: var(--space-20);
+    gap: var(--space-16);
   }
-  .agent-groups[data-searching] .agent-group {
+  /* Searching again: the whole list, its labels too, under one dimming; the chosen row keeps its look (nothing is dimmed twice). */
+  .agent-groups[data-searching] {
     opacity: 0.45;
     pointer-events: none;
+  }
+  /* A learn line of the chooser (spec 8.7): what happened, in the secondary text, its icon in the warning colour. */
+  .tutor-note {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-6);
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  .tutor-note .icon {
+    margin-top: 1px; /* local: the icon sits on the first line */
+    color: var(--warning-text);
   }
   .agent-group {
     border-radius: var(--radius-lg);
@@ -193,7 +207,12 @@
   }
   /* The radio's label lays its parts into the row's grid; the terminal buttons are the row's other cells. */
   .agent-radio {
-    display: contents;
+    grid-column: 1 / 3;
+    grid-row: 1 / 3;
+    display: grid;
+    grid-template-columns: subgrid;
+    grid-template-rows: subgrid;
+    align-items: start;
   }
   .agent-row .radio {
     grid-column: 1;
@@ -222,10 +241,10 @@
     outline: var(--focus-ring-width) solid var(--focus);
     outline-offset: var(--focus-ring-offset);
   }
-  .agent-radio[data-disabled] .radio {
+  .agent-groups:not([data-searching]) .agent-radio[data-disabled] .radio {
     opacity: 0.45;
   }
-  .agent-radio[data-disabled] .a-name {
+  .agent-groups:not([data-searching]) .agent-radio[data-disabled] .a-name {
     color: var(--text-secondary);
   }
   .agent-row .a-name {
@@ -255,10 +274,10 @@
     grid-row: 3;
     margin-top: var(--space-8);
   }
-  .nobr {
+  .agent-row .nobr {
     white-space: nowrap;
   }
-  .badge-soft {
+  .agent-row .badge-soft {
     display: inline-flex;
     align-items: center;
     height: 18px; /* local: the 16 px line and 2 */
@@ -269,7 +288,7 @@
     font: var(--type-footnote);
     font-weight: var(--weight-medium);
   }
-  .badge-soft.warn {
+  .agent-row .badge-soft.warn {
     background: var(--warning-soft);
     color: var(--warning-text);
   }
@@ -284,13 +303,19 @@
     flex: 0 1 auto;
     min-width: 0;
     min-height: 20px; /* local: one line of code */
-    padding: 2px var(--space-8);
+    padding: 2px var(--space-8); /* local: the code box's inset */
     border-radius: var(--radius-sm);
     background: var(--fill-pressed);
     color: var(--text-primary);
     white-space: normal;
     word-break: normal;
-    overflow-wrap: break-word;
+  }
+  /* A part never breaks inside while it fits a line; one wider than the line breaks at the box's edge (last resort). */
+  .tutor-cmd .cmd-part {
+    display: inline-block;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    vertical-align: top;
   }
   .tutor-foot {
     flex: none;

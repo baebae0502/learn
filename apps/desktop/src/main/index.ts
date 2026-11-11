@@ -389,7 +389,7 @@ if (!app.requestSingleInstanceLock()) {
     // Registry items stay disabled until the main window's renderer reports its context.
     installAppMenu();
     hardenApp(devOrigin);
-    const prefs = openPrefsStore(app.getPath('userData'));
+    const prefs = openPrefsStore(app.getPath('userData'), { fakeAvailable: !app.isPackaged });
     if (prefs.readOnly) console.error('[prefs] read-only for this session: PREFS_UNAVAILABLE');
     applyTheme(prefs.get().theme); // before the first window, so native chrome starts in the right theme
     app.setAboutPanelOptions(aboutPanelOptions(app.getVersion(), process.versions.electron));

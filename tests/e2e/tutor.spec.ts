@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { expectNoSeriousA11y } from './a11y';
-import { FIXTURES, expectTooltipText, hoverLikeUser, importPaths, ipcCalls, launch, mainWindow, openItem, readClipboard, runPalette, tutorProcesses, type Session } from './helpers';
+import { FIXTURES, backFromReader, expectTooltipText, hoverLikeUser, importPaths, ipcCalls, launch, mainWindow, openItem, readClipboard, runMenuCommand, runPalette, tutorFailAgents, tutorProcesses, type Session } from './helpers';
 import { READER_100, askViaApi, installFakeAgents } from './tutor-helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
@@ -184,12 +184,13 @@ const INSTALL_CMD = 'npm install -g @anthropic-ai/claude-code @agentclientprotoc
 const nb = (s: string) => s.replace(/ /g, ' ');
 
 /** A reader with the consent given, the chooser on screen, and Claude Code installed as `layout` says (null: nothing — an empty search folder). */
-async function atChooser(testInfo: { outputPath(...p: string[]): string }, layout: Layout | null, opts: { width?: number } = {}): Promise<Session & { reinstall(l: Layout): void }> {
+async function atChooser(testInfo: { outputPath(...p: string[]): string }, layout: Layout | null, opts: { width?: number; failFirst?: boolean } = {}): Promise<Session & { reinstall(l: Layout): void }> {
   const dir = testInfo.outputPath('npm');
   const env: Record<string, string> = layout === null ? {} : { LEARN_AGENT_SEARCH_PATH: installFakeAgents(dir, layout) };
   const s = await launch(...dirs(testInfo), { env: { LEARN_E2E_SETTINGS: '', ...env } });
   await (await mainWindow(s.app)).evaluate((w, width) => w.setContentSize(width, w.getContentSize()[1]!), opts.width ?? 1440);
   await openPaper(s.page);
+  if (opts.failFirst) await tutorFailAgents(s.app, 1);
   await s.page.getByTestId('tutor-consent-agree').click();
   await expect(s.page.getByTestId('tutor-chooser')).toBeVisible();
   return Object.assign(s, {
@@ -268,29 +269,54 @@ test('Claude Code\'s row in its five states: what to run in a terminal, copied a
   }
 });
 
-test('a command breaks only after a space and after a "/", and a width of 320 shows the whole row with no sideways scroll', async ({}, testInfo) => {
-  const { app, page } = await atChooser(testInfo, { ...READY, script: 'login' }, { width: 1000 });
-  try {
-    await expect.poll(() => page.getByTestId('inspector-panel').evaluate((e) => Math.round(e.getBoundingClientRect().width))).toBe(320);
-    await expect(flagOf(page)).toHaveText('로그인 필요');
-    const parts = claudeRow(page).getByTestId('agent-copy-text').locator('.nobr');
-    const texts = await parts.allInnerTexts();
-    // Every part is a word with its trailing space or a path step; the folder named "Application Support" is one part (U+00A0), on any host that has one.
-    expect(texts.join('').replace(/ /g, ' ')).toMatch(/^CLAUDE_CONFIG_DIR=".*" claude auth login$/);
-    for (const t of texts.slice(0, -1)) expect(t.endsWith(' ') || t.endsWith('/')).toBe(true);
-    for (const t of texts) expect(t.trim()).not.toBe('');
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    // The row itself fits the panel (a command's own parts never break, so a folder name as long as this test's can still be wider than 320).
-    const box = (await page.getByTestId('tutor-chooser').boundingBox())!;
-    for (const id of ['agent-description', 'agent-flag', 'agent-recheck']) {
-      const b = (await claudeRow(page).getByTestId(id).boundingBox())!;
-      expect(b.x + b.width, id).toBeLessThanOrEqual(box.x + box.width);
-    }
-    await expectNoSeriousA11y(page, 'tutor chooser at 320');
-  } finally {
-    await app.close();
+/** The chooser and its command fit the panel: no sideways scroll, the command's lines inside its box, and clear of its copy button. */
+async function expectCommandFits(page: Page, what: string): Promise<void> {
+  const chooser = page.getByTestId('tutor-chooser');
+  expect(await chooser.evaluate((e) => e.scrollWidth <= e.clientWidth), `${what}: the chooser scrolls sideways`).toBe(true);
+  const code = claudeRow(page).getByTestId('agent-copy-text');
+  expect(await code.evaluate((e) => e.scrollWidth <= e.clientWidth), `${what}: the command runs out of its box`).toBe(true);
+  const box = (await code.boundingBox())!;
+  const button = (await claudeRow(page).getByTestId('agent-copy').boundingBox())!;
+  expect(box.x + box.width, `${what}: the command overlaps its copy button`).toBeLessThanOrEqual(button.x + 0.5);
+  for (const w of await code.locator('.cmd-part').all()) {
+    const b = (await w.boundingBox())!;
+    expect(b.x + b.width, `${what}: a part is outside the box`).toBeLessThanOrEqual(box.x + box.width + 0.5);
   }
-});
+}
+
+for (const [name, width, tutor] of [['380', 1440, 380], ['320', 1000, 320]] as const) {
+  test(`at a tutor width of ${name} a command breaks between arguments and after a "/", and the chooser never scrolls sideways`, async ({}, testInfo) => {
+    const s = await atChooser(testInfo, { cli: '2.1.318', adapter: null }, { width });
+    const { page } = s;
+    try {
+      await expect.poll(() => page.getByTestId('inspector-panel').evaluate((e) => Math.round(e.getBoundingClientRect().width))).toBe(tutor);
+      await expect(flagOf(page)).toHaveText('연결 도구 필요');
+      await expectCommandFits(page, 'adapter');
+      // More than one line: the command wrapped at its spaces, not only at its "/".
+      const code = claudeRow(page).getByTestId('agent-copy-text');
+      expect((await code.boundingBox())!.height).toBeGreaterThan(30);
+      const lineTops = await code.locator('.cmd-part').evaluateAll((els) => new Set(els.map((e) => Math.round(e.getBoundingClientRect().top))).size);
+      expect(lineTops).toBeGreaterThanOrEqual(2);
+      await expectNoSeriousA11y(page, `tutor chooser at ${name}`);
+      // The login command is as long as this test's folder names (a part wider than the line breaks at the box's edge); then the install of both.
+      s.reinstall({ ...READY, script: 'login' });
+      await page.getByTestId('agent-research').click();
+      await expect(flagOf(page)).toHaveText('로그인 필요');
+      await expectCommandFits(page, 'login');
+      expect(nb(await code.innerText()).replace(/\n/g, ' ')).toMatch(/^CLAUDE_CONFIG_DIR="[^"]+" claude auth login$/);
+      s.reinstall({ cli: null, adapter: null });
+      await page.getByTestId('agent-research').click();
+      await expect(flagOf(page)).toHaveText('설치 안 됨');
+      await expectCommandFits(page, 'missing');
+      expect(nb(await code.innerText())).toBe(INSTALL_CMD);
+      // What the button copies is the command, whatever the screen did to it.
+      await claudeRow(page).getByTestId('agent-copy').click();
+      await expect.poll(() => readClipboard(s.app)).toBe(INSTALL_CMD);
+    } finally {
+      await s.app.close();
+    }
+  });
+}
 
 test('a search that takes longer than 300 ms says so, and 다시 찾기 keeps the rows it has, disabled, until the new list is in', async ({}, testInfo) => {
   // The connection tool that never says its login state: the check waits its 3 s for the notice.
@@ -363,15 +389,143 @@ test('the fake agent: its own group and badge in a test build, chosen and starte
   }
 });
 
-test('↩ on the chosen radio starts it, and a button keeps its own ↩', async ({}, testInfo) => {
+test('↩ on the chosen radio starts it, and ↩ on 다시 찾기 searches and starts nothing', async ({}, testInfo) => {
   const { app, page } = await atChooser(testInfo, READY);
   try {
     await expect(claudeRow(page).getByRole('radio')).toBeFocused();
+    await page.getByTestId('agent-research').focus();
+    await page.keyboard.press('Enter');
+    await expect.poll(async () => (await ipcCalls(app))['tutor:agents']).toBe(2);
+    expect((await ipcCalls(app))['tutor:chooseAgent'] ?? 0).toBe(0);
+    await expect(page.getByTestId('tutor-panel')).toHaveAttribute('data-state', 'chooser');
+    await claudeRow(page).getByRole('radio').focus();
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('tutor-panel')).toHaveAttribute('data-state', 'ready');
     expect(((await prefs(page)) as { data: { tutor: { agent: string } } }).data.tutor.agent).toBe('claude');
   } finally {
     await app.close();
+  }
+});
+
+test('the whole left block of a row selects it, blank space included', async ({}, testInfo) => {
+  const { app, page } = await atChooser(testInfo, READY);
+  try {
+    const dev = page.getByTestId('agent-dev-group').getByTestId('agent-row');
+    await dev.click({ position: { x: 36, y: 20 } }); // between the circle and the name
+    await expect(page.getByTestId('agent-dev-group').getByRole('radio')).toBeChecked();
+    await claudeRow(page).click({ position: { x: 36, y: 20 } });
+    await expect(claudeRow(page).getByRole('radio')).toBeChecked();
+  } finally {
+    await app.close();
+  }
+});
+
+test('the disabled 시작 says why: nothing ready, searching, a read that failed', async ({}, testInfo) => {
+  const s = await atChooser(testInfo, { cli: null, adapter: null }, { failFirst: true });
+  const { app, page } = s;
+  try {
+    // The first read failed: one line where the rows would be, and the reason says it (the focus is on 다시 찾기).
+    await expect(page.getByTestId('agent-failed')).toHaveText('에이전트를 확인하지 못했습니다. 다시 찾기를 누르세요.');
+    await expect(page.getByTestId('agent-row')).toHaveCount(0);
+    await expect(page.getByTestId('agent-research')).toBeEnabled();
+    await expect(page.getByTestId('agent-research')).toBeFocused();
+    await hoverLikeUser(page, 'agent-start');
+    await expectTooltipText(page, '에이전트를 확인하지 못했습니다', 'agent-start');
+    await expectNoSeriousA11y(page, 'tutor chooser, a failed read');
+    // Shown again, it reads again: 정보 and back.
+    await runMenuCommand(app, 'view.inspectorInfo');
+    await expect(page.getByTestId('tutor-chooser')).toHaveCount(0);
+    await runMenuCommand(app, 'view.inspectorTutor');
+    await expect(page.getByTestId('agent-row')).toHaveCount(2);
+    await expect(page.getByTestId('agent-failed')).toHaveCount(0);
+    // Nothing ready: the reason that points at the row's guidance.
+    await expect(flagOf(page)).toHaveText('설치 안 됨');
+    await page.mouse.move(0, 0);
+    await hoverLikeUser(page, 'agent-start');
+    await expectTooltipText(page, 'Claude Code가 준비되지 않았습니다 — 안내를 따른 뒤 다시 확인하세요', 'agent-start');
+    // A press that fails keeps the rows, and says so above them.
+    await tutorFailAgents(app, 1);
+    await page.getByTestId('agent-research').click();
+    await expect(page.getByTestId('agent-failed')).toBeVisible();
+    await expect(page.getByTestId('agent-row')).toHaveCount(2);
+    await expect(page.getByTestId('agent-research')).toBeEnabled();
+    await page.getByTestId('agent-research').click();
+    await expect(page.getByTestId('agent-failed')).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('while a search runs the list is dimmed once and every control in it is off; the focus comes back to 다시 찾기; 시작 says it is searching', async ({}, testInfo) => {
+  const s = await atChooser(testInfo, { cli: '2.1.318', adapter: null });
+  const { app, page } = s;
+  try {
+    await expect(claudeRow(page).getByTestId('agent-copy')).toBeEnabled();
+    s.reinstall({ ...READY, script: 'login-silent' });
+    await page.getByTestId('agent-research').click();
+    await expect(page.getByTestId('agent-searching')).toBeVisible();
+    await expect(claudeRow(page).getByTestId('agent-copy')).toBeDisabled();
+    await expect(claudeRow(page).getByTestId('agent-recheck')).toBeDisabled();
+    // One dimming for the whole list, its labels included.
+    const opacity = (sel: string) => page.locator(sel).first().evaluate((e) => getComputedStyle(e).opacity);
+    expect(await opacity('.agent-groups')).toBe('0.45');
+    expect(await opacity('.agent-groups .agent-row')).toBe('1');
+    await page.mouse.move(0, 0);
+    await hoverLikeUser(page, 'agent-start');
+    await expectTooltipText(page, '에이전트를 찾는 중입니다', 'agent-start');
+    await expect(page.getByTestId('agent-searching')).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.getByTestId('agent-research')).toBeFocused();
+  } finally {
+    await app.close();
+  }
+});
+
+test('the chooser shown by a switch of tabs takes no focus', async ({}, testInfo) => {
+  const { app, page } = await atChooser(testInfo, READY);
+  try {
+    const sample = path.join(FIXTURES, 'sample.pdf');
+    await backFromReader(page);
+    await importPaths(page, [sample]);
+    await openItem(page, 'sample');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
+    await expect(page.getByTestId('tutor-chooser')).toBeVisible();
+    await page.getByTestId('pdf-viewer').click({ position: { x: 20, y: 20 } });
+    await page.locator('[data-testid="tab"]', { hasText: 'paper-100' }).click(); // a switch of tabs: the panel of the other tab
+    await expect(page.getByTestId('tutor-chooser')).toBeVisible();
+    expect(await page.evaluate(() => document.querySelector('[data-testid="tutor-chooser"]')?.contains(document.activeElement) ?? true)).toBe(false);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a folded panel asks main nothing: no detection until the chooser can be seen', async ({}, testInfo) => {
+  let s = await atChooser(testInfo, READY);
+  try {
+    await runMenuCommand(s.app, 'view.toggleInspector');
+    await expect(s.page.getByTestId('shell')).toHaveAttribute('data-inspector', 'hidden');
+    await s.page.waitForTimeout(1000); // the layout is saved 300 ms after it changes
+  } finally {
+    await s.app.close();
+  }
+  // Relaunch: consent recorded, no agent chosen, the panel still folded.
+  const dir = testInfo.outputPath('npm');
+  const again = await launch(...dirs(testInfo), { env: { LEARN_E2E_SETTINGS: '', LEARN_AGENT_SEARCH_PATH: path.join(dir, 'bin') } });
+  try {
+    await (await mainWindow(again.app)).evaluate((w) => w.setContentSize(1440, w.getContentSize()[1]!));
+    // The reader tab comes back by itself, or the library shows: either way the paper ends up open.
+    await expect(again.page.getByTestId('item-row').or(again.page.getByTestId('pdf-viewer')).first()).toBeVisible();
+    if ((await again.page.getByTestId('pdf-viewer').count()) === 0) await openItem(again.page, 'paper-100');
+    await expect(again.page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
+    await expect(again.page.getByTestId('shell')).toHaveAttribute('data-inspector', 'hidden');
+    await again.page.waitForTimeout(1500);
+    expect((await ipcCalls(again.app))['tutor:agents'] ?? 0).toBe(0);
+    expect((await tutorProcesses(again.app)).count).toBe(0);
+    // Positive control: shown, it reads once.
+    await runMenuCommand(again.app, 'view.toggleInspector');
+    await expect(again.page.getByTestId('tutor-chooser')).toBeVisible();
+    await expect.poll(async () => (await ipcCalls(again.app))['tutor:agents']).toBe(1);
+  } finally {
+    await again.app.close();
   }
 });
 
@@ -389,12 +543,19 @@ test('a turn that fails on the login reads the agents again: the chooser then sh
     await runPalette(page, app, '에이전트', 'tutor.chooseAgent');
     await expect(flagOf(page)).toHaveText('준비됨');
     // The login lapses while Learn runs: the next question fails on it.
+    // The panel shows 정보 when the turn fails: nothing of the chooser is mounted to hear it.
+    await runMenuCommand(app, 'view.inspectorInfo');
+    await expect(page.getByTestId('tutor-chooser')).toHaveCount(0);
     s.reinstall({ ...READY, script: 'login' });
     const a = await askViaApi(page, { itemId, conversationId: null, text: '이 자료는 무엇을 다루나요?', selection: null, reader: READER_100 });
     if ('busyWith' in a) throw new Error('the question waited for another answer');
     // (A question that fails before any answer leaves no session behind, so the chooser's own row is what shows it.)
+    await runPalette(page, app, '에이전트', 'tutor.chooseAgent');
     await expect(flagOf(page)).toHaveText('로그인 필요');
     await expect(claudeRow(page).getByTestId('agent-copy-text')).toContainText('claude auth login');
+    // No agent is left: the panel shows no session, and whatever ran has exited.
+    expect(await page.evaluate(() => window.learn.tutor.view({ view: null }))).toMatchObject({ ok: true });
+    await expect.poll(async () => (await tutorProcesses(app)).count).toBe(0);
   } finally {
     await app.close();
   }

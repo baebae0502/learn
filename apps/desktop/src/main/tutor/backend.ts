@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import { LearnError, TUTOR_TIMEOUTS, type AgentId, type RealAgentId } from '@learn/domain';
 import { createAcpClient, type AcpClient, type InitializeInfo, type PromptOutcome, type SessionUpdate } from './acp/client';
 import { createPeer, type JsonRpcPeer } from './acp/jsonrpc';
@@ -93,7 +92,6 @@ function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
     });
   });
 }
-
 
 export function createAcpBackend(d: AcpBackendDeps): TutorBackend {
   const states = new WeakMap<AgentSession, SessionState>();

@@ -316,6 +316,10 @@ export const layout = {
   inspectorWidth: 320,
   inspectorMin: 260,
   inspectorMax: 480,
+  /** The reader's right panel in 튜터 mode (T1a, spec 8.1): its own width, remembered apart from the info mode's. */
+  tutorWidth: 380,
+  tutorMin: 320,
+  tutorMax: 560,
   transcriptWidth: 320,
   /** Traffic-light group origin for `trafficLightPosition` (verify on the macOS runner in M3). */
   trafficLightX: 18,

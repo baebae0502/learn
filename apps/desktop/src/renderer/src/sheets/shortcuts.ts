@@ -101,6 +101,8 @@ const PAIRS: readonly PairSpec[] = [
   pair('reader.rotateCw', 'reader.rotateCcw', () => t.sheets.pairs.rotate),
   pair('reader.showThumbnails', 'reader.showOutline', () => t.sheets.pairs.nav),
   pair('nav.historyBack', 'nav.historyForward', () => t.sheets.pairs.history),
+  // ⌃⌘1 / ⌃⌘2 is one line of the design-spec 7.4 table: the two modes of the reader's right panel.
+  pair('view.inspectorInfo', 'view.inspectorTutor', () => t.sheets.pairs.inspectorModes),
   // ⌘1 is the library tab, ⌘2…⌘8 the numbered ones, ⌘9 the last: "⌘1…⌘8 / ⌘9" (the chords below are spelled by tabNumbersRow).
   { anchor: 'tab.goTo2', takes: ['nav.back', ...TAB_NUMBER_IDS] as unknown as PairSpec['takes'], label: () => t.sheets.pairs.tabNumbers, a: 'nav.back', b: 'tab.last' },
 ];

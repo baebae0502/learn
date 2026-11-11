@@ -59,6 +59,8 @@ export interface CommandEnv extends CommandContextState {
   toggleSidebar(): void;
   /** ⌥⌘I: the item panel, by the sidebar's rules (shell/layout.ts toggledInspector). */
   toggleInspector(): void;
+  /** ⌃⌘1 / ⌃⌘2: the reader's right panel shows 정보 or 튜터 (remembered; a folded panel opens; the tutor takes the focus). */
+  setInspectorMode(mode: 'info' | 'tutor'): void;
   /** ⌘/ (Task 6). */
   showShortcuts(): void;
   /** ⌘K (Task 9): opens the palette, or selects its field when it is already open. */
@@ -257,6 +259,8 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'tags.clearFilter': (env) => env.clearTagFilter(),
   'view.toggleSidebar': (env) => env.toggleSidebar(),
   'view.toggleInspector': (env) => env.toggleInspector(),
+  'view.inspectorInfo': (env) => env.setInspectorMode('info'),
+  'view.inspectorTutor': (env) => env.setInspectorMode('tutor'),
   'app.shortcuts': (env) => env.showShortcuts(),
   'app.palette': (env) => env.openPalette(),
   'app.settings': (env) => env.openSettings(),
@@ -323,6 +327,7 @@ export function contextOf(env: CommandEnv): CommandContextState {
     ...(env.translationOff ? { translationOff: true } : {}),
     ...(env.sidebar ? { sidebar: env.sidebar } : {}),
     ...(env.inspector ? { inspector: env.inspector } : {}),
+    ...(env.pdfOpen && env.inspectorMode ? { inspectorMode: env.inspectorMode } : {}),
     ...(env.importRunning ? { importRunning: true } : {}),
     ...(env.backupRunning ? { backupRunning: true } : {}),
     ...(env.restoreRunning ? { restoreRunning: true } : {}),

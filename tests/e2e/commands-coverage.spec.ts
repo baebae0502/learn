@@ -117,6 +117,12 @@ const M7B_COMMANDS: readonly CommandId[] = [
 const M7C_COMMANDS: readonly CommandId[] = ['reader.imageBackgroundLight', 'reader.imageBackgroundDark', 'reader.imageBackgroundChecker'] as CommandId[];
 
 /**
+ * T1a's commands (the tutor, spec 11): each one is run from the menu bar in the reader pass below, and none is left to another test. Later
+ * tasks add theirs here — the ledger's three assertions below read this list.
+ */
+const T1A_COMMANDS: readonly CommandId[] = ['view.inspectorInfo', 'view.inspectorTutor'];
+
+/**
  * Enabled in the library with one row selected, but running them here would trash the one sample the rest of the loop
  * (and the reader pass) needs: ⌘⌫ is 휴지통으로 이동. Their test is the COVERED_ELSEWHERE entry of the same id.
  */
@@ -222,12 +228,19 @@ test('every registry command runs without a page error (library and reader menus
     // run puts it back (a narrower window shows a folded panel on demand instead).
     'view.toggleInspector': async () => {
       const first = inspectorBefore === 'shown' ? 'hidden' : 'shown';
-      const next = (state: string) => (state === 'hidden' ? '항목 패널 보기' : '항목 패널 가리기');
+      const next = (state: string) => (state === 'hidden' ? '오른쪽 패널 보기' : '오른쪽 패널 가리기');
       await expect.poll(inspector).toBe(first);
       await expect.poll(() => menuLabel(app, 'view.toggleInspector')).toBe(next(first));
       await runMenuCommand(app, 'view.toggleInspector');
       await expect.poll(inspector).toBe(inspectorBefore!);
       await expect.poll(() => menuLabel(app, 'view.toggleInspector')).toBe(next(inspectorBefore!));
+    },
+    // ⌃⌘1 and ⌃⌘2 (T1a): the reader's right panel shows 정보 or 튜터. The tutor's run puts 정보 back, so the rest of this test reads the info panel as before.
+    'view.inspectorInfo': () => expect(page.getByTestId('inspector')).toHaveAttribute('data-mode', 'info'),
+    'view.inspectorTutor': async () => {
+      await expect(page.getByTestId('inspector')).toHaveAttribute('data-mode', 'tutor');
+      await runMenuCommand(app, 'view.inspectorInfo');
+      await expect(page.getByTestId('inspector')).toHaveAttribute('data-mode', 'info');
     },
     // One key, two views (P-9): the library's quick search field, or the reader's find bar with its field focused.
     'library.find': async () => {
@@ -763,6 +776,10 @@ test('every registry command runs without a page error (library and reader menus
     expect(M7C_COMMANDS.filter((id) => !all.includes(id)), 'M7c commands gone from the registry').toEqual([]);
     expect(M7C_COMMANDS.filter((id) => !ran.has(id)), 'M7c commands this test did not run itself').toEqual([]);
     expect(Object.keys(COVERED_ELSEWHERE).filter((id) => M7C_COMMANDS.includes(id as CommandId)), 'M7c commands left to another test').toEqual([]);
+    // The T1a commands (the right panel's modes): each ran in the reader pass above, none is left to another test, and every one is in the registry.
+    expect(T1A_COMMANDS.filter((id) => !all.includes(id)), 'T1a commands gone from the registry').toEqual([]);
+    expect(T1A_COMMANDS.filter((id) => !ran.has(id)), 'T1a commands this test did not run itself').toEqual([]);
+    expect(Object.keys(COVERED_ELSEWHERE).filter((id) => T1A_COMMANDS.includes(id as CommandId)), 'T1a commands left to another test').toEqual([]);
     // The M7a commands: each ran here or is named in COVERED_ELSEWHERE with the test that runs it. The reader's and the translation's commands
     // are exactly the two lists' (M7a's and M7b's), compared by id: a new one is added to the list of the milestone that made it.
     expect(M7A_COMMANDS.filter((id) => !all.includes(id)), 'M7a commands gone from the registry').toEqual([]);

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'rea
 import { Group, Panel, Separator, usePanelRef, type Layout, type LayoutChangedMeta, type PanelImperativeHandle } from 'react-resizable-panels';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
-import { INSPECTOR, SIDEBAR, afterViewportChange, clampSidebar, draggedInspectorWidth, hiddenPanes, inspectorAfterViewportChange, inspectorContentMin, sidebarHidden } from './layout';
+import { INSPECTOR, READER_CONTENT_MIN, SIDEBAR, TUTOR, afterViewportChange, clampSidebar, draggedInspectorWidth, hiddenPanes, inspectorAfterViewportChange, inspectorContentMin, sidebarHidden, sidebarHiddenIn, slotWidthFor, type InspectorMode } from './layout';
+import { inspectorModeNow, useInspectorMode } from './inspectorMode';
 import { SidebarToggle } from './SidebarToggle';
 import { useKeepFocusOnInspectorFold } from './useInspector';
 import { keepFocusAcross, useKeepFocusAcrossFold } from './useSidebar';
@@ -26,12 +27,18 @@ export function Shell(props: { sidebar: ReactNode; sidebarFoot?: ReactNode; laun
   const sidebar = useShell((s) => s.sidebar);
   const setSidebar = useShell((s) => s.setSidebar);
   const inspector = useShell((s) => s.inspector);
+  const tutorWidth = useShell((s) => s.tutorWidth);
   const setInspector = useShell((s) => s.setInspector);
+  const setTutorWidth = useShell((s) => s.setTutorWidth);
   const viewportWidth = useViewportWidth();
   const contentMin = inspectorContentMin(useShell((s) => s.view.kind));
-  const hidden = sidebarHidden(sidebar, viewportWidth);
+  const mode = useInspectorMode();
+  const panes = { sidebar, inspector, tutorWidth };
+  // In the tutor mode a slot shown on demand pushes the sidebar away (spec 8.10): the sidebar's fold reads the slot too.
+  const hidden = sidebarHiddenIn(panes, viewportWidth, contentMin, mode);
   const present = props.inspector !== undefined;
-  const inspectorHidden = hiddenPanes({ sidebar, inspector }, viewportWidth, present, contentMin).inspector;
+  const inspectorHidden = hiddenPanes(panes, viewportWidth, present, contentMin, mode).inspector;
+  const slotWidth = slotWidthFor(mode, panes, viewportWidth, contentMin);
   useKeepFocusAcrossFold(hidden);
   useKeepFocusOnInspectorFold(inspectorHidden);
   const inspectorSeparatorKey = useSeparatorKeyAfterFirstShow(present, inspectorHidden);
@@ -51,7 +58,8 @@ export function Shell(props: { sidebar: ReactNode; sidebarFoot?: ReactNode; laun
     if (next !== s.sidebar) setSidebar(next);
     // A panel shown on demand stays so until the window is wide enough for the library's column: a visit to the reader, whose
     // column needs less, is no reason to fold it again on the way back.
-    const nextInspector = inspectorAfterViewportChange({ sidebar: next, inspector: s.inspector }, viewportWidth);
+    const mode = inspectorModeNow();
+    const nextInspector = inspectorAfterViewportChange({ sidebar: next, inspector: s.inspector, tutorWidth: s.tutorWidth }, viewportWidth, mode === 'tutor' ? READER_CONTENT_MIN : undefined, mode);
     if (nextInspector !== s.inspector) setInspector(nextInspector);
   }, [viewportWidth, setSidebar, setInspector]);
 
@@ -79,16 +87,21 @@ export function Shell(props: { sidebar: ReactNode; sidebarFoot?: ReactNode; laun
     const group = mainGroupRef.current;
     if (!meta.isUserInteraction || !panel || !group) return;
     const s = useShell.getState();
-    const panes = { sidebar: s.sidebar, inspector: s.inspector };
+    const panes = { sidebar: s.sidebar, inspector: s.inspector, tutorWidth: s.tutorWidth };
     const min = inspectorContentMin(s.view.kind);
+    const mode = inspectorModeNow();
     if (panel.isCollapsed()) {
-      if (hiddenPanes(panes, innerWidth, true, min).inspector) return;
+      if (hiddenPanes(panes, innerWidth, true, min, mode).inspector) return;
       setInspector(s.inspector.forceShown ? { ...s.inspector, forceShown: false } : { ...s.inspector, collapsed: true });
       return;
     }
     const px = ((layout['inspector'] ?? panel.getSize().asPercentage) / 100) * group.offsetWidth;
-    const width = draggedInspectorWidth(panes, innerWidth, px, min);
-    setInspector({ ...s.inspector, width, collapsed: false });
+    const width = draggedInspectorWidth(panes, innerWidth, px, min, mode);
+    // Each mode keeps its own width; a slot opened by the drag is no longer a user fold.
+    if (mode === 'tutor') {
+      setTutorWidth(width);
+      if (s.inspector.collapsed) setInspector({ ...s.inspector, collapsed: false });
+    } else setInspector({ ...s.inspector, width, collapsed: false });
     // Dragged wider than leaves the content column its 520: back to the widest that does, rather than folding on release.
     if (Math.abs(width - px) >= 1) panel.resize(width);
   };
@@ -140,7 +153,7 @@ export function Shell(props: { sidebar: ReactNode; sidebarFoot?: ReactNode; laun
             {present && (
               <>
                 <Separator key={inspectorSeparatorKey} className="inspector-separator" id="inspector-separator" aria-label={t.inspector.panel} />
-                <InspectorPanel panelRef={inspectorRef} hidden={inspectorHidden} width={inspector.width}>
+                <InspectorPanel panelRef={inspectorRef} hidden={inspectorHidden} width={slotWidth} mode={mode}>
                   {props.inspector}
                 </InspectorPanel>
               </>
@@ -180,8 +193,9 @@ function useSeparatorKeyAfterFirstShow(present: boolean, hidden: boolean): numbe
  * later changes go through the imperative effect, as the sidebar's. Folded, it stays mounted and inert (an open edit
  * survives a fold; nothing in it takes focus or is read out).
  */
-function InspectorPanel(props: { panelRef: RefObject<PanelImperativeHandle | null>; hidden: boolean; width: number; children: ReactNode }) {
-  const { panelRef, hidden, width } = props;
+function InspectorPanel(props: { panelRef: RefObject<PanelImperativeHandle | null>; hidden: boolean; width: number; mode: InspectorMode; children: ReactNode }) {
+  const { panelRef, hidden, width, mode } = props;
+  const range = mode === 'tutor' ? TUTOR : INSPECTOR;
   const [initialSize] = useState(() => (hidden ? 0 : width));
   // The group derives a late-mounted panel's constraints after this effect first runs (the handle throws until then),
   // and the first size already says what is wanted: only a change after the mount goes through the handle at once.
@@ -193,7 +207,8 @@ function InspectorPanel(props: { panelRef: RefObject<PanelImperativeHandle | nul
       const panel = panelRef.current;
       if (!panel) return;
       if (hidden && !panel.isCollapsed()) panel.collapse();
-      else if (!hidden && panel.isCollapsed()) panel.resize(width);
+      // A mode change, or a window that narrows the tutor, moves the slot to its width; a drag has already put it there.
+      else if (!hidden && (panel.isCollapsed() || Math.abs(panel.getSize().inPixels - width) >= 1)) panel.resize(width);
     };
     if (!mounted.current) {
       mounted.current = true;
@@ -204,7 +219,7 @@ function InspectorPanel(props: { panelRef: RefObject<PanelImperativeHandle | nul
       return () => cancelAnimationFrame(frame);
     }
     follow();
-  }, [hidden, width, panelRef]);
+  }, [hidden, width, mode, panelRef]);
   return (
     <Panel
       id="inspector"
@@ -213,8 +228,8 @@ function InspectorPanel(props: { panelRef: RefObject<PanelImperativeHandle | nul
       className="inspector-panel"
       style={CLIP}
       defaultSize={initialSize}
-      minSize={INSPECTOR.min}
-      maxSize={INSPECTOR.max}
+      minSize={range.min}
+      maxSize={range.max}
       collapsible
       collapsedSize={0}
       groupResizeBehavior="preserve-pixel-size"

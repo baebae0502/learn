@@ -11,9 +11,13 @@ const FOCUSABLE =
 
 /**
  * A grid (the library table, and the sidebar's tree) is one stop with a roving focus: F6 lands on its stop row (tabindex 0: the cursor, or the
- * first row before there is one), never on a header button or a column edge inside it (tabindex -1).
+ * first row before there is one), never on a header button or a column edge inside it (tabindex -1). A tablist is the same.
  */
-const landsOn = (el: Element): boolean => el.closest('[role="grid"], [role="treegrid"]') === null || el.getAttribute('tabindex') === '0';
+const landsOn = (el: Element): boolean => {
+  // A tablist is one stop too: the tab that is selected (the other one is reached with the arrow keys).
+  if (el.getAttribute('role') === 'tab') return el.getAttribute('tabindex') !== '-1';
+  return el.closest('[role="grid"], [role="treegrid"]') === null || el.getAttribute('tabindex') === '0';
+};
 
 /** The pane's element when F6 can visit it: there, not folded (inert or zero-wide); the toasts only with a toast. */
 function usablePane(name: (typeof PANES)[number]): HTMLElement | null {

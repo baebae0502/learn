@@ -28,6 +28,11 @@
     white-space: nowrap;
     cursor: default;
   }
+  /* A tab of a tablist is a button: no native chrome, so the track shows through (the selected one has its own fill below). */
+  .segmented button.seg {
+    border: 0;
+    background: transparent;
+  }
   .segmented.fill .seg {
     flex: 1 1 0;
     padding: 0 var(--space-4);
@@ -38,6 +43,7 @@
     color: var(--text-primary);
   }
   .segmented .seg[data-focus-visible],
+  .segmented button.seg:focus-visible, /* a tablist's tabs are buttons, not radios (the reader's right panel) */
   .segmented[data-force~='focus'] .seg[data-selected] {
     outline: var(--focus-ring-width) solid var(--focus);
     outline-offset: 0;

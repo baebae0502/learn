@@ -60,6 +60,8 @@ export const SETTINGS = {
   'reader.pageColor': z.enum(PAGE_COLORS),
   /** The ground behind a picture (M7c): unset reads as the app theme's light or dark. */
   'reader.imageBackground': z.enum(IMAGE_BACKGROUNDS),
+  /** The reader's right panel mode (T1a spec 8.1): unset reads as 'tutor', so a first reader opens on the consent card. */
+  'reader.inspectorMode': z.enum(['info', 'tutor']),
   /** What the reader's sidebar lists (spec 4.7): unset reads as the thumbnails. */
   'reader.nav': z.enum(READER_NAVS),
   /** The fingerprint of the library check's list the user was last shown (spec 7.1): the same list never opens the sheet by itself again. */

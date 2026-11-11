@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CONTENT_MIN, INSPECTOR, READER_CONTENT_MIN, inspectorContentMin, SIDEBAR, afterViewportChange, autoCollapses, clampInspector, clampSidebar, draggedInspectorWidth, hiddenPanes,
-  inspectorAfterViewportChange, inspectorAutoCollapses, parsePanes, serializePanes, sidebarHidden, toggledInspector, toggledSidebar,
+  CONTENT_MIN, INSPECTOR, READER_CONTENT_MIN, TUTOR, inspectorContentMin, SIDEBAR, afterViewportChange, autoCollapses, clampInspector, clampSidebar, clampTutor, draggedInspectorWidth, hiddenPanes,
+  inspectorAfterViewportChange, inspectorAutoCollapses, parsePanes, serializePanes, sidebarHidden, sidebarHiddenIn, slotWidthFor, toggledInspector, toggledSidebar, toggledSidebarWithTutor,
   type PaneState, type PanesState,
 } from './layout';
 
 const s = (over: Partial<PaneState> = {}): PaneState => ({ width: 240, collapsed: false, forceShown: false, ...over });
 const i = (over: Partial<PaneState> = {}): PaneState => ({ width: 320, collapsed: false, forceShown: false, ...over });
-const panes = (sidebar: Partial<PaneState> = {}, inspector: Partial<PaneState> = {}): PanesState => ({ sidebar: s(sidebar), inspector: i(inspector) });
+const panes = (sidebar: Partial<PaneState> = {}, inspector: Partial<PaneState> = {}, tutorWidth = 380): PanesState => ({ sidebar: s(sidebar), inspector: i(inspector), tutorWidth });
 
 describe('sidebar layout rules (design-spec 2.1)', () => {
   it('clamps the width to 180–360', () => {
@@ -90,13 +90,13 @@ describe('item panel layout rules (design-spec 2.1, 2.5; spec §5.2)', () => {
 describe('layout.panes: one record for both panes', () => {
   it('reads both panes, clamps the widths and defaults what is missing', () => {
     expect(parsePanes({ sidebar: 300, sidebarCollapsed: 1, 'inspector.info': 400, inspectorCollapsed: 1 })).toEqual(panes({ width: 300, collapsed: true }, { width: 400, collapsed: true }));
-    expect(parsePanes(null)).toEqual(panes());
-    expect(parsePanes({ sidebar: 9999, 'inspector.info': 9999 })).toEqual(panes({ width: 360 }, { width: 480 }));
     expect(parsePanes({ sidebar: 280, sidebarCollapsed: 0 })).toEqual(panes({ width: 280 })); // an M3 record: sidebar keys only
+    expect(parsePanes(null)).toEqual(panes());
+    expect(parsePanes({ sidebar: 9999, 'inspector.info': 9999, 'inspector.tutor': 9999 })).toEqual(panes({ width: 360 }, { width: 480 }, 560));
   });
   it('writes both panes every time, never one alone, and no session-only state', () => {
     expect(serializePanes(panes({ width: 280, collapsed: true, forceShown: true }, { width: 360, forceShown: true }))).toEqual({
-      sidebar: 280, sidebarCollapsed: 1, 'inspector.info': 360, inspectorCollapsed: 0,
+      sidebar: 280, sidebarCollapsed: 1, 'inspector.info': 360, 'inspector.tutor': 380, inspectorCollapsed: 0,
     });
   });
 });
@@ -118,5 +118,69 @@ describe('the reader keeps the item panel down to 1000 px (owner decision 7)', (
     expect(toggledInspector(panes(), 960, READER_CONTENT_MIN)).toEqual(i({ forceShown: true })); // folded by width: shown on demand
     expect(inspectorAfterViewportChange(panes({}, { forceShown: true }), 1000, READER_CONTENT_MIN)).toEqual(i());
     expect(draggedInspectorWidth(panes(), 1024, 400, READER_CONTENT_MIN)).toBe(344);
+  });
+});
+
+describe('the tutor mode of the right panel (spec 8.1, 8.10)', () => {
+  it('has its own width: 380, 320–560', () => {
+    expect(TUTOR).toEqual({ default: 380, min: 320, max: 560 });
+    expect([clampTutor(100), clampTutor(380.4), clampTutor(999)]).toEqual([320, 380, 560]);
+  });
+  it('the tutor narrows to 320 before it folds, then the sidebar folds; info folds at once (spec 8.10)', () => {
+    expect(slotWidthFor('tutor', panes(), 1060, READER_CONTENT_MIN)).toBe(380);
+    expect(slotWidthFor('tutor', panes(), 1030, READER_CONTENT_MIN)).toBe(350);
+    expect(slotWidthFor('tutor', panes(), 1000, READER_CONTENT_MIN)).toBe(320);
+    expect(hiddenPanes(panes(), 1000, true, READER_CONTENT_MIN, 'tutor')).toEqual({ sidebar: false, inspector: false });
+    expect(hiddenPanes(panes(), 999, true, READER_CONTENT_MIN, 'tutor')).toEqual({ sidebar: false, inspector: true });
+    expect(slotWidthFor('info', panes(), 1030, READER_CONTENT_MIN)).toBe(320);
+    expect(hiddenPanes(panes(), 999, true, READER_CONTENT_MIN, 'info')).toEqual({ sidebar: false, inspector: true });
+  });
+  it('a width the user chose stays stored while the window narrows it, and comes back', () => {
+    expect(slotWidthFor('tutor', panes({}, {}, 500), 1300, READER_CONTENT_MIN)).toBe(500);
+    expect(slotWidthFor('tutor', panes({}, {}, 500), 1100, READER_CONTENT_MIN)).toBe(420); // 1100 − 240 − 440
+    expect(slotWidthFor('tutor', panes({}, {}, 500), 1300, READER_CONTENT_MIN)).toBe(500);
+    // The info mode's width is its own and is never narrowed.
+    expect(slotWidthFor('info', panes({}, { width: 400 }), 1100, READER_CONTENT_MIN)).toBe(400);
+  });
+  it('a hidden sidebar leaves its room to the tutor', () => {
+    expect(slotWidthFor('tutor', panes({ collapsed: true }), 800, READER_CONTENT_MIN)).toBe(360);
+    expect(hiddenPanes(panes({ collapsed: true }), 760, true, READER_CONTENT_MIN, 'tutor').inspector).toBe(false);
+    expect(hiddenPanes(panes({ collapsed: true }), 759, true, READER_CONTENT_MIN, 'tutor').inspector).toBe(true);
+  });
+  it('the pane shown last wins in a 960 window', () => {
+    const shown = { ...panes(), inspector: toggledInspector(panes(), 960, READER_CONTENT_MIN, 'tutor') };
+    expect(shown.inspector.forceShown).toBe(true);
+    expect(hiddenPanes(shown, 960, true, READER_CONTENT_MIN, 'tutor')).toEqual({ sidebar: true, inspector: false });
+    expect(slotWidthFor('tutor', shown, 960, READER_CONTENT_MIN)).toBe(380); // the reader keeps 580
+    const back = toggledSidebarWithTutor(shown, 960, 'tutor');
+    expect(hiddenPanes(back, 960, true, READER_CONTENT_MIN, 'tutor')).toEqual({ sidebar: false, inspector: true });
+    expect(back.inspector.forceShown).toBe(false);
+    expect(toggledSidebarWithTutor(back, 960, 'tutor').sidebar.collapsed).toBe(true); // and a second press hides it, as ever
+  });
+  it('the shown tutor is not undone by the sidebar it pushed away, and goes when the window has room for both', () => {
+    const shown = { ...panes(), inspector: toggledInspector(panes(), 960, READER_CONTENT_MIN, 'tutor') };
+    expect(inspectorAutoCollapses(shown, 960, READER_CONTENT_MIN, 'tutor')).toBe(true); // asked with the sidebar's own state, not the yielded one
+    expect(inspectorAfterViewportChange(shown, 980, READER_CONTENT_MIN, 'tutor').forceShown).toBe(true);
+    expect(inspectorAfterViewportChange(shown, 1000, READER_CONTENT_MIN, 'tutor').forceShown).toBe(false);
+    expect(sidebarHiddenIn(shown, 960, READER_CONTENT_MIN, 'tutor')).toBe(true);
+    expect(sidebarHiddenIn(shown, 960, READER_CONTENT_MIN, 'info')).toBe(false); // info mode: M4 as it was, nothing yields
+  });
+  it('showing the sidebar on demand folds a tutor that does not fit beside it, and the sidebar\'s own fold wins over the tutor below 760', () => {
+    const wide = panes();
+    expect(toggledSidebarWithTutor(wide, 1440, 'tutor')).toEqual({ ...wide, sidebar: s({ collapsed: true }) }); // nothing to resolve while both fit: the sidebar's own rule
+    const forced = { ...panes(), inspector: i({ forceShown: true }) };
+    const sidebarOn = toggledSidebarWithTutor({ ...forced, sidebar: s({ collapsed: true }) }, 960, 'tutor');
+    expect(sidebarOn.sidebar).toMatchObject({ collapsed: false });
+    expect(sidebarOn.inspector.forceShown).toBe(false);
+  });
+  it('a drag in the tutor mode keeps the reader at 440 and stays within 320–560', () => {
+    expect(draggedInspectorWidth(panes(), 1300, 700, READER_CONTENT_MIN, 'tutor')).toBe(560);
+    expect(draggedInspectorWidth(panes(), 1100, 600, READER_CONTENT_MIN, 'tutor')).toBe(420);
+    expect(draggedInspectorWidth(panes(), 1300, 100, READER_CONTENT_MIN, 'tutor')).toBe(320);
+  });
+  it('keeps each mode\'s width under its own key', () => {
+    expect(parsePanes({ sidebar: 240, 'inspector.info': 300, 'inspector.tutor': 600 }).tutorWidth).toBe(560);
+    expect(serializePanes(panes({}, {}, 400))).toMatchObject({ 'inspector.info': 320, 'inspector.tutor': 400 });
+    expect(parsePanes({ sidebar: 240 }).tutorWidth).toBe(380);
   });
 });

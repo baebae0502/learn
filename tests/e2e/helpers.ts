@@ -94,6 +94,9 @@ export async function launch(libraryDir: string | null, userDataDir: string | nu
   if (libraryDir !== null) env['LEARN_LIBRARY_DIR'] = libraryDir;
   if (userDataDir !== null) env['LEARN_USER_DATA_DIR'] = userDataDir;
   env['LEARN_E2E'] = '1'; // the shipped menu (no "개발자 도구"); a caller's env can still override it
+  // The reader's right panel starts on 정보, as it was before the tutor: the specs that are not about the tutor look at the info panel.
+  // A spec of the tutor itself, or of the default, passes LEARN_E2E_SETTINGS: '' (nothing is seeded; the default is 튜터).
+  env['LEARN_E2E_SETTINGS'] = JSON.stringify({ 'reader.inspectorMode': 'info' });
   Object.assign(env, opts.env);
   const app = await electron.launch({
     args: opts.executablePath ? [...(opts.args ?? [])] : [...(opts.args ?? []), path.join(ROOT, 'apps/desktop')],
@@ -1955,3 +1958,50 @@ export const tutorKillAgent = (app: ElectronApplication) => app.evaluate(() => (
 export const seedSessions = (app: ElectronApplication, input: SeedSessionsInput) => app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.seedSessions(arg), input);
 /** The tool reads recorded on an answer, in order. */
 export const toolReads = (app: ElectronApplication, messageId: string) => app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.toolReads(arg), messageId);
+
+/** The reader toolbar's smallest width (what READER_CONTENT_MIN must hold), at one text size. */
+export interface ToolbarMin {
+  pt: number;
+  /** With the page field's "/ N" (a reader of 480 or more). */
+  withCount: number;
+  /** Without it (a reader under 480, which is where the narrowest reader is). */
+  withoutCount: number;
+}
+
+/**
+ * The border-box width the open PDF's reader toolbar takes at `width: min-content`, with and without the page count, at each text size
+ * (the pref is set for the reading and put back). The toolbar must be on screen. Logged as `[measure] reader-toolbar-min` by the caller.
+ */
+export async function readerToolbarMin(page: Page, sizes: readonly (12 | 13 | 14 | 15)[] = [13, 14, 15]): Promise<ToolbarMin[]> {
+  const read = await page.evaluate(() => window.learn.prefs.get());
+  const original = read.ok ? read.data.fontSize : 13;
+  const out: ToolbarMin[] = [];
+  try {
+    for (const pt of sizes) {
+      expect(await page.evaluate((fontSize) => window.learn.prefs.set({ fontSize }), pt)).toMatchObject({ ok: true });
+      // The page follows the pref (prefsChanged, then <html data-font-size>): read the toolbar once it has.
+      await expect.poll(() => page.evaluate(() => document.documentElement.dataset['fontSize'])).toBe(String(pt));
+      const m = await page.getByTestId('reader-toolbar').evaluate(async (bar) => {
+        const slot = bar.querySelector<HTMLElement>('.page-count-slot');
+        const min = (): number => {
+          const was = bar.style.width;
+          bar.style.width = 'min-content';
+          const w = bar.getBoundingClientRect().width;
+          bar.style.width = was;
+          return w;
+        };
+        await new Promise<void>((r) => requestAnimationFrame(() => r()));
+        const withCount = min();
+        const shown = slot?.style.display ?? '';
+        if (slot) slot.style.display = 'none';
+        const withoutCount = min();
+        if (slot) slot.style.display = shown;
+        return { withCount, withoutCount };
+      });
+      out.push({ pt, withCount: Math.round(m.withCount), withoutCount: Math.round(m.withoutCount) });
+    }
+  } finally {
+    await page.evaluate((fontSize) => window.learn.prefs.set({ fontSize }), original);
+  }
+  return out;
+}

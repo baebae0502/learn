@@ -51,7 +51,9 @@ import { DropOverlay } from '../shell/DropOverlay';
 import { Launcher } from '../shell/Launcher';
 import { focusPane } from '../shell/panes';
 import { Shell } from '../shell/Shell';
-import { useInspectorHidden, useToggleInspector } from '../shell/useInspector';
+import { showInspectorMode, useInspectorHidden, useToggleInspector } from '../shell/useInspector';
+import { useInspectorMode } from '../shell/inspectorMode';
+import { useTutorView } from '../tutor/useTutorView';
 import { useTabsPersistence } from './useTabsPersistence';
 import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell/useSidebar';
 import { useWindowState } from '../shell/useWindowState';
@@ -389,6 +391,10 @@ export function MainWindow(_props: { info: AppInfo }) {
   const pdfOpening = view.kind === 'reader' && readerKind === 'pdf' && !pdfEnded && !pdfOpen;
   const showsInspector = showsTable || (view.kind === 'reader' && (pdfOpen || pdfOpening));
   const inspectorHidden = useInspectorHidden(showsInspector);
+  // The right panel's mode: the reader's remembered one (튜터 until one is chosen), the library's 정보 alone.
+  const inspectorMode = useInspectorMode();
+  // No session is shown yet (the tutor draws the card, the off state, nothing more): the one place that tells main is here, with the active tab's value.
+  useTutorView(null);
   // Text of the page is selected: 선택한 글 번역 is on (translation/useSelectionText.ts).
   const pdfSelection = useSelection((s) => s.text !== '');
   // Translation is switched off (the settings window, the pop-up's 사용 안 함): 선택한 글 번역 does nothing then. Not yet chosen asks, so it stays on.
@@ -456,6 +462,8 @@ export function MainWindow(_props: { info: AppInfo }) {
     sidebar: sidebarHidden ? 'hidden' : 'shown',
     // The 보기 menu names what ⌥⌘I does now; where there is no panel no state is reported, so it says the neutral name.
     inspector: showsInspector ? (inspectorHidden ? 'hidden' : 'shown') : undefined,
+    // The reader's right panel mode, reported while a PDF is open (⌃⌘1 / ⌃⌘2 and the menu bar follow it).
+    ...(pdfOpen ? { inspectorMode } : {}),
     // ⌘+ / ⌘− stop at 15 / 12 and ⌘0 is off at 13 (prefs.fontSize; the default until prefs are read).
     textSize,
     libraryCount: count,
@@ -539,6 +547,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     relink: (itemId) => void relink(itemId),
     toggleSidebar,
     toggleInspector,
+    setInspectorMode: showInspectorMode,
     showShortcuts: () => void showShortcuts(),
     checkLibrary: () => checkLibrary(false),
     openPalette,
@@ -563,7 +572,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, pdfOpen, imageDrawn, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAtPage, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, pdfOpen, imageDrawn, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, inspectorMode, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAtPage, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);
@@ -697,7 +706,7 @@ export function MainWindow(_props: { info: AppInfo }) {
         launcher={<Launcher />}
         toolbar={toolbar}
         head={view.kind === 'library' && tabsOpen ? libraryBar('head') : undefined}
-        inspector={showsInspector ? <Inspector mode="info" /> : undefined}
+        inspector={showsInspector ? <Inspector mode={inspectorMode} switchable={view.kind === 'reader'} /> : undefined}
         overlays={
           <>
             <Palette />

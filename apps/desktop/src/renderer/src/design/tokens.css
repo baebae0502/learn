@@ -178,6 +178,9 @@
     --inspector-width: 320px;
     --inspector-min: 260px;
     --inspector-max: 480px;
+    --tutor-width: 380px;
+    --tutor-min: 320px;
+    --tutor-max: 560px;
     --transcript-width: 320px;
     --traffic-light-x: 18px;
     --traffic-light-y: 18px;

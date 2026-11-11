@@ -76,6 +76,8 @@ export type CommandId =
   | 'tags.clearFilter'
   | 'view.toggleSidebar'
   | 'view.toggleInspector'
+  | 'view.inspectorInfo'
+  | 'view.inspectorTutor'
   | 'translation.translateSelection'
   | 'app.shortcuts'
   | 'app.palette'
@@ -470,9 +472,19 @@ export const COMMANDS: readonly CommandSpec[] = [
   },
   // The item panel: the library's, and the reader's while a PDF is open. Named by what it does now (stateLabels), like the sidebar toggle.
   {
-    id: 'view.toggleInspector', label: '항목 패널 보기/가리기', accelerator: 'Alt+CmdOrCtrl+I', menu: { menu: 'view', group: 2, order: 2 }, contexts: ['library', 'viewer'],
-    stateLabels: { inspector: { shown: '항목 패널 가리기', hidden: '항목 패널 보기' } },
-    keywords: ['항목 패널', '인스펙터', '정보', '패널', '가리기', '보기', 'inspector', 'info'],
+    id: 'view.toggleInspector', label: '오른쪽 패널 보기/가리기', accelerator: 'Alt+CmdOrCtrl+I', menu: { menu: 'view', group: 2, order: 2 }, contexts: ['library', 'viewer'],
+    stateLabels: { inspector: { shown: '오른쪽 패널 가리기', hidden: '오른쪽 패널 보기' } },
+    keywords: ['오른쪽 패널', '항목 패널', '인스펙터', '정보', '튜터', '패널', '가리기', '보기', 'inspector', 'info', 'tutor'],
+  },
+  // The reader's right panel has two modes (T1a, spec 8.1): 정보 and 튜터. Each shows the panel if it is folded; the order values
+  // sit between the toggle's and the sortBy row's, so no existing order is renumbered.
+  {
+    id: 'view.inspectorInfo', label: '정보 보기', accelerator: 'Ctrl+Cmd+1', menu: { menu: 'view', group: 2, order: 2.1 }, contexts: ['viewer'],
+    keywords: ['정보', '번역', '오른쪽 패널', '패널', '보기', 'info', 'inspector'],
+  },
+  {
+    id: 'view.inspectorTutor', label: '튜터 보기', accelerator: 'Ctrl+Cmd+2', menu: { menu: 'view', group: 2, order: 2.2 }, contexts: ['viewer'],
+    keywords: ['튜터', '질문', '오른쪽 패널', '패널', '보기', 'tutor', 'ask'],
   },
   // The selection pop-up's command (M7a): no menu item, no key; the palette offers it while a PDF text is selected.
   {
@@ -680,6 +692,8 @@ export interface CommandContextState {
   sidebar?: PaneShown;
   /** The item panel (library view only), for its toggle's state label; absent where there is none. */
   inspector?: PaneShown;
+  /** The reader's right panel mode while a PDF is open (spec 11); absent in the library and without a PDF. */
+  inspectorMode?: 'info' | 'tutor';
   /** UI text size in pt (prefs.fontSize, Task 10): ⌘+ / ⌘− stop at 15 / 12, ⌘0 only away from 13. */
   textSize: 12 | 13 | 14 | 15;
   /** Items in the library; 0 is the empty library (nothing to find or inspect). */
@@ -891,6 +905,8 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'library.findEverywhere': (c) => c.searchActive && c.scope !== 'all',
   // An empty library has no panel (design-spec 2.4).
   'view.toggleInspector': (c) => (c.view === 'viewer' ? c.pdfOpen === true : c.libraryCount > 0),
+  'view.inspectorInfo': pdfOpen,
+  'view.inspectorTutor': pdfOpen,
   'translation.translateSelection': (c) => c.pdfOpen === true && c.pdfSelection === true && c.translationOff !== true,
   // The sort acts on the table, which the empty library does not have (its first-run screen replaces it).
   'library.sortBy': (c) => c.libraryCount > 0,

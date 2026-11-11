@@ -5,10 +5,11 @@ import { createReaderStore, type ImageState, type ReaderStore } from './pdf/read
 import { readWindowParams } from '../ui/platform';
 import { createSelectionStore, type SelectionStore } from '../translation/useSelectionText';
 import { createTranslationStore, type TranslationStore } from '../translation/store';
+import { createTutorTabStore, type TutorTabStore } from '../tutor/tutorStore';
 
 /**
  * Everything one open document keeps on screen: its reader state, its find bar, its text selection and the translation of it,
- * and the toolbar's page field. Several readers can be mounted at once; each has its own scope.
+ * its tutor panel's state, and the toolbar's page field. Several readers can be mounted at once; each has its own scope.
  */
 export interface ReaderScope {
   readonly id: string;
@@ -16,6 +17,8 @@ export interface ReaderScope {
   readonly find: StoreApi<FindStore>;
   readonly selection: StoreApi<SelectionStore>;
   readonly translation: StoreApi<TranslationStore>;
+  /** The tutor panel's own state for this tab (the session it shows, 나중에): memory only. */
+  readonly tutor: StoreApi<TutorTabStore>;
   readonly pageField: { current: HTMLInputElement | null };
   /** The picture point at the image stage's centre (0–1), kept by the image reader as it moves; not state, so a scroll re-renders nothing. */
   readonly imageCentre: { current: { cx: number; cy: number } | null };
@@ -23,7 +26,7 @@ export interface ReaderScope {
 
 export function createReaderScope(id: string): ReaderScope {
   return {
-    id, reader: createReaderStore(), find: createFindStore(), selection: createSelectionStore(), translation: createTranslationStore(), pageField: { current: null }, imageCentre: { current: null },
+    id, reader: createReaderStore(), find: createFindStore(), selection: createSelectionStore(), translation: createTranslationStore(), tutor: createTutorTabStore(), pageField: { current: null }, imageCentre: { current: null },
   };
 }
 

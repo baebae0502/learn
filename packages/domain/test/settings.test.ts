@@ -33,6 +33,13 @@ describe('reader.imageBackground', () => {
   });
 });
 
+describe('reader.inspectorMode', () => {
+  it('takes the two modes of the reader\'s right panel and nothing else', () => {
+    for (const v of ['info', 'tutor']) expect(parseSetting('reader.inspectorMode', v)).toBe(v);
+    for (const v of ['library', 'sessions', '', 1, null]) expect(code(() => parseSetting('reader.inspectorMode', v))).toBe('VALIDATION_FAILED');
+  });
+});
+
 describe('library.searchScope', () => {
   it('takes the two scopes of the quick search and nothing else', () => {
     expect(SEARCH_SCOPES).toEqual(['metadata', 'fulltext']);

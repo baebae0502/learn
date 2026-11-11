@@ -544,11 +544,11 @@ test('M4 library: the item panel — its fold at this width, ⌥⌘I from a real
   await allShots(s.app, page, 'm4-inspector-multi-light', `item panel, ${titles.length} selected (light)`);
 
   if (IS_MAC) {
-    await guard('inspector: 보기 lists 항목 패널 가리기 with ⌥⌘I, and no 개발자 도구', async () => {
+    await guard('inspector: 보기 lists 오른쪽 패널 가리기 with ⌥⌘I, and no 개발자 도구', async () => {
       const pid = s.app.process().pid!;
-      inspector['menuView'] = { ...(await captureOpenMenu(s.app, pid, 5, 'm4-inspector-menu-view', '보기 open: 항목 패널 가리기 ⌥⌘I after 사이드바 가리기')), names: await menuItemNames(pid, 5) };
+      inspector['menuView'] = { ...(await captureOpenMenu(s.app, pid, 5, 'm4-inspector-menu-view', '보기 open: 오른쪽 패널 가리기 ⌥⌘I after 사이드바 가리기')), names: await menuItemNames(pid, 5) };
       const names = (inspector['menuView'] as { names: string[] | null }).names ?? [];
-      check('inspector: 보기 lists 항목 패널 가리기 with ⌥⌘I, and no 개발자 도구', names.includes('항목 패널 가리기') && !names.includes('개발자 도구'), names);
+      check('inspector: 보기 lists 오른쪽 패널 가리기 with ⌥⌘I, and no 개발자 도구', names.includes('오른쪽 패널 가리기') && !names.includes('개발자 도구'), names);
     });
   }
   // Leave the session as it was for the tests after this one: default panel state, nothing selected (esc on the table).

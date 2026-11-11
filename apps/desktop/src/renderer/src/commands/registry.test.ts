@@ -43,6 +43,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   relink: vi.fn(),
   toggleSidebar: vi.fn(),
   toggleInspector: vi.fn(),
+  setInspectorMode: vi.fn(),
   showShortcuts: vi.fn(),
   openPalette: vi.fn(),
   showInFolder: vi.fn(),
@@ -362,6 +363,19 @@ describe('renderer command registry', () => {
     const off = env({ view: 'viewer', pdfOpen: true, pdfSelection: true, translationOff: true });
     expect(runCommand('translation.translateSelection', off)).toBe(false);
     expect(off.translateSelection).not.toHaveBeenCalled();
+  });
+  it('⌃⌘1 and ⌃⌘2 set the reader\'s right panel mode with a PDF open, and the context reports the mode only then', () => {
+    const e = env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor' });
+    expect(runCommand('view.inspectorInfo', e)).toBe(true);
+    expect(runCommand('view.inspectorTutor', e)).toBe(true);
+    expect(vi.mocked(e.setInspectorMode).mock.calls).toEqual([['info'], ['tutor']]);
+    for (const off of [env({ view: 'viewer' }), env({ libraryCount: 3 }), env({ view: 'viewer', pdfOpen: true, blocked: true })]) {
+      expect(runCommand('view.inspectorTutor', off)).toBe(false);
+      expect(off.setInspectorMode).not.toHaveBeenCalled();
+    }
+    expect(reportedContext(e)).toMatchObject({ inspectorMode: 'tutor' });
+    expect(reportedContext(env({ view: 'viewer', inspectorMode: 'info' }))).not.toHaveProperty('inspectorMode'); // no PDF open
+    expect(reportedContext(env({ libraryCount: 3, inspectorMode: 'info' }))).not.toHaveProperty('inspectorMode');
   });
   it('⌘F finds in the reader and quick-searches in the library; ⌘G ⇧⌘G ⌘E and the sidebar lists run on the open PDF only', () => {
     const e = env({ view: 'viewer', pdfOpen: true });

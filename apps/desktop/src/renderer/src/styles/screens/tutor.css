@@ -1,0 +1,116 @@
+@layer screens {
+  /* The right panel's head in the reader (mockup .insp-head): the mode segment 44 high, its edge on the content's 16 px column. */
+  .inspector-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    height: var(--pane-header-height);
+    flex: none;
+    padding: 0 var(--space-12) 0 var(--space-16);
+    border-bottom: 1px solid var(--separator);
+  }
+  /* What the head's mode shows: the info panel's scroll or the tutor's panel, filling what the head leaves. */
+  .inspector-modepane {
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .segmented.mode .seg {
+    padding: 0 var(--space-16);
+  }
+
+  /* The tutor panel (mockup .tu-scroll around the card): a column that scrolls on its own. */
+  .tutor-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .tutor-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--space-16) var(--space-16) var(--space-12);
+    scrollbar-gutter: stable;
+  }
+
+  /* The consent card (spec 8.6, mockup .tu-consent): raised, one column, the facts under a lead sentence. */
+  .tutor-consent {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-12);
+    padding: var(--space-16);
+    border-radius: var(--radius-lg);
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-e0);
+  }
+  .tutor-consent:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+  .tutor-consent-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-12);
+  }
+  .tutor-consent-head h2 {
+    margin: 0;
+    min-width: 0;
+    font: var(--type-title3);
+    text-wrap: balance;
+  }
+  .tutor-consent .badge-tile {
+    width: 32px; /* local: the mockup's badge tile */
+    height: 32px; /* local: the mockup's badge tile */
+    flex: none;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-lg);
+    background: var(--accent-soft);
+    color: var(--accent-text);
+  }
+  .tutor-text {
+    margin: 0;
+    font: var(--type-body);
+    text-wrap: pretty;
+  }
+  .tutor-text.small {
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  .tutor-facts {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-12);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .tutor-fact {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr); /* local: the icon's column */
+    column-gap: var(--space-8);
+    margin: 0;
+  }
+  .tutor-fact > .icon {
+    margin-top: 1px; /* local: the icon sits on the title's first line */
+    color: var(--text-secondary);
+  }
+  .tutor-fact .f-title {
+    font: var(--type-headline);
+  }
+  .tutor-fact .f-text {
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+    text-wrap: pretty;
+  }
+  .tutor-consent-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-8);
+    margin-top: var(--space-4);
+  }
+}

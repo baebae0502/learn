@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { acceleratorKeys, acceleratorLabel } from '../src/accelerator';
 import {
   ACCELERATOR_SYNTAX, COMMANDS, IMAGE_BACKGROUNDS, COMMAND_IDS, CONTEXT_MENU_KINDS, MAIN_OWNED_COMMANDS, NO_LIBRARY_VIEW, SUBMENUS, availableMenuCommands, commandById, commandLabel, commandMention, inPalette, isCommandAvailable, paletteLabel,
-  sameCommandContext, selectionTargets, submenuProblems, type CommandContextState, type CommandSpec, type CommandTargetInfo, type ItemTargetInfo,
+  sameCommandContext, selectionTargets, submenuProblems, type CommandContextState, type CommandId, type CommandSpec, type CommandTargetInfo, type ItemTargetInfo,
 } from '../src/commands';
 import { Channels } from '../src/ipc-channels';
 import { EventChannels } from '../src/event-channels';
@@ -89,11 +89,11 @@ describe('command registry', () => {
     expect(inPalette(commandById('file.importManaged'))).toBe(true);
     expect(inPalette(commandById('app.palette'))).toBe(false); // the palette does not list itself
   });
-  it('⌥⌘I shows or hides the item panel: 보기 after the sidebar toggle, the library with items and the reader with a PDF open, named by what it does', () => {
+  it('⌥⌘I shows or hides the right panel: 보기 after the sidebar toggle, the library with items and the reader with a PDF open, named by what it does', () => {
     const c = commandById('view.toggleInspector');
     expect(c).toMatchObject({
-      label: '항목 패널 보기/가리기', accelerator: 'Alt+CmdOrCtrl+I', menu: { menu: 'view', group: 2, order: 2 }, contexts: ['library', 'viewer'],
-      stateLabels: { inspector: { shown: '항목 패널 가리기', hidden: '항목 패널 보기' } },
+      label: '오른쪽 패널 보기/가리기', accelerator: 'Alt+CmdOrCtrl+I', menu: { menu: 'view', group: 2, order: 2 }, contexts: ['library', 'viewer'],
+      stateLabels: { inspector: { shown: '오른쪽 패널 가리기', hidden: '오른쪽 패널 보기' } },
     });
     expect(inPalette(c)).toBe(true);
     expect(acceleratorLabel(c.accelerator!, 'darwin')).toBe('⌥⌘I');
@@ -110,13 +110,40 @@ describe('command registry', () => {
     expect(isCommandAvailable('translation.translateSelection', { ...VIEWER, pdfOpen: true, pdfSelection: true, translationOff: false })).toBe(true);
     expect(isCommandAvailable('view.toggleInspector', { ...withItems, blocked: true })).toBe(false);
     for (const platform of ['darwin', 'linux', 'win32']) {
-      expect(commandLabel(c, platform, { inspector: 'shown' })).toBe('항목 패널 가리기');
-      expect(commandLabel(c, platform, { inspector: 'hidden' })).toBe('항목 패널 보기');
-      expect(commandLabel(c, platform)).toBe('항목 패널 보기/가리기');
-      expect(commandLabel(c, platform, { sidebar: 'hidden' })).toBe('항목 패널 보기/가리기'); // the sidebar's state never names it
+      expect(commandLabel(c, platform, { inspector: 'shown' })).toBe('오른쪽 패널 가리기');
+      expect(commandLabel(c, platform, { inspector: 'hidden' })).toBe('오른쪽 패널 보기');
+      expect(commandLabel(c, platform)).toBe('오른쪽 패널 보기/가리기');
+      expect(commandLabel(c, platform, { sidebar: 'hidden' })).toBe('오른쪽 패널 보기/가리기'); // the sidebar's state never names it
     }
     const menu = availableMenuCommands(withItems);
     expect(menu.indexOf('view.toggleInspector')).toBe(menu.indexOf('view.toggleSidebar') + 1);
+    expect(c.keywords).toEqual(expect.arrayContaining(['오른쪽 패널', '튜터']));
+  });
+  it('⌃⌘1 and ⌃⌘2 pick the reader\'s right panel mode: one key each, a PDF open, 보기 between the toggle and the thumbnails', () => {
+    const info = commandById('view.inspectorInfo');
+    const tutor = commandById('view.inspectorTutor');
+    expect(info).toMatchObject({ label: '정보 보기', accelerator: 'Ctrl+Cmd+1', menu: { menu: 'view', group: 2, order: 2.1 }, contexts: ['viewer'] });
+    expect(tutor).toMatchObject({ label: '튜터 보기', accelerator: 'Ctrl+Cmd+2', menu: { menu: 'view', group: 2, order: 2.2 }, contexts: ['viewer'] });
+    expect(acceleratorLabel(info.accelerator!, 'darwin')).toBe('⌃⌘1');
+    expect(acceleratorLabel(tutor.accelerator!, 'darwin')).toBe('⌃⌘2');
+    // One command per key: none of the other keys is ⌃⌘1 or ⌃⌘2 (⌃⌘S and ⌃⌘F are other keys).
+    expect(COMMANDS.filter((c) => c.accelerator === 'Ctrl+Cmd+1').map((c) => c.id)).toEqual(['view.inspectorInfo']);
+    expect(COMMANDS.filter((c) => c.accelerator === 'Ctrl+Cmd+2').map((c) => c.id)).toEqual(['view.inspectorTutor']);
+    for (const id of ['view.inspectorInfo', 'view.inspectorTutor'] as const) {
+      expect(isCommandAvailable(id, { ...VIEWER, pdfOpen: true })).toBe(true);
+      expect(isCommandAvailable(id, VIEWER)).toBe(false);
+      expect(isCommandAvailable(id, { ...LIB, libraryCount: 3 })).toBe(false);
+      expect(isCommandAvailable(id, { ...VIEWER, pdfOpen: true, blocked: true })).toBe(false);
+    }
+    const menu = availableMenuCommands({ ...VIEWER, pdfOpen: true });
+    const at = (id: CommandId) => menu.indexOf(id);
+    const view = ['view.toggleSidebar', 'view.toggleInspector', 'view.inspectorInfo', 'view.inspectorTutor', 'reader.showThumbnails', 'reader.showOutline'] as const;
+    expect(view.map(at)).toEqual([...view.map(at)].sort((a, b) => a - b));
+    expect(view.every((id) => at(id) >= 0)).toBe(true);
+    // The palette lists them right after the toggle.
+    const ids = COMMANDS.map((c) => c.id);
+    expect(ids.indexOf('view.inspectorInfo')).toBe(ids.indexOf('view.toggleInspector') + 1);
+    expect(ids.indexOf('view.inspectorTutor')).toBe(ids.indexOf('view.toggleInspector') + 2);
   });
   it('defines the registry commands with the design-spec labels and keys', () => {
     expect(COMMANDS.map((c) => c.id).sort()).toEqual([
@@ -125,7 +152,7 @@ describe('command registry', () => {
       'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.goToPage', 'reader.imageBackgroundChecker', 'reader.imageBackgroundDark', 'reader.imageBackgroundLight', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.scrollHorizontal', 'reader.scrollPage', 'reader.scrollVertical', 'reader.showOutline', 'reader.showThumbnails', 'reader.spreadEven', 'reader.spreadNone', 'reader.spreadOdd', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
       'tab.close', 'tab.closeOthers', 'tab.goTo2', 'tab.goTo3', 'tab.goTo4', 'tab.goTo5', 'tab.goTo6', 'tab.goTo7', 'tab.goTo8', 'tab.last', 'tab.moveLeft', 'tab.moveRight', 'tab.next', 'tab.previous', 'tab.reopenClosed', 'tab.revealInLibrary',
       'tag.clearColor', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'tag.delete', 'tag.rename', 'tag.setColor', 'tags.clearFilter', 'translation.translateSelection', 'trash.empty',
-      'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
+      'view.inspectorInfo', 'view.inspectorTutor', 'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
     ]);
     expect(commandById('file.importManaged')).toMatchObject({ label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' });
     expect(commandById('file.importLinked')).toMatchObject({ label: '외부 파일 연결…', accelerator: 'Alt+CmdOrCtrl+O' });

@@ -36,6 +36,7 @@ import { createQuitGuard, type QuitGuard } from './jobs/quit-guard';
 import { createLibrarySwitch, refuseLinkedInside, type LibrarySwitch } from './library-folder';
 import { createCheckSheets, startLibraryCheck, type AutoOutcome } from './library-check';
 import { openLibraryContext, type LibraryContext } from './library-context';
+import { seedE2ESettings } from './e2e-settings';
 import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu, menuLabelState, menuLabelsChanged, submenuShapeKey } from './menu/app-menu';
 import { createMenuRebuilder } from './menu/rebuild';
 import { menuNeedsOrganize } from './menu/submenus';
@@ -421,6 +422,8 @@ if (!app.requestSingleInstanceLock()) {
     const libraryRoot = resolveLibraryRoot({ envDir: process.env['LEARN_LIBRARY_DIR'], prefs: prefs.get(), userData: app.getPath('userData') });
     try {
       ctx = await openLibraryContext(libraryRoot);
+      // E2E only: settings a suite starts from, where none is stored (before the window reads them).
+      if (isE2E(app.isPackaged, process.env)) seedE2ESettings(ctx.settings, process.env['LEARN_E2E_SETTINGS']);
       if (menuUsesOrganize) menuRebuild.request(); // the menu bar was built before the library opened
     } catch (e) {
       const le = toLearnError(e, mainStrings.library.openFailed);

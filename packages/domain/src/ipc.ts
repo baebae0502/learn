@@ -136,6 +136,7 @@ export const commandContextInput = z
     blocked: z.boolean(),
     sidebar: paneShownSchema.optional(),
     inspector: paneShownSchema.optional(),
+    inspectorMode: z.enum(['info', 'tutor']).optional(),
     textSize: z.union([z.literal(12), z.literal(13), z.literal(14), z.literal(15)]),
     libraryCount: contextCount,
     selectionCount: contextCount,

@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { FIXTURES, assignTag, createTag, importPaths, launch, menuSnapshot, quietLibraryCalls, recordedPopupPoints, recordedPopups, rowByTitle, runMenuCommand, selectRows, stubContextMenu, type MenuNode } from './helpers';
+import { FIXTURES, assignTag, createTag, importPaths, launch, mainWindow, menuSnapshot, openItem, quietLibraryCalls, recordedPopupPoints, recordedPopups, rowByTitle, runMenuCommand, selectRows, stubContextMenu, type MenuNode } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const dirs = (i: { outputPath(...p: string[]): string }) => [i.outputPath('library'), i.outputPath('userdata')] as const;
@@ -69,6 +69,31 @@ test('보기 › 정렬 기준 ▸ sorts the table by a shown column and a direc
     await header(page, 'year').click({ button: 'right' });
     await expect(header(page, 'size')).toHaveCount(0);
     await expect.poll(() => radios(app)).toEqual(['제목', '저자', '연도', '종류', '추가일', '크기 ○', '진행', '-', '오름차순', '내림차순 ○']);
+  } finally {
+    await app.close();
+  }
+});
+
+test('⌥⌘I is 오른쪽 패널 보기/가리기: it names what it does in the library and in the reader, and the neutral name where there is no panel', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const label = async () => flatten(await menuSnapshot(app)).find((n) => n.id === 'view.toggleInspector')?.label;
+    await (await mainWindow(app)).evaluate((w) => w.setContentSize(1440, w.getContentSize()[1]!));
+    await expect.poll(label).toBe('오른쪽 패널 보기/가리기'); // the empty library has no panel
+    await importPaths(page, [PDF]);
+    await expect.poll(label).toBe('오른쪽 패널 가리기');
+    await runMenuCommand(app, 'view.toggleInspector');
+    await expect.poll(label).toBe('오른쪽 패널 보기');
+    await runMenuCommand(app, 'view.toggleInspector');
+    await expect.poll(label).toBe('오른쪽 패널 가리기');
+    await openItem(page, 'sample');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
+    await expect.poll(label).toBe('오른쪽 패널 가리기');
+    await runMenuCommand(app, 'view.toggleInspector');
+    await expect.poll(label).toBe('오른쪽 패널 보기');
+    // The reader's two modes are 보기 items of their own, named for what they show.
+    const names = flatten(await menuSnapshot(app)).filter((n) => n.id === 'view.inspectorInfo' || n.id === 'view.inspectorTutor').map((n) => [n.id, n.label, n.accelerator !== null]);
+    expect(names).toEqual([['view.inspectorInfo', '정보 보기', true], ['view.inspectorTutor', '튜터 보기', true]]); // the keys are platform-spelled (Ctrl+Shift+1 here): the registry and menu unit tests own them
   } finally {
     await app.close();
   }

@@ -22,7 +22,7 @@ export function CommandText({ command, testId, isDisabled = false }: { command: 
           return (
             <Fragment key={i}>
               <span className="cmd-part">{space ? part.slice(0, -1) : part}</span>
-              {space ? ' ' : part.endsWith('/') && i < parts.length - 1 ? <wbr /> : null}
+              {space ? ' ' : (part.endsWith('/') || part.endsWith('=')) && i < parts.length - 1 ? <wbr /> : null}
             </Fragment>
           );
         })}

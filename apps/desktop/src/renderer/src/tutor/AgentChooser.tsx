@@ -9,6 +9,7 @@ import { Icon } from '../ui/Icon';
 import { Spinner } from '../ui/Spinner';
 import { Tooltip } from '../ui/Tooltip';
 import { agentRow, type AgentRowView } from './agentRows';
+import { createFocusRestore } from './focusRestore';
 import { CommandText } from './CommandText';
 import { useAgents } from './useAgents';
 import { useTutorPrefs } from './useTutorPrefs';
@@ -81,7 +82,7 @@ function AgentRow({ row, state, disabled, onRecheck }: RowProps) {
  * is in; read once the chooser is on screen, and cleared when it has landed or the user went elsewhere.
  */
 export function AgentChooser({ onStarted, focusRequest, visible }: { onStarted(): void; focusRequest: MutableRefObject<boolean>; visible: boolean }) {
-  const { report, searching, failed, recheck, research } = useAgents(visible);
+  const { report, busy, searching, failed, recheck, research } = useAgents(visible);
   const current = useTutorPrefs().agent;
   const [picked, setPicked] = useState<AgentId | null>(null);
   const starting = useRef(false);
@@ -114,25 +115,18 @@ export function AgentChooser({ onStarted, focusRequest, visible }: { onStarted()
     } else box.focus();
   }, [focusRequest, report, searching, failed, chosen]);
 
-  // A button that was pressed is disabled while the search runs, which drops its focus: when the search ends the focus is back on it.
-  const restore = useRef<string | null>(null);
+  // A button that was pressed is disabled while the search shows, which drops its focus: when that search ends the focus is back on it.
+  const restore = useRef(createFocusRestore());
   const hold = (selector: string, run: () => void) => () => {
-    restore.current = document.activeElement !== null && document.activeElement.matches(selector) ? selector : null;
+    restore.current.hold(document.activeElement !== null && document.activeElement.matches(selector) ? selector : null);
     run();
   };
-  const pending = useRef<string | null>(null);
   useEffect(() => {
-    if (searching) {
-      pending.current = restore.current;
-      restore.current = null;
-      return;
-    }
-    const selector = pending.current;
-    pending.current = null;
+    const selector = restore.current.step(busy, searching);
     if (selector !== null && (document.activeElement === null || document.activeElement === document.body)) {
       region.current?.parentElement?.querySelector<HTMLElement>(selector)?.focus();
     }
-  }, [searching]);
+  }, [busy, searching]);
 
   const start = () => {
     if (chosen === null || starting.current || searching) return;
@@ -164,7 +158,7 @@ export function AgentChooser({ onStarted, focusRequest, visible }: { onStarted()
           </div>
         )}
         {failed && (
-          <p className="tutor-note" role="status" data-testid="agent-failed">
+          <p className="tutor-note" role="status" id="agent-failed-note" data-testid="agent-failed">
             <Icon icon={TriangleAlert} size="sm" />
             {agents.failedLine}
           </p>
@@ -189,7 +183,7 @@ export function AgentChooser({ onStarted, focusRequest, visible }: { onStarted()
       </div>
       <div className="tutor-foot">
         <Tooltip label={agents.researchTip}>
-          <Button variant="plain" leading onPress={hold('[data-testid="agent-research"]', research)} isDisabled={searching} testId="agent-research">
+          <Button variant="plain" leading aria-describedby={failed ? 'agent-failed-note' : undefined} onPress={hold('[data-testid="agent-research"]', research)} isDisabled={searching} testId="agent-research">
             {agents.research}
           </Button>
         </Tooltip>
@@ -201,7 +195,7 @@ export function AgentChooser({ onStarted, focusRequest, visible }: { onStarted()
             </Button>
           </Tooltip>
         ) : (
-          <Button variant="primary" isDisabled disabledReason={searching ? agents.searchingTip : failed && chosenRow === null ? agents.failedTip : agents.notReady} testId="agent-start">
+          <Button variant="primary" isDisabled disabledReason={searching || (report === null && !failed) ? agents.searchingTip : failed && chosenRow === null ? agents.failedTip : agents.notReady} testId="agent-start">
             {agents.start}
           </Button>
         )}

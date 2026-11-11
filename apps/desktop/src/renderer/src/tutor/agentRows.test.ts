@@ -51,8 +51,12 @@ describe('commandParts: breaks after a space and after "/", nowhere else', () =>
   });
   it('keeps a space inside double quotes whole, as U+00A0', () => {
     expect(commandParts('CLAUDE_CONFIG_DIR="$HOME/Library/Application Support/Learn/Tutor/agents/claude" claude auth login')).toEqual([
-      'CLAUDE_CONFIG_DIR="$HOME/', 'Library/', 'Application Support/', 'Learn/', 'Tutor/', 'agents/', 'claude" ', 'claude ', 'auth ', 'login',
+      'CLAUDE_CONFIG_DIR=', '"$HOME/', 'Library/', 'Application Support/', 'Learn/', 'Tutor/', 'agents/', 'claude" ', 'claude ', 'auth ', 'login',
     ]);
+  });
+  it('breaks after the "=" of a leading assignment only', () => {
+    expect(commandParts('A_B=x/y c=d')).toEqual(['A_B=', 'x/', 'y ', 'c=d']);
+    expect(commandParts('npm --prefix=/opt/x')).toEqual(['npm ', '--prefix=/', 'opt/', 'x']);
   });
   it('joins back to the command (with the quoted spaces bound)', () => {
     const c = 'a "b c" d/e f';

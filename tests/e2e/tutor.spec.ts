@@ -359,7 +359,7 @@ test('the fake agent: its own group and badge in a test build, chosen and starte
     await expect(page.getByTestId('tutor-fake-band')).toHaveCount(0);
     // Claude Code is chosen first (it is ready); the fake is another click.
     await expect(page.getByTestId('agent-start')).toHaveText('Claude Code로 시작');
-    await dev.locator('.a-name').click(); // its name: a click on the label's text (the input itself is hidden)
+    await dev.getByTestId('agent-row').click(); // the row selects (its label covers it; the input itself is hidden)
     await expect(page.getByTestId('agent-start')).toHaveText('가짜 에이전트로 시작');
     await expectNoSeriousA11y(page, 'tutor chooser, the fake chosen');
     await page.getByTestId('agent-start').click();
@@ -378,7 +378,7 @@ test('the fake agent: its own group and badge in a test build, chosen and starte
     await expect(page.getByTestId('tutor-chooser')).toBeVisible();
     await expect(band).toBeVisible();
     await expect(dev.getByRole('radio', { name: /가짜 에이전트/ })).toBeChecked();
-    await claudeRow(page).locator('.a-name').click();
+    await claudeRow(page).click();
     await page.getByTestId('agent-start').click();
     await expect(page.getByTestId('tutor-panel')).toHaveAttribute('data-state', 'ready');
     await expect(band).toHaveCount(0);
@@ -407,13 +407,13 @@ test('↩ on the chosen radio starts it, and ↩ on 다시 찾기 searches and s
   }
 });
 
-test('the whole left block of a row selects it, blank space included', async ({}, testInfo) => {
+test('the whole row selects it, its padding included, and its own buttons keep their clicks', async ({}, testInfo) => {
   const { app, page } = await atChooser(testInfo, READY);
   try {
     const dev = page.getByTestId('agent-dev-group').getByTestId('agent-row');
-    await dev.click({ position: { x: 36, y: 20 } }); // between the circle and the name
+    await dev.click({ position: { x: 4, y: 4 } }); // the row's corner: padding
     await expect(page.getByTestId('agent-dev-group').getByRole('radio')).toBeChecked();
-    await claudeRow(page).click({ position: { x: 36, y: 20 } });
+    await claudeRow(page).click({ position: { x: 4, y: 4 } });
     await expect(claudeRow(page).getByRole('radio')).toBeChecked();
   } finally {
     await app.close();
@@ -447,10 +447,12 @@ test('the disabled 시작 says why: nothing ready, searching, a read that failed
     await tutorFailAgents(app, 1);
     await page.getByTestId('agent-research').click();
     await expect(page.getByTestId('agent-failed')).toBeVisible();
+    await expect(page.getByTestId('agent-research')).toHaveAttribute('aria-describedby', 'agent-failed-note');
     await expect(page.getByTestId('agent-row')).toHaveCount(2);
     await expect(page.getByTestId('agent-research')).toBeEnabled();
     await page.getByTestId('agent-research').click();
     await expect(page.getByTestId('agent-failed')).toHaveCount(0);
+    await expect(page.getByTestId('agent-research')).not.toHaveAttribute('aria-describedby', /./);
   } finally {
     await app.close();
   }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { hashKey, useQuery } from '@tanstack/react-query';
 import { create } from 'zustand';
 import type { AgentId, AgentsReport, TutorAgentsInput } from '@learn/domain';
 import { api, unwrap } from '../api';
@@ -11,7 +11,12 @@ import { useLearnEvent } from '../events';
 export const SEARCHING_MS = 300;
 
 /** The state of a recheck or a search, one for the whole window: every screen that reads the report sees the same one. */
-const useRun = create<{ busy: boolean; failed: boolean }>()(() => ({ busy: false, failed: false }));
+export const useAgentsRun = create<{ busy: boolean; failed: boolean }>()(() => ({ busy: false, failed: false }));
+
+// A read of the report that got an answer, by whatever path (a retry, the re-read after a failed turn, a recheck, a search), ends a failure.
+queryClient.getQueryCache().subscribe((event) => {
+  if (event.type === 'updated' && event.action.type === 'success' && hashKey(event.query.queryKey) === hashKey(keys.tutorAgents)) useAgentsRun.setState({ failed: false });
+});
 
 /** `on`, but only once it has held for `ms`. */
 function useAfter(on: boolean, ms: number): boolean {
@@ -32,17 +37,17 @@ function useAfter(on: boolean, ms: number): boolean {
  * newer one), a second press while one runs is ignored, and a failure keeps the list that is there and says so (`failed`).
  */
 function run(input: TutorAgentsInput): void {
-  if (useRun.getState().busy) return;
-  useRun.setState({ busy: true, failed: false });
+  if (useAgentsRun.getState().busy) return;
+  useAgentsRun.setState({ busy: true, failed: false });
   void queryClient.cancelQueries({ queryKey: keys.tutorAgents });
   unwrap(api().tutor.agents(input))
     .then((report) => {
       queryClient.setQueryData(keys.tutorAgents, report);
-      useRun.setState({ busy: false, failed: false });
+      useAgentsRun.setState({ busy: false, failed: false });
     })
     .catch((e: unknown) => {
       console.warn(`[tutor] agents failed: ${(e as { code?: string }).code ?? 'INTERNAL'}`);
-      useRun.setState({ busy: false, failed: true });
+      useAgentsRun.setState({ busy: false, failed: true });
     });
 }
 
@@ -63,7 +68,7 @@ export function useAgentsReread(): void {
  * it is shown again. `recheck` is one agent's row, `research` the whole search; while one runs the list that is there stays.
  * `failed`: the last read or press did not get an answer.
  */
-export function useAgents(enabled: boolean): { report: AgentsReport | null; searching: boolean; failed: boolean; recheck(agent: AgentId): void; research(): void } {
+export function useAgents(enabled: boolean): { report: AgentsReport | null; busy: boolean; searching: boolean; failed: boolean; recheck(agent: AgentId): void; research(): void } {
   const query = useQuery({
     queryKey: keys.tutorAgents,
     queryFn: () => unwrap(api().tutor.agents({ mode: 'cached' })),
@@ -72,10 +77,11 @@ export function useAgents(enabled: boolean): { report: AgentsReport | null; sear
     gcTime: Infinity,
     retry: false,
   });
-  const { busy, failed: runFailed } = useRun();
+  const { busy, failed: runFailed } = useAgentsRun();
   const searching = useAfter(busy || (enabled && query.isFetching), SEARCHING_MS);
   return {
     report: query.data ?? null,
+    busy,
     searching,
     failed: runFailed || (query.isError && query.data === undefined),
     recheck: useCallback((agent: AgentId) => run({ mode: 'recheck', agent }), []),

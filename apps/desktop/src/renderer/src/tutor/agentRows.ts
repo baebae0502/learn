@@ -43,7 +43,8 @@ export function agentRow(s: AgentStatus): AgentRowView {
 }
 
 /**
- * A command's parts for the screen: a line may break after a space (an argument separator) and after a "/", nowhere else. A space inside
+ * A command's parts for the screen: a line may break after a space (an argument separator), after a "/", and after the "=" of a leading
+ * environment assignment (NAME=), nowhere else. A space inside
  * double quotes is no separator: it stays in its part as U+00A0, so a folder's name is not split. The copied text is the command itself.
  */
 export function commandParts(command: string): string[] {
@@ -57,7 +58,7 @@ export function commandParts(command: string): string[] {
       continue;
     }
     part += ch;
-    if (ch === ' ' || ch === '/') {
+    if (ch === ' ' || ch === '/' || (ch === '=' && parts.length === 0 && /^[A-Za-z_][A-Za-z0-9_]*=$/.test(part))) {
       parts.push(part);
       part = '';
     }

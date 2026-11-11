@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { LearnError } from '@learn/domain';
 import { createTutorQuitGate } from './quit';
 
 function event(prevented = false) {
@@ -70,15 +71,38 @@ describe('the tutor at quit', () => {
     expect(quit).not.toHaveBeenCalled();
   });
 
-  it('a shutdown that fails still lets the quit go ahead', async () => {
-    const tutor = { processes: () => ({ count: 1, max: 1, conversationIds: [] }), shutdown: vi.fn(async () => Promise.reject(new Error('boom'))) };
-    const quit = vi.fn();
-    const gate = createTutorQuitGate({ tutor: () => tutor, quit, maxMs: 2000 });
-    gate.onBeforeQuit(event());
-    await settle();
-    expect(quit).toHaveBeenCalledTimes(1);
-    const after = event();
-    gate.onBeforeQuit(after);
-    expect(after.preventDefault).not.toHaveBeenCalled();
+  it('a shutdown that fails still lets the quit go ahead, and leaves its code (only) in the log', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      const failure = Object.assign(new Error('kill EPERM /home/someone/secret'), { code: 'EPERM' });
+      const tutor = { processes: () => ({ count: 1, max: 1, conversationIds: [] }), shutdown: vi.fn(async () => Promise.reject(failure)) };
+      const quit = vi.fn();
+      const gate = createTutorQuitGate({ tutor: () => tutor, quit, maxMs: 2000 });
+      gate.onBeforeQuit(event());
+      await settle();
+      expect(quit).toHaveBeenCalledTimes(1);
+      const after = event();
+      gate.onBeforeQuit(after);
+      expect(after.preventDefault).not.toHaveBeenCalled();
+      expect(info.mock.calls).toEqual([['[tutor] quit-shutdown-failed code=EPERM']]);
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  it('with no agent, a shutdown that fails is logged the same way, and the quit was never held', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      const tutor = { processes: () => ({ count: 0, max: 0, conversationIds: [] }), shutdown: vi.fn(async () => Promise.reject(new LearnError('INTERNAL', 'x'))) };
+      const quit = vi.fn();
+      const e = event();
+      createTutorQuitGate({ tutor: () => tutor, quit, maxMs: 2000 }).onBeforeQuit(e);
+      await settle();
+      expect(e.preventDefault).not.toHaveBeenCalled();
+      expect(quit).not.toHaveBeenCalled();
+      expect(info.mock.calls).toEqual([['[tutor] quit-shutdown-failed code=INTERNAL']]);
+    } finally {
+      info.mockRestore();
+    }
   });
 });

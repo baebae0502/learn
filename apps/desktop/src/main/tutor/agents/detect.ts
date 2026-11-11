@@ -74,10 +74,14 @@ export function run(file: string, args: string[], o: { timeoutMs: number; maxByt
   });
 }
 
+/** Printed on a line of its own before the PATH: a profile prints what it likes before and after, never this last. */
+const PATH_MARK = '__LEARN_PATH__';
+
 /**
  * The login shell's PATH, for 다시 찾기 only: the folders a terminal finds programs in, which an app started from the Dock
- * does not have. The shell gets Learn's allow-listed environment; only its last line is taken (a profile may print
- * before it), and it is only ever split into folders to search. Null when there is no shell or it does not answer.
+ * does not have. The shell gets Learn's allow-listed environment; only what follows the last mark, up to its line end, is
+ * the PATH (no mark, no PATH), and it is only ever split into folders to search. Null when there is no shell or it does
+ * not answer.
  */
 export async function loginShellPath(env: NodeJS.ProcessEnv, home: string, runner: DetectDeps['run'] = run): Promise<string | null> {
   const shell = env.SHELL;
@@ -88,10 +92,12 @@ export async function loginShellPath(env: NodeJS.ProcessEnv, home: string, runne
     if (value !== undefined) clean[key] = value;
   }
   try {
-    const out = await runner(shell, ['-ilc', 'printf %s "$PATH"'], { timeoutMs: TUTOR_TIMEOUTS.loginShellMs, maxBytes: 64 * 1024, env: clean, cwd: home });
+    const out = await runner(shell, ['-ilc', `printf '\\n${PATH_MARK}%s\\n' "$PATH"`], { timeoutMs: TUTOR_TIMEOUTS.loginShellMs, maxBytes: 64 * 1024, env: clean, cwd: home });
     if (out.code !== 0) return null;
-    const last = out.stdout.split('\n').at(-1)?.trim() ?? '';
-    return last === '' ? null : last;
+    const at = out.stdout.lastIndexOf(PATH_MARK);
+    if (at < 0) return null;
+    const value = out.stdout.slice(at + PATH_MARK.length).split('\n')[0]!.trim();
+    return value === '' ? null : value;
   } catch {
     return null;
   }

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { tutorLog } from './log';
+import { LearnError } from '@learn/domain';
+import { errorCode, tutorLog } from './log';
 
 describe('tutorLog', () => {
   afterEach(() => vi.restoreAllMocks());
@@ -26,5 +27,19 @@ describe('tutorLog', () => {
     const smuggled = { code: 'AGENT_EXITED', stderr: 'secret' };
     tutorLog('exit', smuggled);
     expect(info.mock.calls).toEqual([['[tutor] turn-end code=AGENT_EXITED'], ['[tutor] exit code=AGENT_EXITED']]);
+  });
+});
+
+describe('errorCode', () => {
+  it('a LearnError\'s code, a system error\'s code, an error\'s name — never its message', () => {
+    expect(errorCode(new LearnError('AGENT_EXITED', 'the agent at /home/x exited'))).toBe('AGENT_EXITED');
+    expect(errorCode(Object.assign(new Error('ENOENT: no such file, open /home/x/secret'), { code: 'ENOENT' }))).toBe('ENOENT');
+    expect(errorCode(Object.assign(new Error('closed'), { code: 'ERR_SERVER_NOT_RUNNING' }))).toBe('ERR_SERVER_NOT_RUNNING');
+    expect(errorCode(new TypeError('bad /home/x'))).toBe('TypeError');
+    expect(errorCode('a string thrown')).toBe('UNKNOWN');
+  });
+  it('a code that is not a plain token is not written: the error\'s name instead', () => {
+    expect(errorCode(Object.assign(new Error('x'), { code: 'not a code /home/x' }))).toBe('Error');
+    expect(errorCode(Object.assign(new Error('x'), { code: 42 }))).toBe('Error');
   });
 });

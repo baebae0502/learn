@@ -367,23 +367,44 @@ describe('run', () => {
 describe('loginShellPath (다시 찾기 only)', () => {
   const ENV = { SHELL: '/bin/zsh', HOME: HOME, PATH: '/usr/bin', ANTHROPIC_API_KEY: 'sk-never', LANG: 'C.UTF-8' };
   const answering = (stdout: string, code: number | null = 0) => vi.fn<DetectDeps['run']>(async () => ({ stdout, code }));
+  /** What the shell prints for a PATH: Learn's mark on a line of its own, then the value. */
+  const marked = (value: string) => `\n__LEARN_PATH__${value}\n`;
 
-  it('asks the login shell for its PATH, without a shell of Learn\'s own, within 3 s and 64 KiB, with the allow-listed environment', async () => {
-    const r = answering('/opt/x/bin:/usr/bin');
+  it('asks the login shell for its PATH after a mark, without a shell of Learn\'s own, within 3 s and 64 KiB, with the allow-listed environment', async () => {
+    const r = answering(marked('/opt/x/bin:/usr/bin'));
     expect(await loginShellPath(ENV, HOME, r)).toBe('/opt/x/bin:/usr/bin');
-    expect(r).toHaveBeenCalledWith('/bin/zsh', ['-ilc', 'printf %s "$PATH"'], { timeoutMs: 3000, maxBytes: 65536, env: { SHELL: '/bin/zsh', HOME, PATH: '/usr/bin', LANG: 'C.UTF-8' }, cwd: HOME });
+    expect(r).toHaveBeenCalledWith('/bin/zsh', ['-ilc', `printf '\\n__LEARN_PATH__%s\\n' "$PATH"`], {
+      timeoutMs: 3000, maxBytes: 65536, env: { SHELL: '/bin/zsh', HOME, PATH: '/usr/bin', LANG: 'C.UTF-8' }, cwd: HOME,
+    });
   });
-  it('keeps only the last line: what the profile prints before it is not the PATH', async () => {
-    expect(await loginShellPath(ENV, HOME, answering('Welcome!\nmotd line\n/a/bin:/b/bin'))).toBe('/a/bin:/b/bin');
+  it('reads only what follows the last mark, up to its line end: what the profile prints before and after is not the PATH', async () => {
+    const out = `Welcome!\nmotd line without end${marked('/a/bin:/b/bin')}bye from .zlogout\n`;
+    expect(await loginShellPath(ENV, HOME, answering(out))).toBe('/a/bin:/b/bin');
+    // A profile that printed the mark itself comes before Learn's printf: the last one is Learn's.
+    expect(await loginShellPath(ENV, HOME, answering(`__LEARN_PATH__/evil/bin\n${marked('/a/bin')}`))).toBe('/a/bin');
+    // No line end after the value (nothing printed after it): the value to the end.
+    expect(await loginShellPath(ENV, HOME, answering('\n__LEARN_PATH__/a/bin:/b'))).toBe('/a/bin:/b');
   });
-  it('null when there is no shell to ask, it fails, it is cut off, or it prints nothing', async () => {
-    const r = answering('/a/bin');
+  it('no mark is no PATH: null, whatever else was printed', async () => {
+    expect(await loginShellPath(ENV, HOME, answering('/a/bin:/b/bin'))).toBeNull();
+    expect(await loginShellPath(ENV, HOME, answering('Welcome!\n/a/bin\n'))).toBeNull();
+  });
+  it('a fish-style space-joined value is one entry: only absolute ones are searched, so it is one folder that does not exist, never several', async () => {
+    const value = await loginShellPath(ENV, HOME, answering(marked('/a/bin /b/bin')));
+    expect(value).toBe('/a/bin /b/bin');
+    const dirs = searchDirs({ env: {}, home: HOME, platform: 'linux', searchPath: null, knownDirs: [] }, value!);
+    expect(dirs).toContain('/a/bin /b/bin');
+    expect(dirs).not.toContain('/a/bin');
+    expect(dirs).not.toContain('/b/bin');
+  });
+  it('null when there is no shell to ask, it fails, it is cut off by the timeout, or the value is empty', async () => {
+    const r = answering(marked('/a/bin'));
     expect(await loginShellPath({ ...ENV, SHELL: undefined }, HOME, r)).toBeNull();
     expect(await loginShellPath({ ...ENV, SHELL: 'zsh' }, HOME, r)).toBeNull();
     expect(r).not.toHaveBeenCalled();
-    expect(await loginShellPath(ENV, HOME, answering('/a/bin', 1))).toBeNull();
-    expect(await loginShellPath(ENV, HOME, answering('/a/bin', null))).toBeNull();
-    expect(await loginShellPath(ENV, HOME, answering('  \n'))).toBeNull();
+    expect(await loginShellPath(ENV, HOME, answering(marked('/a/bin'), 1))).toBeNull();
+    expect(await loginShellPath(ENV, HOME, answering(marked('/a/bin'), null))).toBeNull();
+    expect(await loginShellPath(ENV, HOME, answering(marked('  ')))).toBeNull();
     expect(await loginShellPath(ENV, HOME, vi.fn<DetectDeps['run']>(async () => { throw new Error('ENOENT'); }))).toBeNull();
   });
 });

@@ -62,14 +62,15 @@ import { isSheetOpen, resyncAllWindowStates, sheetClosed, sheetShown } from './w
 import { windowUrl } from './window-url';
 import { createTutorCall } from './tutor/call';
 import { createAgentDetector, loginShellPath, run as runProgram } from './tutor/agents/detect';
-import { tutorHome } from './tutor/agents/isolation';
 import { spawnAgent } from './tutor/agents/spawn';
 import { createSupervisor, type Supervisor } from './tutor/agents/supervisor';
 import { createAcpBackend, type BackendConn, type TutorBackend } from './tutor/backend';
+import { tutorEnvPolicy } from './tutor/env-policy';
 import type { FakeScript } from './tutor/fake-agent/fake-agent';
 import { createMcpTransport, type McpTransport } from './tutor/mcp/http';
 import { createMcpServer } from './tutor/mcp/server';
 import { createScopeRegistry } from './tutor/scope';
+import { errorCode, tutorLog } from './tutor/log';
 import { createTutorQuitGate } from './tutor/quit';
 import { createTutorService, type TutorService } from './tutor/service';
 
@@ -527,7 +528,6 @@ if (!app.requestSingleInstanceLock()) {
         paused: isE2E(app.isPackaged, process.env) && process.env['LEARN_TEXT_EXTRACTION'] !== 'run',
       });
     }
-    const e2e = isE2E(app.isPackaged, process.env);
     // The tutor (spec 4): made here, started by nothing — the MCP server opens with the first ACP session, detection runs
     // with the first report a page asks for after consent, an agent with the first warm or question.
     let tutorHooks: TutorHooksDeps | undefined;
@@ -535,16 +535,10 @@ if (!app.requestSingleInstanceLock()) {
       const openCtx = ctx;
       const userData = app.getPath('userData');
       const home = app.getPath('home');
-      // A live run reads its own variables only in an unpackaged build that asked for it; the packaged app never does.
-      const live = !app.isPackaged && process.env['LEARN_AGENT_LIVE'] === '1';
-      const learnHome = tutorHome(userData, { live, liveHome: live ? process.env['LEARN_AGENT_LIVE_HOME'] : undefined });
-      // E2E never finds the real agent of the machine it runs on: its test install, or an empty folder.
-      let searchPath: string | null = null;
-      if (e2e) {
-        searchPath = process.env['LEARN_AGENT_SEARCH_PATH'] || path.join(userData, 'Tutor', 'e2e-empty-path');
-        if (!process.env['LEARN_AGENT_SEARCH_PATH']) fs.mkdirSync(searchPath, { recursive: true, mode: 0o700 });
-      } else if (live) searchPath = process.env['LEARN_AGENT_LIVE_PATH'] ?? '';
-      const fakeLog = e2e ? path.join(userData, 'fake-agent.log') : null;
+      const policy = tutorEnvPolicy({ isPackaged: app.isPackaged, env: process.env, userData });
+      const { searchPath, fakeLog, tutorHome: learnHome } = policy;
+      // E2E never finds the real agent of the machine it runs on: its test install, or this empty folder.
+      if (policy.emptySearchFolder !== null) fs.mkdirSync(policy.emptySearchFolder, { recursive: true, mode: 0o700 });
       let fakeScript: FakeScript = 'answer';
       let network: 'online' | 'offline' | null = null;
       const timers = { setTimer: (fn: () => void, ms: number): unknown => setTimeout(fn, ms), clearTimer: (id: unknown) => clearTimeout(id as NodeJS.Timeout) };
@@ -569,8 +563,8 @@ if (!app.requestSingleInstanceLock()) {
       // The detector checks the login through the backend, and the backend launches what the detector found.
       let backend!: TutorBackend;
       const detector = createAgentDetector({
-        env: process.env, home, platform: process.platform, searchPath, loginShellAllowed: !e2e && !live, run: runProgram,
-        loginShellPath: () => loginShellPath(process.env, home), probeLogin: (d) => backend.probe(d.entry.id), fakeAvailable: !app.isPackaged, tutorHome: learnHome,
+        env: process.env, home, platform: process.platform, searchPath, loginShellAllowed: policy.loginShellAllowed, run: runProgram,
+        loginShellPath: () => loginShellPath(process.env, home), probeLogin: (d) => backend.probe(d.entry.id), fakeAvailable: policy.fakeAvailable, tutorHome: learnHome,
       });
       backend = createAcpBackend({
         supervisor, detector, transport, scopes, userData, tutorHome: learnHome, env: process.env, home, execPath: process.execPath,
@@ -583,17 +577,17 @@ if (!app.requestSingleInstanceLock()) {
         backend, detector, supervisor: supervisor as Supervisor<unknown>, scopes,
         isOnline: () => net.isOnline(), network: () => network, prioritize: (sha256) => text?.prioritize(sha256),
         emitTurn, emitSessions: (e) => broadcast('sessions:changed', e),
-        userData, tutorHome: learnHome, home, fakeAvailable: !app.isPackaged, now: nowIso, timers,
+        userData, tutorHome: learnHome, home, fakeAvailable: policy.fakeAvailable, now: nowIso, timers,
       });
       tutor = service;
-      if (e2e) {
+      if (policy.e2e) {
         tutorHooks = {
           service,
           setFakeScript(name) {
             fakeScript = name;
             // A fake started ahead would answer with the script it was started with.
             const running = supervisor.current();
-            if (running?.agent === 'fake' && !running.streaming) void supervisor.close().catch(() => {});
+            if (running?.agent === 'fake' && !running.streaming) void supervisor.close().catch((e: unknown) => tutorLog('supervisor-close-failed', { code: errorCode(e) }));
           },
           fakeLog: () => (fakeLog === null ? [] : readFakeLog(fakeLog)),
           setNetwork(mode) {
@@ -647,6 +641,7 @@ if (!app.requestSingleInstanceLock()) {
      * armed in will-quit, when the quit really goes ahead. E2E applies at once and only records the request: Playwright
      * cannot follow a new process.
      */
+    const e2e = isE2E(app.isPackaged, process.env);
     const librarySwitch: LibrarySwitch = createLibrarySwitch({
       prefs,
       arm: () => {
@@ -938,7 +933,7 @@ if (!app.requestSingleInstanceLock()) {
     checkStopped = true;
     // Nothing of the agent's group outlives the app, whatever the quit waited for; its MCP server goes after it.
     tutor?.killAgent();
-    void tutorTransport?.close().catch(() => {});
+    void tutorTransport?.close().catch((e: unknown) => tutorLog('transport-close-failed', { code: errorCode(e) }));
     // The worker first, the database after: a running job is requeued and gets its attempt back (a SIGKILL leaves it to the next startup check).
     if (text) text.dispose();
     else textExtractor.dispose();

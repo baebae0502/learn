@@ -94,6 +94,16 @@ async function hearTurns(page: Page): Promise<void> {
 }
 const heard = (page: Page, messageId: string) => page.evaluate((id) => (window.__tutorTurns ?? []).filter((e) => e.messageId === id), messageId);
 
+/** Whether a process of that id is still there. */
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 test('the injection fixture triggers nothing: another material refused, no file or terminal call, the permission refused, the fake end marker scrubbed, the work folder empty', async ({}, testInfo) => {
   const { app, page, userData } = await start(testInfo);
   try {
@@ -392,21 +402,13 @@ test('quitting with an agent running stops it, then quits: the app exits on its 
     // Its first line once it runs (the count goes up at the spawn).
     await expect.poll(async () => pick(await tutorFakeLog(app), 'env').length, { message: 'the agent started' }).toBe(1);
     const pid = pick(await tutorFakeLog(app), 'env')[0]!.pid;
-    const alive = (): boolean => {
-      try {
-        process.kill(pid, 0);
-        return true;
-      } catch {
-        return false;
-      }
-    };
-    expect(alive()).toBe(true);
+    expect(alive(pid)).toBe(true);
     const proc = app.process();
     await app.close();
     closed = true;
     // A clean exit, not the SIGKILL launch() sends a close that hangs; the quit waited for the agent's group to exit.
     expect([proc.exitCode, proc.signalCode]).toEqual([0, null]);
-    expect(alive()).toBe(false);
+    expect(alive(pid)).toBe(false);
   } finally {
     if (!closed) await app.close();
   }
@@ -420,6 +422,7 @@ test('the next start mends what a crash and a delete left: the answer cut off is
   let killed = false;
   let deleted = '';
   let cut = { conversationId: '', tutorMessageId: '' };
+  let agents: number[] = [];
   try {
     const [sample] = await importPaths(s.page, [SAMPLE]);
     await consentAndChoose(s.page, 'fake');
@@ -439,11 +442,17 @@ test('the next start mends what a crash and a delete left: the answer cut off is
     const slow = await ask('끊길 답의 질문');
     cut = { conversationId: slow.conversationId, tutorMessageId: slow.tutorMessageId };
     await expect.poll(async () => (await heard(s.page, slow.tutorMessageId)).some((e) => e.kind === 'text'), { message: 'the answer began' }).toBe(true);
+    // Every agent this run started: the first session's, closed when its answer ended, and the one answering now.
+    agents = pick(await tutorFakeLog(s.app), 'env').map((e) => e.pid);
+    expect(agents).toHaveLength(2);
+    expect(alive(agents[1]!)).toBe(true);
     await hardKill(s.app);
     killed = true;
   } finally {
     if (!killed) await s.app.close();
   }
+  // No agent outlives the app that was killed: the answering one ends when its stdin closes with the app, a moment after.
+  await expect.poll(() => agents.filter(alive), { message: 'the first run\'s agents gone' }).toEqual([]);
 
   s = await launch(library, userData);
   try {

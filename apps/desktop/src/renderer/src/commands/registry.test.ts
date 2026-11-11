@@ -44,6 +44,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   toggleSidebar: vi.fn(),
   toggleInspector: vi.fn(),
   setInspectorMode: vi.fn(),
+  chooseAgent: vi.fn(),
   showShortcuts: vi.fn(),
   openPalette: vi.fn(),
   showInFolder: vi.fn(),
@@ -376,6 +377,18 @@ describe('renderer command registry', () => {
     expect(reportedContext(e)).toMatchObject({ inspectorMode: 'tutor' });
     expect(reportedContext(env({ view: 'viewer', inspectorMode: 'info' }))).not.toHaveProperty('inspectorMode'); // no PDF open
     expect(reportedContext(env({ libraryCount: 3, inspectorMode: 'info' }))).not.toHaveProperty('inspectorMode');
+  });
+  it('에이전트 고르기… runs only with a PDF open and the consent recorded, and the context reports the consent only then', () => {
+    const e = env({ view: 'viewer', pdfOpen: true, tutorConsented: true });
+    expect(runCommand('tutor.chooseAgent', e)).toBe(true);
+    expect(e.chooseAgent).toHaveBeenCalledTimes(1);
+    for (const off of [env({ view: 'viewer', pdfOpen: true }), env({ view: 'viewer', tutorConsented: true }), env({ libraryCount: 3, tutorConsented: true }), env({ view: 'viewer', pdfOpen: true, tutorConsented: true, blocked: true })]) {
+      expect(runCommand('tutor.chooseAgent', off)).toBe(false);
+      expect(off.chooseAgent).not.toHaveBeenCalled();
+    }
+    expect(reportedContext(e)).toMatchObject({ tutorConsented: true });
+    expect(reportedContext(env({ view: 'viewer', pdfOpen: true }))).not.toHaveProperty('tutorConsented');
+    expect(reportedContext(env({ view: 'viewer', tutorConsented: true }))).not.toHaveProperty('tutorConsented');
   });
   it('⌘F finds in the reader and quick-searches in the library; ⌘G ⇧⌘G ⌘E and the sidebar lists run on the open PDF only', () => {
     const e = env({ view: 'viewer', pdfOpen: true });

@@ -7,12 +7,17 @@ export interface TutorTabStore {
   /** The session this tab's tutor shows; null is a new empty session. */
   conversationId: string | null;
   setConversation(id: string | null): void;
+  /** 에이전트 고르기…: the chooser shows although an agent is chosen, until one is started or the tab closes. */
+  choosing: boolean;
+  setChoosing(on: boolean): void;
 }
 
 export function createTutorTabStore(): StoreApi<TutorTabStore> {
   return createStore<TutorTabStore>()((set) => ({
     conversationId: null,
     setConversation: (conversationId) => set({ conversationId }),
+    choosing: false,
+    setChoosing: (choosing) => set({ choosing }),
   }));
 }
 

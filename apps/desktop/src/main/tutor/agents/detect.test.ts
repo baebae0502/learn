@@ -87,7 +87,7 @@ describe('detect', () => {
   it('tells the five states of the Claude Code row apart, in the spec\'s order', async () => {
     const state = async (layout: FakeLayout, probe: 'ok' | 'login' | 'old' | 'failed' = 'ok') =>
       (await createAgentDetector(deps({ searchPath: fakeInstall(layout), probe })).report('cached')).agents[0]!;
-    expect(await state({})).toMatchObject({ id: 'claude', state: 'missing', command: 'npm install -g @anthropic-ai/claude-code' });
+    expect(await state({})).toMatchObject({ id: 'claude', state: 'missing', command: 'npm install -g @anthropic-ai/claude-code @agentclientprotocol/claude-agent-acp@0.103.0' });
     expect(await state({ cli: '2.1.318' })).toMatchObject({ state: 'adapter', command: 'npm install -g @agentclientprotocol/claude-agent-acp@0.103.0' });
     expect(await state({ cli: '2.1.300', adapter: '0.103.0' })).toMatchObject({ state: 'old', note: null });
     expect(await state({ cli: '2.1.318', adapter: '0.103.0' }, 'login')).toMatchObject({ state: 'login', command: `CLAUDE_CONFIG_DIR="${path.join(USERDATA, 'Tutor', 'agents', 'claude')}" claude auth login` });

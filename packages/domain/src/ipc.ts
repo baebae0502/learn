@@ -137,6 +137,8 @@ export const commandContextInput = z
     sidebar: paneShownSchema.optional(),
     inspector: paneShownSchema.optional(),
     inspectorMode: z.enum(['info', 'tutor']).optional(),
+    /** The tutor's consent is recorded: 에이전트 고르기… is on; absent otherwise. */
+    tutorConsented: z.boolean().optional(),
     textSize: z.union([z.literal(12), z.literal(13), z.literal(14), z.literal(15)]),
     libraryCount: contextCount,
     selectionCount: contextCount,

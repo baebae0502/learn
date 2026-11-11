@@ -43,6 +43,8 @@ export const keys = {
   bodyPages: (itemId: string, query: string) => ['search', 'pages', itemId, query] as const,
   /** How far the body index is: main's search:progress notices put each new count here. */
   bodyProgress: ['search', 'progress'] as const,
+  /** The tutor's agents report of this run (tutor:agents): kept for the run, read again by the chooser's buttons and after a failed login or lockdown. */
+  tutorAgents: ['tutor', 'agents'] as const,
 };
 
 export const useAppInfo = () => useQuery({ queryKey: keys.info, queryFn: () => unwrap(api().app.info()) });

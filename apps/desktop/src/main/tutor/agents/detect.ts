@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { TUTOR_TIMEOUTS, type AgentId, type AgentState, type AgentStatus, type AgentsReport, type RealAgentId } from '@learn/domain';
-import { AGENT_CATALOG, installAdapter, type AgentCatalogEntry } from './catalog';
+import { AGENT_CATALOG, installAdapter, installBoth, type AgentCatalogEntry } from './catalog';
 import { ENV_ALLOW, agentHome, agentHomePath, loginCommand } from './isolation';
 
 /** path: the ':'-joined absolute folders searched for it, login shell's included; the agent's PATH. */
@@ -254,7 +254,7 @@ export function createAgentDetector(deps: DetectDeps): AgentDetector {
   }
 
   async function judge(e: AgentCatalogEntry, d: Detected): Promise<AgentStatus> {
-    if (d.cliPath === null) return status(e, d, 'missing', e.installCli, null);
+    if (d.cliPath === null) return status(e, d, 'missing', installBoth(e), null);
     if (d.adapterEntry === null) return status(e, d, 'adapter', installAdapter(e), null);
     const min = e.minimum;
     if (lockedOut.has(e.id) || min === null) return lockStatus(e, d);

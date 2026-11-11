@@ -74,6 +74,8 @@ function ModeHead({ mode }: { mode: InspectorMode }) {
 function useFocusRequest(mode: InspectorMode): void {
   const pending = usePanelFocusRequest((s) => s.pending);
   const done = usePanelFocusRequest((s) => s.done);
+  // The panel going away ends a request it had not answered: the next mount must not take a focus nobody asked it for.
+  useEffect(() => done, [done]);
   useEffect(() => {
     if (!pending || mode !== 'tutor') return;
     const land = (): boolean => {

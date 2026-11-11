@@ -23,7 +23,7 @@ describe('the tutor copy (approved mockup, 2026-11-12)', () => {
     const noHistory = consentConfigText({ separateLogin: true, historyLine: false });
     expect(noHistory).toContain('로그인');
     expect(noHistory).not.toContain('기록');
-    expect(consentConfigText({ separateLogin: false, historyLine: false })).toBe('에이전트는 평소 설정과 따로, Learn 전용 설정 폴더를 씁니다.');
+    expect(consentConfigText({ separateLogin: false, historyLine: false })).toBe('에이전트는 평소 설정과 따로, Learn\u00a0전용\u00a0설정\u00a0폴더를 씁니다.'); // the term stays whole at a narrow panel
   });
   it('binds "이 Mac" and "다른 자료" with U+00A0, and never says an internal word', () => {
     expect(tutor.consent.title).toContain('이 Mac');

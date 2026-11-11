@@ -53,6 +53,7 @@ import { focusPane } from '../shell/panes';
 import { Shell } from '../shell/Shell';
 import { showInspectorMode, useInspectorHidden, useToggleInspector } from '../shell/useInspector';
 import { useInspectorMode } from '../shell/inspectorMode';
+import { useTutorPrefs } from '../tutor/useTutorPrefs';
 import { useTutorView } from '../tutor/useTutorView';
 import { useTabsPersistence } from './useTabsPersistence';
 import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell/useSidebar';
@@ -86,7 +87,7 @@ import { useReader, type PendingJump } from '../viewers/pdf/readerStore';
 import { canGoBack, canGoForward } from '../viewers/pdf/history';
 import { reopenSelection, useSelection } from '../translation/useSelectionText';
 import { ReaderTabs } from '../viewers/ReaderTabs';
-import { readerScopes } from '../viewers/readerScope';
+import { currentScope, readerScopes } from '../viewers/readerScope';
 import { lastInput } from '../ui/inputModality';
 import { useReportIdle } from './useReportIdle';
 import { useWarmUp } from './useWarmUp';
@@ -393,8 +394,10 @@ export function MainWindow(_props: { info: AppInfo }) {
   const inspectorHidden = useInspectorHidden(showsInspector);
   // The right panel's mode: the reader's remembered one (튜터 until one is chosen), the library's 정보 alone.
   const inspectorMode = useInspectorMode();
-  // No session is shown yet (the tutor draws the card, the off state, nothing more): the one place that tells main is here, with the active tab's value.
+  // No session is shown yet (the tutor draws the card, the off state and the chooser, none of which has a session): the one place that tells main is here, with the active tab's value.
   useTutorView(null);
+  // The consent main recorded: 에이전트 고르기… needs it.
+  const tutorConsented = useTutorPrefs().consent !== null;
   // Text of the page is selected: 선택한 글 번역 is on (translation/useSelectionText.ts).
   const pdfSelection = useSelection((s) => s.text !== '');
   // Translation is switched off (the settings window, the pop-up's 사용 안 함): 선택한 글 번역 does nothing then. Not yet chosen asks, so it stays on.
@@ -464,6 +467,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     inspector: showsInspector ? (inspectorHidden ? 'hidden' : 'shown') : undefined,
     // The reader's right panel mode, reported while a PDF is open (⌃⌘1 / ⌃⌘2 and the menu bar follow it).
     ...(pdfOpen ? { inspectorMode } : {}),
+    ...(tutorConsented ? { tutorConsented: true } : {}),
     // ⌘+ / ⌘− stop at 15 / 12 and ⌘0 is off at 13 (prefs.fontSize; the default until prefs are read).
     textSize,
     libraryCount: count,
@@ -548,6 +552,11 @@ export function MainWindow(_props: { info: AppInfo }) {
     toggleSidebar,
     toggleInspector,
     setInspectorMode: showInspectorMode,
+    // The shown tab's tutor goes to the chooser (its store is the active reader's), and the panel shows the tutor.
+    chooseAgent: () => {
+      currentScope().tutor.getState().setChoosing(true);
+      showInspectorMode('tutor');
+    },
     showShortcuts: () => void showShortcuts(),
     checkLibrary: () => checkLibrary(false),
     openPalette,
@@ -572,7 +581,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, pdfOpen, imageDrawn, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, inspectorMode, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAtPage, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, pdfOpen, imageDrawn, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, inspectorMode, tutorConsented, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAtPage, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);

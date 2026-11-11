@@ -79,6 +79,7 @@ export type CommandId =
   | 'view.inspectorInfo'
   | 'view.inspectorTutor'
   | 'translation.translateSelection'
+  | 'tutor.chooseAgent'
   | 'app.shortcuts'
   | 'app.palette'
   | 'app.settings'
@@ -491,6 +492,11 @@ export const COMMANDS: readonly CommandSpec[] = [
     id: 'translation.translateSelection', label: '선택한 글 번역', contexts: ['viewer'],
     keywords: ['번역', 'translate', '선택', '선택한 글'],
   },
+  // The tutor's agent chooser (T1a, spec 8.7): no menu item, no key; the palette and the composer's agent menu offer it once the tutor is consented to.
+  {
+    id: 'tutor.chooseAgent', label: '에이전트 고르기…', contexts: ['viewer'],
+    keywords: ['에이전트', '튜터', '고르기', '선택', 'agent', 'tutor', 'claude'],
+  },
   // 정렬 기준 ▸ (spec 5.2): the keyboard-only sort. Its rows are the shown columns and the two directions, built by main
   // from the reported context; a pick sets the sort of the view shown. Not in the palette: a run there carries no value.
   { id: 'library.sortBy', label: '정렬 기준', menu: { menu: 'view', group: 2, order: 3 }, contexts: ['library'], submenu: 'sortColumns', palette: false },
@@ -694,6 +700,8 @@ export interface CommandContextState {
   inspector?: PaneShown;
   /** The reader's right panel mode while a PDF is open (spec 11); absent in the library and without a PDF. */
   inspectorMode?: 'info' | 'tutor';
+  /** The tutor's consent is recorded (prefs.tutor.consent): 에이전트 고르기… needs it. Absent before. */
+  tutorConsented?: boolean;
   /** UI text size in pt (prefs.fontSize, Task 10): ⌘+ / ⌘− stop at 15 / 12, ⌘0 only away from 13. */
   textSize: 12 | 13 | 14 | 15;
   /** Items in the library; 0 is the empty library (nothing to find or inspect). */
@@ -907,6 +915,7 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'view.toggleInspector': (c) => (c.view === 'viewer' ? c.pdfOpen === true : c.libraryCount > 0),
   'view.inspectorInfo': pdfOpen,
   'view.inspectorTutor': pdfOpen,
+  'tutor.chooseAgent': (c) => c.tutorConsented === true && c.pdfOpen === true,
   'translation.translateSelection': (c) => c.pdfOpen === true && c.pdfSelection === true && c.translationOff !== true,
   // The sort acts on the table, which the empty library does not have (its first-run screen replaces it).
   'library.sortBy': (c) => c.libraryCount > 0,

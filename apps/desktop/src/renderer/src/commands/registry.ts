@@ -61,6 +61,8 @@ export interface CommandEnv extends CommandContextState {
   toggleInspector(): void;
   /** ⌃⌘1 / ⌃⌘2: the reader's right panel shows 정보 or 튜터 (remembered; a folded panel opens; the tutor takes the focus). */
   setInspectorMode(mode: 'info' | 'tutor'): void;
+  /** 에이전트 고르기…: this tab's tutor shows the chooser (the right panel opens on 튜터 if it is not). */
+  chooseAgent(): void;
   /** ⌘/ (Task 6). */
   showShortcuts(): void;
   /** ⌘K (Task 9): opens the palette, or selects its field when it is already open. */
@@ -261,6 +263,7 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'view.toggleInspector': (env) => env.toggleInspector(),
   'view.inspectorInfo': (env) => env.setInspectorMode('info'),
   'view.inspectorTutor': (env) => env.setInspectorMode('tutor'),
+  'tutor.chooseAgent': (env) => env.chooseAgent(),
   'app.shortcuts': (env) => env.showShortcuts(),
   'app.palette': (env) => env.openPalette(),
   'app.settings': (env) => env.openSettings(),
@@ -328,6 +331,7 @@ export function contextOf(env: CommandEnv): CommandContextState {
     ...(env.sidebar ? { sidebar: env.sidebar } : {}),
     ...(env.inspector ? { inspector: env.inspector } : {}),
     ...(env.pdfOpen && env.inspectorMode ? { inspectorMode: env.inspectorMode } : {}),
+    ...(env.pdfOpen && env.tutorConsented ? { tutorConsented: true } : {}),
     ...(env.importRunning ? { importRunning: true } : {}),
     ...(env.backupRunning ? { backupRunning: true } : {}),
     ...(env.restoreRunning ? { restoreRunning: true } : {}),

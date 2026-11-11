@@ -33,3 +33,6 @@ export const AGENT_CATALOG: readonly AgentCatalogEntry[] = [
 ];
 
 export const installAdapter = (e: AgentCatalogEntry): string => `npm install -g ${e.adapterPackage}@${e.adapterPin}`;
+
+/** The one line for a machine with neither: Claude Code and the connection tool together (R23). */
+export const installBoth = (e: AgentCatalogEntry): string => `${e.installCli} ${e.adapterPackage}@${e.adapterPin}`;

@@ -23,7 +23,15 @@ describe('the tutor store of one reader tab (J44, J48)', () => {
     expect(a.getState().conversationId).toBeNull();
   });
   it('holds nothing but the tab\'s own fields: memory only', () => {
-    expect(Object.keys(createTutorTabStore().getState()).sort()).toEqual(['conversationId', 'setConversation']);
+    expect(Object.keys(createTutorTabStore().getState()).sort()).toEqual(['choosing', 'conversationId', 'setChoosing', 'setConversation']);
+  });
+  it('keeps 에이전트 고르기… apart per tab', () => {
+    const a = createTutorTabStore();
+    const b = createTutorTabStore();
+    expect(a.getState().choosing).toBe(false);
+    a.getState().setChoosing(true);
+    expect(a.getState().choosing).toBe(true);
+    expect(b.getState().choosing).toBe(false);
   });
   it('is one of the reader scope\'s stores: a document\'s tab has its own', () => {
     const x = createReaderScope('x');

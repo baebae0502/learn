@@ -114,4 +114,193 @@
     gap: var(--space-8);
     margin-top: var(--space-4);
   }
+
+  /* The fake agent's band under the head (mockup .tu-banner). */
+  .tutor-band {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    min-height: var(--row-height);
+    padding: var(--space-4) var(--space-16);
+    background: var(--warning-soft);
+    color: var(--warning-text);
+    font: var(--type-footnote);
+    border-bottom: 1px solid var(--separator);
+  }
+
+  /* The agent chooser (spec 8.7, mockup state 3): a title and a lead, the rows in one raised-less group, the fake's group dashed, a foot. */
+  .tutor-scroll:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: calc(var(--focus-ring-offset) * -1);
+  }
+  .tutor-scroll.chooser {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-16);
+  }
+  .tutor-scroll.chooser > * {
+    flex: none;
+  }
+  .tutor-title {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .tutor-section-title {
+    margin: 0;
+    font: var(--type-title3);
+  }
+  .tutor-searching {
+    padding: var(--space-8) 0;
+  }
+  .agent-groups {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-20);
+  }
+  .agent-groups[data-searching] .agent-group {
+    opacity: 0.45;
+    pointer-events: none;
+  }
+  .agent-group {
+    border-radius: var(--radius-lg);
+    background: var(--bg-control);
+    box-shadow: inset 0 0 0 1px var(--separator-on-surface);
+  }
+  .agent-group.dev {
+    background: transparent;
+    box-shadow: none;
+    outline: 1px dashed var(--border-strong);
+    outline-offset: -1px;
+  }
+  .agent-dev .group-label {
+    margin: 0 0 var(--space-8) var(--space-4);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+    font-weight: var(--weight-semibold);
+  }
+  .agent-row {
+    display: grid;
+    grid-template-columns: 14px minmax(0, 1fr) auto; /* local: the radio's column */
+    column-gap: var(--space-12);
+    row-gap: 2px; /* local: the description sits tight under the name */
+    align-items: start;
+    padding: var(--space-12) var(--space-12) var(--space-12) var(--space-16);
+  }
+  .agent-row + .agent-row {
+    border-top: 1px solid var(--separator-on-surface);
+  }
+  /* The radio's label lays its parts into the row's grid; the terminal buttons are the row's other cells. */
+  .agent-radio {
+    display: contents;
+  }
+  .agent-row .radio {
+    grid-column: 1;
+    grid-row: 1;
+    margin-top: 2px; /* local: the circle sits on the name's first line */
+    display: grid;
+    place-items: center;
+    width: 14px; /* local: the radio's size */
+    height: 14px; /* local: the radio's size */
+    border-radius: 50%;
+    background: var(--bg-control);
+    box-shadow: inset 0 0 0 1px var(--border-strong);
+  }
+  .agent-radio[data-selected] .radio {
+    background: var(--accent);
+    box-shadow: none;
+  }
+  .agent-radio[data-selected] .radio::after {
+    content: '';
+    width: 6px; /* local: the dot */
+    height: 6px; /* local: the dot */
+    border-radius: 50%;
+    background: var(--text-on-accent);
+  }
+  .agent-radio[data-focus-visible] .radio {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+  .agent-radio[data-disabled] .radio {
+    opacity: 0.45;
+  }
+  .agent-radio[data-disabled] .a-name {
+    color: var(--text-secondary);
+  }
+  .agent-row .a-name {
+    grid-column: 2;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap; /* the name never breaks (a .nobr unit); the flag wraps as a whole under it at the narrowest tutor */
+    gap: var(--space-8);
+    min-width: 0;
+    font: var(--type-headline);
+  }
+  .agent-row .a-text {
+    grid-column: 2;
+    grid-row: 2;
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+    text-wrap: pretty;
+  }
+  .agent-row .a-action {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+  .agent-row .a-cmd {
+    grid-column: 2 / 4;
+    grid-row: 3;
+    margin-top: var(--space-8);
+  }
+  .nobr {
+    white-space: nowrap;
+  }
+  .badge-soft {
+    display: inline-flex;
+    align-items: center;
+    height: 18px; /* local: the 16 px line and 2 */
+    padding: 0 var(--space-4);
+    border-radius: var(--radius-xs);
+    background: var(--fill-pressed);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+    font-weight: var(--weight-medium);
+  }
+  .badge-soft.warn {
+    background: var(--warning-soft);
+    color: var(--warning-text);
+  }
+  /* A command to run in a terminal: code that wraps between words and after a "/", the copy button at its end. */
+  .tutor-cmd-row {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-4);
+  }
+  .tutor-cmd {
+    display: block;
+    flex: 0 1 auto;
+    min-width: 0;
+    min-height: 20px; /* local: one line of code */
+    padding: 2px var(--space-8);
+    border-radius: var(--radius-sm);
+    background: var(--fill-pressed);
+    color: var(--text-primary);
+    white-space: normal;
+    word-break: normal;
+    overflow-wrap: break-word;
+  }
+  .tutor-foot {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    padding: var(--space-12) var(--space-16);
+    border-top: 1px solid var(--separator);
+  }
+  .tutor-foot .btn.leading {
+    margin-left: calc(var(--space-8) * -1);
+  }
 }

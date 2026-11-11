@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { COMMANDS, commandById, type CommandArgs, type CommandId } from '../../packages/domain/src/commands';
+import { consentAndChoose } from './tutor-helpers';
 import {
   FIXTURES, assignTag, clickToCloseSheet, closeSheet, confirmCalls, createCollection, enabledMenuCommands, expectWindow, importPause, importPaths, isCloseNoise, importResume, importWaiting, imageState, launch, makeTags,
   libraryTab, menuItemEnabled, menuSnapshot, openDialogCalls, openItem, organizeSnapshot, readerTab, recordedPopups, rowByTitle, runMenuCommand, runPalette, saveDialogCalls, sheetReleased, shellCalls, specialRow, stubConfirm,
@@ -117,10 +118,10 @@ const M7B_COMMANDS: readonly CommandId[] = [
 const M7C_COMMANDS: readonly CommandId[] = ['reader.imageBackgroundLight', 'reader.imageBackgroundDark', 'reader.imageBackgroundChecker'] as CommandId[];
 
 /**
- * T1a's commands (the tutor, spec 11): each one is run from the menu bar in the reader pass below, and none is left to another test. Later
+ * T1a's commands (the tutor, spec 11): each one is run here — the menu bar's in the reader pass below, 에이전트 고르기… (the palette's) after the consent — and none is left to another test. Later
  * tasks add theirs here — the ledger's three assertions below read this list.
  */
-const T1A_COMMANDS: readonly CommandId[] = ['view.inspectorInfo', 'view.inspectorTutor'];
+const T1A_COMMANDS: readonly CommandId[] = ['view.inspectorInfo', 'view.inspectorTutor', 'tutor.chooseAgent'];
 
 /**
  * Enabled in the library with one row selected, but running them here would trash the one sample the rest of the loop
@@ -737,6 +738,23 @@ test('every registry command runs without a page error (library and reader menus
       ran.add('tab.closeOthers');
       await runMenuCommand(app, 'tab.close'); // and from the menu bar: the shown tab
       await expect.poll(strip).toEqual([]); // the last reader tab gone: no strip
+    }
+
+    // 에이전트 고르기… (T1a, the palette's own): off until the tutor is consented to; after the consent (and the fake chosen) the palette runs it and the chooser shows.
+    {
+      await openItem(page, 'sample');
+      await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
+      await runMenuCommand(app, 'view.inspectorInfo');
+      await expect(page.getByTestId('inspector')).toHaveAttribute('data-mode', 'info');
+      await consentAndChoose(page, 'fake');
+      await expect(page.getByTestId('tutor-panel')).toHaveCount(0); // 정보 is shown: no tutor panel yet
+      await runPalette(page, app, '에이전트 고르기', 'tutor.chooseAgent');
+      await expect(page.getByTestId('inspector')).toHaveAttribute('data-mode', 'tutor');
+      await expect(page.getByTestId('tutor-chooser')).toBeVisible();
+      ran.add('tutor.chooseAgent');
+      await runMenuCommand(app, 'view.inspectorInfo');
+      await runMenuCommand(app, 'tab.close');
+      await expect(page.getByTestId('pdf-viewer')).toHaveCount(0);
     }
 
     // The picture reader's commands (M7c): off with a PDF shown (the loop above) and on with a drawn picture, each run from the menu bar.

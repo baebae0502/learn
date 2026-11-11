@@ -12,6 +12,7 @@ import type { SheetHost } from '../sheets';
 import { isAllowedAppUrl } from '../url-policy';
 import { mainStrings } from '../strings';
 import type { TranslationService } from '../translation/service';
+import type { TutorService } from '../tutor/service';
 import { windowKindOf } from '../window-kinds';
 import { CHANNEL_KINDS } from './channel-kinds';
 
@@ -20,6 +21,8 @@ export interface IpcDeps {
   appInfo(): AppInfo;
   prefs: PrefsStore;
   translation: TranslationService;
+  /** The tutor (tutor/service.ts): null when the library did not open — its channels are LIBRARY_UNAVAILABLE then. */
+  tutor: TutorService | null;
   /** The main window's renderer reports its command context; main derives menu availability from it. */
   uiContext: { report(sender: WebContents, ctx: CommandContextState): void; current(): CommandContextState };
   /** Modal sheet windows (duplicate question, ⌘/ shortcuts); the only callers of the sheet:* channels. */

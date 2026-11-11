@@ -2,6 +2,7 @@ import type { JobProgress } from './backup';
 import type { CommandArgs, CommandId } from './commands';
 import type { ImportQueueState, ImportReport } from './library';
 import type { Prefs } from './settings';
+import type { SessionsChanged, TutorTurnEvent } from './tutor';
 
 /** The window's state as its renderer draws it: pushed on change (windowState event) and answered by `ui.windowState()`. */
 export interface WindowState {
@@ -66,4 +67,8 @@ export interface LearnEventMap {
   'job:progress': JobProgress;
   /** How many of the PDFs outside the trash have an answer for their body text (spec 5.8); at most once a second while it works, and once more at the end. */
   'search:progress': { done: number; total: number };
+  /** The answer being written (spec 12): its text in 33 ms batches, its tool chips, its end. Sent to the main window only. */
+  'tutor:turn': TutorTurnEvent;
+  /** Sessions made, renamed, deleted, restored or changed by an answer: every window reads its session lists again. */
+  'sessions:changed': SessionsChanged;
 }

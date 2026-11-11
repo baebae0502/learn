@@ -8,8 +8,8 @@ import { app, BrowserWindow, dialog, Menu, net, session, shell, systemPreference
 import { readMenuOrganize } from '@learn/db';
 import { resolveAssetPath } from '@learn/library';
 import {
-  COMMANDS, LearnError, NO_LIBRARY_VIEW, SUBMENUS, availableMenuCommands, commandById, commandLabel, sameCommandContext, toLearnError, type AppInfo, type CommandArgs, type CommandContextState, type CommandId,
-  type ErrorCode, type OrganizeSnapshot,
+  COMMANDS, LearnError, NO_LIBRARY_VIEW, SUBMENUS, TUTOR_TIMEOUTS, availableMenuCommands, commandById, commandLabel, nowIso, sameCommandContext, toLearnError, type AppInfo,
+  type CommandArgs, type CommandContextState, type CommandId, type ErrorCode, type OrganizeSnapshot, type TutorTurnEvent,
 } from '@learn/domain';
 import { windowBackground } from '../renderer/src/design/tokens.generated';
 import { aboutPanelOptions } from './about';
@@ -47,7 +47,7 @@ import { mainStrings } from './strings';
 import { createTextExtractor } from './text/extractor';
 import { forkTextWorker, pdfjsAssetsDir } from './text/fork';
 import { createTextScheduler, type TextScheduler } from './text/scheduler';
-import { installTestHooks } from './test-hooks';
+import { installTestHooks, readFakeLog, seedSessions, type TutorHooksDeps } from './test-hooks';
 import { applyTheme, currentTheme, onThemeChange } from './theme';
 import { createThemeFollower, shownPages, type ThemeMark } from './theme-follow';
 import { findUpdateBackup } from './update-backup';
@@ -60,8 +60,23 @@ import { createTranslationService } from './translation/service';
 import { applyChromeTheme, shouldUseVibrancy, type ChromeOptions } from './window-options';
 import { isSheetOpen, resyncAllWindowStates, sheetClosed, sheetShown } from './window-state';
 import { windowUrl } from './window-url';
+import { createTutorCall } from './tutor/call';
+import { createAgentDetector, loginShellPath, run as runProgram } from './tutor/agents/detect';
+import { tutorHome } from './tutor/agents/isolation';
+import { spawnAgent } from './tutor/agents/spawn';
+import { createSupervisor, type Supervisor } from './tutor/agents/supervisor';
+import { createAcpBackend, type BackendConn, type TutorBackend } from './tutor/backend';
+import type { FakeScript } from './tutor/fake-agent/fake-agent';
+import { createMcpTransport, type McpTransport } from './tutor/mcp/http';
+import { createMcpServer } from './tutor/mcp/server';
+import { createScopeRegistry } from './tutor/scope';
+import { createTutorQuitGate } from './tutor/quit';
+import { createTutorService, type TutorService } from './tutor/service';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+
+/** When this run began: the startup check purges the sessions deleted before it (a session deleted during this run waits for the next). */
+const RUN_STARTED_AT = nowIso();
 
 /** The body-text worker's keeper: one utility process, started by the first job and gone after thirty idle seconds. */
 const textExtractor = createTextExtractor({ fork: () => forkTextWorker(path.join(here, 'text-worker.js')) });
@@ -103,6 +118,10 @@ let ctx: LibraryContext | null = null;
 let text: TextScheduler | null = null;
 let libraryError: { code: ErrorCode; message: string } | null = null;
 let mainWindow: BrowserWindow | null = null;
+/** The tutor, made once the library is open (null before, and when it did not open): nothing of it runs before consent. */
+let tutor: TutorService | null = null;
+/** The tutor's MCP server on the loopback: closed at quit, once the agent is gone. */
+let tutorTransport: McpTransport | null = null;
 
 /** Closing or quitting over an open 정보 편집 (spec §5.3): the page saves first, or keeps the window and the app (edit-flush.ts). */
 const editFlush = createFlushGate({
@@ -508,6 +527,87 @@ if (!app.requestSingleInstanceLock()) {
         paused: isE2E(app.isPackaged, process.env) && process.env['LEARN_TEXT_EXTRACTION'] !== 'run',
       });
     }
+    const e2e = isE2E(app.isPackaged, process.env);
+    // The tutor (spec 4): made here, started by nothing — the MCP server opens with the first ACP session, detection runs
+    // with the first report a page asks for after consent, an agent with the first warm or question.
+    let tutorHooks: TutorHooksDeps | undefined;
+    if (ctx) {
+      const openCtx = ctx;
+      const userData = app.getPath('userData');
+      const home = app.getPath('home');
+      // A live run reads its own variables only in an unpackaged build that asked for it; the packaged app never does.
+      const live = !app.isPackaged && process.env['LEARN_AGENT_LIVE'] === '1';
+      const learnHome = tutorHome(userData, { live, liveHome: live ? process.env['LEARN_AGENT_LIVE_HOME'] : undefined });
+      // E2E never finds the real agent of the machine it runs on: its test install, or an empty folder.
+      let searchPath: string | null = null;
+      if (e2e) {
+        searchPath = process.env['LEARN_AGENT_SEARCH_PATH'] || path.join(userData, 'Tutor', 'e2e-empty-path');
+        if (!process.env['LEARN_AGENT_SEARCH_PATH']) fs.mkdirSync(searchPath, { recursive: true, mode: 0o700 });
+      } else if (live) searchPath = process.env['LEARN_AGENT_LIVE_PATH'] ?? '';
+      const fakeLog = e2e ? path.join(userData, 'fake-agent.log') : null;
+      let fakeScript: FakeScript = 'answer';
+      let network: 'online' | 'offline' | null = null;
+      const timers = { setTimer: (fn: () => void, ms: number): unknown => setTimeout(fn, ms), clearTimer: (id: unknown) => clearTimeout(id as NodeJS.Timeout) };
+      // The turn's text, chips and end go to the main window only.
+      const emitTurn = (e: TutorTurnEvent): void => {
+        const win = liveMainWindow();
+        if (win) sendEvent(win.webContents, 'tutor:turn', e);
+      };
+      const scopes = createScopeRegistry();
+      const mcpServer = createMcpServer({
+        version: app.getVersion(),
+        call: createTutorCall({
+          deps: { text: openCtx.text, prioritize: (sha256) => text?.prioritize(sha256), delay: (ms) => new Promise((resolve) => setTimeout(resolve, ms)), now: () => Date.now() },
+          conversations: () => openCtx.conversations,
+          emitTurn,
+          now: nowIso,
+        }),
+      });
+      const transport = createMcpTransport({ server: mcpServer, scopes });
+      tutorTransport = transport;
+      const supervisor = createSupervisor<BackendConn>({ spawn: spawnAgent, ...timers });
+      // The detector checks the login through the backend, and the backend launches what the detector found.
+      let backend!: TutorBackend;
+      const detector = createAgentDetector({
+        env: process.env, home, platform: process.platform, searchPath, loginShellAllowed: !e2e && !live, run: runProgram,
+        loginShellPath: () => loginShellPath(process.env, home), probeLogin: (d) => backend.probe(d.entry.id), fakeAvailable: !app.isPackaged, tutorHome: learnHome,
+      });
+      backend = createAcpBackend({
+        supervisor, detector, transport, scopes, userData, tutorHome: learnHome, env: process.env, home, execPath: process.execPath,
+        fakeEntry: path.join(here, 'fake-agent.js'), appVersion: app.getVersion(),
+        fake: () => ({ script: fakeScript, log: fakeLog }),
+        onLockdown: (agent) => detector.markLockedOut(agent),
+      });
+      const service = createTutorService({
+        context: () => openCtx, prefs, prefsChanged: () => broadcast('prefsChanged', { prefs: prefs.get() }),
+        backend, detector, supervisor: supervisor as Supervisor<unknown>, scopes,
+        isOnline: () => net.isOnline(), network: () => network, prioritize: (sha256) => text?.prioritize(sha256),
+        emitTurn, emitSessions: (e) => broadcast('sessions:changed', e),
+        userData, tutorHome: learnHome, home, fakeAvailable: !app.isPackaged, now: nowIso, timers,
+      });
+      tutor = service;
+      if (e2e) {
+        tutorHooks = {
+          service,
+          setFakeScript(name) {
+            fakeScript = name;
+            // A fake started ahead would answer with the script it was started with.
+            const running = supervisor.current();
+            if (running?.agent === 'fake' && !running.streaming) void supervisor.close().catch(() => {});
+          },
+          fakeLog: () => (fakeLog === null ? [] : readFakeLog(fakeLog)),
+          setNetwork(mode) {
+            network = mode;
+          },
+          sessions: () => openCtx.conversations,
+          seed(input) {
+            const out = seedSessions({ db: openCtx.db, repo: openCtx.repo, conversations: openCtx.conversations }, input);
+            broadcast('sessions:changed', { reason: 'created', itemIds: [input.itemId], conversationIds: out.conversationIds });
+            return out;
+          },
+        };
+      }
+    }
     // Every window hears the queue (the progress toast, the busy screen); 기존 자료 열기 opens in the window it was
     // answered on, which may not be the one that put the file in (spec 3.4).
     imports.onProgress((state) => broadcast('import:progress', state));
@@ -547,7 +647,6 @@ if (!app.requestSingleInstanceLock()) {
      * armed in will-quit, when the quit really goes ahead. E2E applies at once and only records the request: Playwright
      * cannot follow a new process.
      */
-    const e2e = isE2E(app.isPackaged, process.env);
     const librarySwitch: LibrarySwitch = createLibrarySwitch({
       prefs,
       arm: () => {
@@ -661,6 +760,7 @@ if (!app.requestSingleInstanceLock()) {
       }),
       prefs,
       translation,
+      tutor,
       uiContext: {
         report(sender, ctx) {
           // Only the main window drives the menu (settings and sheet windows report nothing that counts).
@@ -752,6 +852,7 @@ if (!app.requestSingleInstanceLock()) {
         },
         translation: fakeTranslation ?? undefined,
         translationNet: translationNet ?? undefined,
+        ...(tutorHooks ? { tutor: tutorHooks } : {}),
         imports: { importer: () => getContext().importer, queue: imports, mainWindowId: () => liveMainWindow()?.webContents.id ?? null, lane: jobs },
         backup,
         restore,
@@ -775,10 +876,13 @@ if (!app.requestSingleInstanceLock()) {
     refreshFullScreenItem();
     // P-18: the library check runs once the window exists, in the background: the first paint never waits for the disk.
     if (ctx) {
+      const service = tutor;
       void startLibraryCheck(ctx, {
         announce: announceAvailability,
         requestAuto: requestAutoCheck,
         onChecked: () => text?.startupChecked(),
+        // Answers a quit cut off become interrupted; the sessions deleted before this run go, with their work folders.
+        ...(service ? { tutor: { runStartedAt: RUN_STARTED_AT, purged: (ids: string[]) => void service.removeWorkFolders(ids) } } : {}),
         gate: {
           firstScreen,
           busy: () => {
@@ -821,6 +925,10 @@ if (!app.requestSingleInstanceLock()) {
     if (!event.defaultPrevented) settingsWindow.discardPrepared();
   });
 
+  // A quit that goes ahead stops the tutor's agent first, so the database closes after it; nothing of the tutor starts again.
+  const tutorQuit = createTutorQuitGate({ tutor: () => tutor, quit: () => app.quit(), maxMs: TUTOR_TIMEOUTS.quitMs });
+  app.on('before-quit', (event) => tutorQuit.onBeforeQuit(event));
+
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
   });
@@ -828,6 +936,9 @@ if (!app.requestSingleInstanceLock()) {
   app.on('will-quit', () => {
     applyLibrarySwitch();
     checkStopped = true;
+    // Nothing of the agent's group outlives the app, whatever the quit waited for; its MCP server goes after it.
+    tutor?.killAgent();
+    void tutorTransport?.close().catch(() => {});
     // The worker first, the database after: a running job is requeued and gets its attempt back (a SIGKILL leaves it to the next startup check).
     if (text) text.dispose();
     else textExtractor.dispose();

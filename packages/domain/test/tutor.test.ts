@@ -1,6 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import type { AgentsReport } from '../src/agents';
+import { EventChannels } from '../src/event-channels';
+import type { LearnEventMap } from '../src/events';
+import type { LearnApi } from '../src/ipc';
+import { Channels } from '../src/ipc-channels';
+import type { Result } from '../src/result';
 import {
   sentScopeSchema, sessionsRenameInput, tutorAgentsInput, tutorAskInput, tutorEnvelope, tutorViewInput, tutorRetryInput, DEFAULT_TUTOR_PREFS, tutorPrefsSchema,
+  type RecentSessions, type SessionIdInput, type SessionsChanged, type SessionSummary, type SessionThread, type TutorAskAnswer, type TutorAskInput, type TutorTurnEvent,
+  type TutorViewInput,
 } from '../src/tutor';
 
 const ID = '3f2b8c1e-5d4a-4b6f-8a9e-1c2d3e4f5a6b';
@@ -86,5 +94,36 @@ describe('tutorEnvelope', () => {
     expect(tutorEnvelope.safeParse({ ...env, pages: [page] }).success).toBe(false);
     expect(tutorEnvelope.safeParse({ ...base, tool: 'read_pdf_pages' }).success).toBe(false);
     expect(tutorEnvelope.safeParse({ ...env, tool: 'get_context' }).success).toBe(false);
+  });
+});
+
+describe('the tutor and sessions over IPC (spec 12)', () => {
+  it('names nine tutor channels and six session channels, ns:verb', () => {
+    expect(Channels.tutor).toEqual({
+      consent: 'tutor:consent', agents: 'tutor:agents', chooseAgent: 'tutor:chooseAgent', view: 'tutor:view', warm: 'tutor:warm', ask: 'tutor:ask',
+      stop: 'tutor:stop', resend: 'tutor:resend', reground: 'tutor:reground',
+    });
+    expect(Channels.sessions).toEqual({
+      list: 'sessions:list', recent: 'sessions:recent', get: 'sessions:get', rename: 'sessions:rename', delete: 'sessions:delete', restore: 'sessions:restore',
+    });
+  });
+  it('pushes the turn and the sessions notice on their own channels', () => {
+    expect(EventChannels['tutor:turn']).toBe('evt:tutor-turn');
+    expect(EventChannels['sessions:changed']).toBe('evt:sessions-changed');
+    expectTypeOf<LearnEventMap['tutor:turn']>().toEqualTypeOf<TutorTurnEvent>();
+    expectTypeOf<LearnEventMap['sessions:changed']>().toEqualTypeOf<SessionsChanged>();
+  });
+  it('LearnApi takes the schema inputs and answers what spec 12 says', () => {
+    type P<F> = F extends (i: infer I) => unknown ? I : never;
+    expectTypeOf<P<LearnApi['tutor']['view']>>().toEqualTypeOf<TutorViewInput>();
+    expectTypeOf<P<LearnApi['tutor']['ask']>>().toEqualTypeOf<TutorAskInput>();
+    expectTypeOf<ReturnType<LearnApi['tutor']['ask']>>().toEqualTypeOf<Promise<Result<TutorAskAnswer>>>();
+    expectTypeOf<ReturnType<LearnApi['tutor']['agents']>>().toEqualTypeOf<Promise<Result<AgentsReport>>>();
+    expectTypeOf<ReturnType<LearnApi['tutor']['reground']>>().toEqualTypeOf<Promise<Result<{ userMessageId: string; tutorMessageId: string }>>>();
+    expectTypeOf<Parameters<LearnApi['sessions']['recent']>>().toEqualTypeOf<[]>();
+    expectTypeOf<ReturnType<LearnApi['sessions']['recent']>>().toEqualTypeOf<Promise<Result<RecentSessions>>>();
+    expectTypeOf<P<LearnApi['sessions']['get']>>().toEqualTypeOf<SessionIdInput>();
+    expectTypeOf<ReturnType<LearnApi['sessions']['get']>>().toEqualTypeOf<Promise<Result<SessionThread>>>();
+    expectTypeOf<ReturnType<LearnApi['sessions']['rename']>>().toEqualTypeOf<Promise<Result<SessionSummary>>>();
   });
 });

@@ -2,8 +2,13 @@ import { createHash, randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { TEXT_LIMITS, newId, nowIso, type ImportQueueState, type JobProgress, type LibraryCheck, type ImportReport, type LearnEventMap, type StorageMode, type TagColorId } from '@learn/domain';
-import { SqliteError, type CollectionsRepository, type Db, type LibraryRepository, type TagsRepository, type TextRepository } from '@learn/db';
+import {
+  TEXT_LIMITS, TUTOR_LIMITS, citeToken, newId, nowIso, type ImportQueueState, type JobProgress, type LibraryCheck, type ImportReport, type LearnEventMap, type StorageMode,
+  type TagColorId,
+} from '@learn/domain';
+import {
+  SqliteError, type CollectionsRepository, type ConversationsRepository, type Db, type LibraryRepository, type TagsRepository, type TextRepository, type ToolReadInput,
+} from '@learn/db';
 import { fsyncDir, fsyncFile, managedRelativePath, type ImportHooks, type Importer, type LibraryLayout } from '@learn/library';
 import type { BackupJob } from './jobs/backup-job';
 import type { RestoreJob } from './jobs/restore-job';
@@ -17,6 +22,9 @@ import type { TextScheduler, TextSchedulerState } from './text/scheduler';
 import type { ExtractLimits } from './text/messages';
 import type { FakeMode } from './translation/fake';
 import type { RecordedRequest, TranslationNetIntercept } from './translation/net-intercept';
+import { mainStrings } from './strings';
+import type { FakeLogEntry, FakeScript } from './tutor/fake-agent/fake-agent';
+import type { TutorService } from './tutor/service';
 
 const TEXT_LIMITS_FOR_HOOK: ExtractLimits = { maxPages: TEXT_LIMITS.maxPages, maxPageChars: TEXT_LIMITS.maxPageChars, maxDocChars: TEXT_LIMITS.maxDocChars, maxFileBytes: TEXT_LIMITS.maxFileBytes };
 
@@ -381,6 +389,85 @@ export async function fsyncProbe(input: FsyncProbeInput, io: FsyncIo = { fsyncFi
   return out;
 }
 
+export interface SeedSessionsInput {
+  itemId: string;
+  sessions: number;
+  /** Questions and answers in turn: an even number. */
+  messagesPerSession: number;
+  /** Each answer cites the pages from the first on, each one verified (0 to 40). */
+  citationsPerAnswer: number;
+}
+export interface SessionSeedDeps {
+  db: Db;
+  repo: Pick<LibraryRepository, 'getItem'>;
+  conversations: Pick<ConversationsRepository, 'beginTurn' | 'finishTurn'>;
+}
+
+/**
+ * The sessions fixture (spec 15's session switch and session list): finished sessions of one PDF, written through the
+ * repository in one transaction, so every rule it keeps (one page anchor per page, the answer's sources) holds for them too.
+ * Each question and answer is a millisecond after the one before, so the lists' order is the order written. E2E only.
+ */
+export function seedSessions(deps: SessionSeedDeps, input: SeedSessionsInput): { conversationIds: string[] } {
+  const { sessions, messagesPerSession, citationsPerAnswer } = input;
+  if (!Number.isInteger(sessions) || sessions < 1) throw new Error('seedSessions: one session or more');
+  if (!Number.isInteger(messagesPerSession) || messagesPerSession < 2 || messagesPerSession % 2 !== 0) {
+    throw new Error('seedSessions: messagesPerSession is an even number (a question, then its answer)');
+  }
+  if (!Number.isInteger(citationsPerAnswer) || citationsPerAnswer < 0 || citationsPerAnswer > TUTOR_LIMITS.pagesPerTurn) {
+    throw new Error(`seedSessions: 0 to ${TUTOR_LIMITS.pagesPerTurn} citations an answer`);
+  }
+  const item = deps.repo.getItem(input.itemId);
+  if (!item || item.type !== 'pdf') throw new Error('seedSessions: the item must be a PDF in the library');
+  const pages = Array.from({ length: citationsPerAnswer }, (_, p) => p);
+  const verified = pages.map((p) => ({ pageIndex: p, label: mainStrings.tutor.pageLabel(p + 1) }));
+  const base = Date.now();
+  let tick = 0;
+  const at = () => new Date(base + tick++).toISOString();
+  return deps.db.transaction(() => {
+    const conversationIds: string[] = [];
+    for (let s = 0; s < sessions; s += 1) {
+      let conversationId: string | null = null;
+      for (let k = 0; k < messagesPerSession / 2; k += 1) {
+        const b = deps.conversations.beginTurn({
+          conversationId, itemId: item.id, revisionId: item.revisionId, agent: 'fake', openedAtPage: 0,
+          user: { kind: 'question', text: `Seeded question ${k + 1} of session ${s + 1}`, sent: { selection: 0, replayedTurns: 0, preamble: k === 0 }, attached: null },
+          now: at(),
+        });
+        conversationId = b.conversationId;
+        const text = [`Seeded answer ${k + 1} of session ${s + 1}.`, ...pages.map((p) => `Page ${p + 1} says so ${citeToken(p)}.`)].join(' ');
+        deps.conversations.finishTurn(b.tutorMessageId, { status: 'complete', text, stopReason: 'end_turn', errorCode: null, revisionId: item.revisionId, verified }, at());
+      }
+      conversationIds.push(conversationId!);
+    }
+    return { conversationIds };
+  })();
+}
+
+/** The fake agents' log (LEARN_FAKE_AGENT_LOG): one entry a line; a line still being written is left for the next read. */
+export function readFakeLog(file: string): FakeLogEntry[] {
+  let text: string;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw e;
+  }
+  return text.split('\n').slice(0, -1).filter((l) => l !== '').map((l) => JSON.parse(l) as FakeLogEntry);
+}
+
+/** What the tutor hooks reach (index.ts, E2E only, once the library is open). */
+export interface TutorHooksDeps {
+  service: Pick<TutorService, 'setTimeouts' | 'processes' | 'resetProcessMax' | 'killAgent'>;
+  /** The script the next fake start runs; a live fake that is not answering is closed. */
+  setFakeScript(name: FakeScript): void;
+  fakeLog(): FakeLogEntry[];
+  setNetwork(mode: 'online' | 'offline' | null): void;
+  sessions(): Pick<ConversationsRepository, 'toolReads'>;
+  /** seedSessions in the open library, announced once. */
+  seed(input: SeedSessionsInput): { conversationIds: string[] };
+}
+
 export interface LearnTestHooks {
   /** Returns how many items were added. */
   seedItems(input: SeedItemsInput): number;
@@ -454,6 +541,22 @@ export interface LearnTestHooks {
   translationCalls(): number;
   /** What the test's translation host took and refused (only when the app runs the real engine over it, LEARN_TRANSLATION_NET=intercept). */
   translationNet(): { requests: RecordedRequest[]; refused: string[] };
+  /** The script the next fake agent start runs (answer until set); a live fake that is not answering is closed, so none answers with an old one. */
+  tutorFakeScript(name: FakeScript): void;
+  /** Everything the fake agents of this run logged (<userData>/fake-agent.log), oldest first. */
+  tutorFakeLog(): FakeLogEntry[];
+  /** The network as the tutor sees it from now; null: Electron's net.isOnline() again. */
+  tutorNetwork(mode: 'online' | 'offline' | null): void;
+  /** Shorter turn limits and idle close, for the timing tests. */
+  tutorTimeouts(input: Partial<{ firstUpdateMs: number; betweenMs: number; idleMs: number }>): void;
+  /** The live agent processes (0 or 1) and the most at once since launch, or since `resetMax` (which goes first). */
+  tutorProcesses(input?: { resetMax?: true }): { count: number; max: number; conversationIds: Array<string | null> };
+  /** SIGKILL to the agent's group now, as a crash mid-answer. */
+  tutorKillAgent(): void;
+  /** Finished sessions of one PDF (seedSessions), announced once. */
+  seedSessions(input: SeedSessionsInput): { conversationIds: string[] };
+  /** The tool reads recorded on an answer, in order. */
+  toolReads(messageId: string): Array<ToolReadInput & { seq: number }>;
 }
 
 /** Main's side of the body-text scheduler's first start (textState): what it waits on, as main saw it. */
@@ -513,6 +616,8 @@ export function installTestHooks(deps: {
   translationNet?: Pick<TranslationNetIntercept, 'requests' | 'refused'>;
   organize(): OrganizeSeedDeps;
   broadcast(name: 'libraryChanged', payload: LearnEventMap['libraryChanged']): void;
+  /** The tutor (index.ts, once the library is open); absent in tests that do not use it. */
+  tutor?: TutorHooksDeps;
 }): void {
   // The IPC call counter (ipc/register.ts countCall): a test reads which channels a change called.
   (globalThis as { __learnIpcCalls?: Record<string, number> }).__learnIpcCalls = {};
@@ -554,6 +659,10 @@ export function installTestHooks(deps: {
   const restoreJob = (): NonNullable<typeof deps.restore> => {
     if (!deps.restore) throw new Error('restore hooks: no restore job');
     return deps.restore;
+  };
+  const tutor = (hook: string): TutorHooksDeps => {
+    if (!deps.tutor) throw new Error(`${hook}: no tutor (the library is not open)`);
+    return deps.tutor;
   };
   (globalThis as { __learnTest?: LearnTestHooks }).__learnTest = {
     seedItems(input) {
@@ -720,5 +829,17 @@ export function installTestHooks(deps: {
       if (!deps.check) throw new Error('requestLibraryCheck: no library check');
       await deps.check.request();
     },
+    tutorFakeScript: (name) => tutor('tutorFakeScript').setFakeScript(name),
+    tutorFakeLog: () => tutor('tutorFakeLog').fakeLog(),
+    tutorNetwork: (mode) => tutor('tutorNetwork').setNetwork(mode),
+    tutorTimeouts: (input) => tutor('tutorTimeouts').service.setTimeouts(input),
+    tutorProcesses(input) {
+      const t = tutor('tutorProcesses');
+      if (input?.resetMax) t.service.resetProcessMax();
+      return t.service.processes();
+    },
+    tutorKillAgent: () => tutor('tutorKillAgent').service.killAgent(),
+    seedSessions: (input) => tutor('seedSessions').seed(input),
+    toolReads: (messageId) => tutor('toolReads').sessions().toolReads(messageId),
   };
 }

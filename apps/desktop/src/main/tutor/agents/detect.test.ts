@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AGENT_CATALOG, installAdapter } from './catalog';
-import { compareVersions, createAgentDetector, run, searchDirs, type DetectDeps } from './detect';
+import { compareVersions, createAgentDetector, loginShellPath, run, searchDirs, type DetectDeps } from './detect';
 import { launchSpec } from './isolation';
 
 const made: string[] = [];
@@ -361,5 +361,29 @@ describe('run', () => {
     const detector = createAgentDetector(deps({ searchPath: fakeInstall({ cli: '2.1.318', adapter: '0.103.0' }), run: spy }));
     await detector.report('cached');
     expect(spy).toHaveBeenCalledWith(expect.stringMatching(/claude$/), ['--version'], expect.objectContaining({ timeoutMs: 5000, maxBytes: 4096 }));
+  });
+});
+
+describe('loginShellPath (다시 찾기 only)', () => {
+  const ENV = { SHELL: '/bin/zsh', HOME: HOME, PATH: '/usr/bin', ANTHROPIC_API_KEY: 'sk-never', LANG: 'C.UTF-8' };
+  const answering = (stdout: string, code: number | null = 0) => vi.fn<DetectDeps['run']>(async () => ({ stdout, code }));
+
+  it('asks the login shell for its PATH, without a shell of Learn\'s own, within 3 s and 64 KiB, with the allow-listed environment', async () => {
+    const r = answering('/opt/x/bin:/usr/bin');
+    expect(await loginShellPath(ENV, HOME, r)).toBe('/opt/x/bin:/usr/bin');
+    expect(r).toHaveBeenCalledWith('/bin/zsh', ['-ilc', 'printf %s "$PATH"'], { timeoutMs: 3000, maxBytes: 65536, env: { SHELL: '/bin/zsh', HOME, PATH: '/usr/bin', LANG: 'C.UTF-8' }, cwd: HOME });
+  });
+  it('keeps only the last line: what the profile prints before it is not the PATH', async () => {
+    expect(await loginShellPath(ENV, HOME, answering('Welcome!\nmotd line\n/a/bin:/b/bin'))).toBe('/a/bin:/b/bin');
+  });
+  it('null when there is no shell to ask, it fails, it is cut off, or it prints nothing', async () => {
+    const r = answering('/a/bin');
+    expect(await loginShellPath({ ...ENV, SHELL: undefined }, HOME, r)).toBeNull();
+    expect(await loginShellPath({ ...ENV, SHELL: 'zsh' }, HOME, r)).toBeNull();
+    expect(r).not.toHaveBeenCalled();
+    expect(await loginShellPath(ENV, HOME, answering('/a/bin', 1))).toBeNull();
+    expect(await loginShellPath(ENV, HOME, answering('/a/bin', null))).toBeNull();
+    expect(await loginShellPath(ENV, HOME, answering('  \n'))).toBeNull();
+    expect(await loginShellPath(ENV, HOME, vi.fn<DetectDeps['run']>(async () => { throw new Error('ENOENT'); }))).toBeNull();
   });
 });

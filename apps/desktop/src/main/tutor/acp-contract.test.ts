@@ -328,6 +328,8 @@ function expectMcpOrder(log: readonly FakeLogEntry[], calls: number) {
     ['server/discover', 200], ['initialize', 200], ['notifications/initialized', 202], ['GET', 405], ['tools/list', 200],
     ...Array.from({ length: calls }, () => ['tools/call', 200]),
   ]);
+  // The MCP session from the agent's side: discover and initialize go without its header, every request after carries it.
+  expect(mcp.map((m) => m.headers.includes('Mcp-Session-Id'))).toEqual([false, false, ...Array.from({ length: 3 + calls }, () => true)]);
   expect(mcp[0]!.result).toMatchObject({ error: { code: -32601 } });
   expect(mcp[1]!.result).toMatchObject({ result: { protocolVersion: '2025-11-25', serverInfo: { name: 'learn' } } });
   expect((mcp[4]!.result as { result: { tools: Array<{ name: string }> } }).result.tools.map((t) => t.name)).toEqual(['get_context', 'get_outline', 'read_pdf_pages']);
@@ -343,6 +345,7 @@ function expectEnv(entry: Entry<'env'>, agent: 'fake' | 'claude', r: Rig) {
     expect(entry.isolation).toEqual({
       ELECTRON_RUN_AS_NODE: '1', NO_PROXY: '127.0.0.1,localhost', CLAUDE_CONFIG_DIR: agentHomePath(r.tutorHome, 'claude'),
       CLAUDE_CODE_EXECUTABLE: path.join(r.bin, 'claude'), ENABLE_CLAUDEAI_MCP_SERVERS: 'false', DISABLE_AUTOUPDATER: '1', CLAUDE_CODE_TMPDIR: tmpDir(r.userData),
+      GIT_CEILING_DIRECTORIES: path.join(r.userData, 'Tutor'),
     });
   }
 }

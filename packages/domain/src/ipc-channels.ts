@@ -33,5 +33,10 @@ export const Channels = {
     showShortcuts: 'ui:showShortcuts', openSettings: 'ui:openSettings', themeShown: 'ui:themeShown', reportIdle: 'ui:reportIdle', showColumnMenu: 'ui:showColumnMenu',
   },
   translation: { translate: 'translation:translate', cancel: 'translation:cancel' },
+  tutor: {
+    consent: 'tutor:consent', agents: 'tutor:agents', chooseAgent: 'tutor:chooseAgent', view: 'tutor:view', warm: 'tutor:warm', ask: 'tutor:ask',
+    stop: 'tutor:stop', resend: 'tutor:resend', reground: 'tutor:reground',
+  },
+  sessions: { list: 'sessions:list', recent: 'sessions:recent', get: 'sessions:get', rename: 'sessions:rename', delete: 'sessions:delete', restore: 'sessions:restore' },
   sheet: { payload: 'sheet:payload', resolve: 'sheet:resolve', act: 'sheet:act' },
 } as const;

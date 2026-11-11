@@ -74,6 +74,29 @@ export function run(file: string, args: string[], o: { timeoutMs: number; maxByt
   });
 }
 
+/**
+ * The login shell's PATH, for 다시 찾기 only: the folders a terminal finds programs in, which an app started from the Dock
+ * does not have. The shell gets Learn's allow-listed environment; only its last line is taken (a profile may print
+ * before it), and it is only ever split into folders to search. Null when there is no shell or it does not answer.
+ */
+export async function loginShellPath(env: NodeJS.ProcessEnv, home: string, runner: DetectDeps['run'] = run): Promise<string | null> {
+  const shell = env.SHELL;
+  if (shell === undefined || !path.isAbsolute(shell)) return null;
+  const clean: Record<string, string> = {};
+  for (const key of ENV_ALLOW) {
+    const value = env[key];
+    if (value !== undefined) clean[key] = value;
+  }
+  try {
+    const out = await runner(shell, ['-ilc', 'printf %s "$PATH"'], { timeoutMs: TUTOR_TIMEOUTS.loginShellMs, maxBytes: 64 * 1024, env: clean, cwd: home });
+    if (out.code !== 0) return null;
+    const last = out.stdout.split('\n').at(-1)?.trim() ?? '';
+    return last === '' ? null : last;
+  } catch {
+    return null;
+  }
+}
+
 export function compareVersions(a: string, b: string): number {
   const parts = (v: string) => v.split('.').map((n) => Number.parseInt(n, 10) || 0);
   const pa = parts(a);

@@ -13,6 +13,8 @@ export const EventChannels = {
   'recovery:show': 'evt:recovery-show',
   'job:progress': 'evt:job-progress',
   'search:progress': 'evt:search-progress',
+  'tutor:turn': 'evt:tutor-turn',
+  'sessions:changed': 'evt:sessions-changed',
 } as const;
 
 export type EventChannel = (typeof EventChannels)[keyof typeof EventChannels];

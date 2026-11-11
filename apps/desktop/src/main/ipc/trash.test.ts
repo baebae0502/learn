@@ -2,9 +2,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { KeepOneResult, PurgedRows, Result, TrashView } from '@learn/domain';
+import { nowIso, type KeepOneResult, type PurgedRows, type Result, type TrashView } from '@learn/domain';
 import { resolveAssetPath } from '@learn/library';
 import { openLibraryContext, type LibraryContext } from '../library-context';
+import type { TutorService } from '../tutor/service';
 import { fakeSender, stubDeps } from './test-deps';
 import { lastMs } from '../perf';
 
@@ -22,7 +23,8 @@ const { registerTrashIpc, purgeFilesSettled } = await import('./trash');
 
 let ctx: LibraryContext;
 let dir: string;
-registerTrashIpc(createHandle(null), stubDeps({ getContext: () => ctx }));
+const deps = stubDeps({ getContext: () => ctx });
+registerTrashIpc(createHandle(null), deps);
 const PAGE = fakeSender(31, 'main');
 const SETTINGS_PAGE = fakeSender(32, 'settings');
 async function call<T>(channel: string, raw?: unknown): Promise<T> {
@@ -141,6 +143,47 @@ describe('library:purge and library:emptyTrash (spec 4.5)', () => {
       expect(warn.mock.calls).toEqual([['[library] purge: 1 file(s) left for the library check']]);
     } finally {
       fs.chmodSync(shard, 0o755);
+    }
+  });
+
+  it("the sessions purged with their items: their work folders and Claude's records of them go after the commit, unawaited", async () => {
+    const a = await imported(pdf('a.pdf', 'a'));
+    const b = await imported(pdf('b.pdf', 'b'));
+    const ask = (itemId: string, revisionId: string) =>
+      ctx.conversations.beginTurn({
+        conversationId: null, itemId, revisionId, agent: 'fake', openedAtPage: 0,
+        user: { kind: 'question', text: '질문', sent: { selection: 0, replayedTurns: 0, preamble: true }, attached: null }, now: nowIso(),
+      }).conversationId;
+    const sessions = [ask(a.item.id, a.item.revisionId), ask(a.item.id, a.item.revisionId)];
+    const kept = ask(b.item.id, b.item.revisionId);
+    let release = (): void => {};
+    const seen: Array<{ ids: readonly string[]; rowsLeft: number }> = [];
+    const removeWorkFolders = vi.fn((ids: readonly string[]) => {
+      seen.push({ ids, rowsLeft: ids.filter((id) => ctx.conversations.conversation(id) !== undefined).length });
+      return new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    });
+    deps.tutor = { removeWorkFolders } as unknown as TutorService;
+    try {
+      ctx.repo.trash([a.item.id]);
+      // The answer does not wait for the folders (the promise above never settles until released).
+      expect(await call<PurgedRows>('library:purge', { itemIds: [a.item.id], collectionIds: [] })).toEqual({ itemIds: [a.item.id], collectionIds: [] });
+      expect(seen).toEqual([{ ids: expect.arrayContaining(sessions) as unknown as string[], rowsLeft: 0 }]);
+      expect(seen[0]!.ids).toHaveLength(2);
+      expect(ctx.conversations.conversation(kept)).toBeDefined();
+      release();
+      // A purge that took no session asks for no folder.
+      ctx.repo.trash([b.item.id]);
+      ctx.conversations.remove(kept, nowIso());
+      const c = await imported(pdf('c.pdf', 'c'));
+      ctx.repo.trash([c.item.id]);
+      await call('library:purge', { itemIds: [c.item.id], collectionIds: [] });
+      expect(removeWorkFolders).toHaveBeenCalledTimes(1);
+      await call('library:emptyTrash');
+      expect(removeWorkFolders.mock.calls.at(-1)).toEqual([[kept]]);
+    } finally {
+      deps.tutor = null;
     }
   });
 

@@ -23,8 +23,11 @@ export type FakeLogEntry =
   | { t: 'env'; pid: number; as: 'claude' | 'fake'; names: string[]; isolation: Record<string, string> }
   | { t: 'initialize' | 'session/new' | 'session/resume' | 'session/load' | 'session/set_mode'; params: unknown }
   | { t: 'prompt'; sessionId: string; blocks: Array<{ type: string; text: string }> }
-  /** method: the JSON-RPC method, or GET for the event-stream try; result: the answer's whole body (null when it had none). */
-  | { t: 'mcp'; method: string; params: unknown; result: unknown; status: number }
+  /**
+   * method: the JSON-RPC method, or GET for the event-stream try; result: the answer's whole body (null when it had none);
+   * headers: the names of the headers it sent, never their values.
+   */
+  | { t: 'mcp'; method: string; params: unknown; result: unknown; status: number; headers: string[] }
   /** outcome: the answer's outcome as Learn sent it; ok: the whole answer is exactly the ACP v1 answer this script expects. */
   | { t: 'permission-answer'; outcome: unknown; ok: boolean }
   | { t: 'client-call'; method: string; error: { code: number } | null }
@@ -40,7 +43,9 @@ interface ToolResult { isError: boolean; structured: Json | null }
 interface ReadPage { page: number; cite: string; first: string | null }
 
 /** The only values the env line writes: the isolation Learn gives an agent. */
-const ISOLATION = ['CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_EXECUTABLE', 'CLAUDE_CODE_TMPDIR', 'ENABLE_CLAUDEAI_MCP_SERVERS', 'DISABLE_AUTOUPDATER', 'NO_PROXY', 'ELECTRON_RUN_AS_NODE'];
+const ISOLATION = [
+  'CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_EXECUTABLE', 'CLAUDE_CODE_TMPDIR', 'ENABLE_CLAUDEAI_MCP_SERVERS', 'DISABLE_AUTOUPDATER', 'GIT_CEILING_DIRECTORIES', 'NO_PROXY', 'ELECTRON_RUN_AS_NODE',
+];
 /** Claude's first MCP request carries a version of its own; it falls back to initialize when the server does not know it. */
 const DISCOVER_VERSION = '2026-07-28';
 const MCP_VERSION = '2025-11-25';
@@ -246,16 +251,22 @@ function run(cfg: Config): void {
     }
   }
 
+  /** The headers a request to the server sends: Learn's from mcpServers, then the request's own. */
+  function headersOf(m: Mcp, extra: Record<string, string>, data: string | null): Record<string, string> {
+    const headers: Record<string, string> = {};
+    for (const h of m.headers) headers[h.name] = h.value;
+    Object.assign(headers, extra);
+    if (data !== null) {
+      headers['Content-Type'] = 'application/json';
+      headers['Content-Length'] = String(Buffer.byteLength(data));
+    }
+    return headers;
+  }
+
   function post(m: Mcp, body: Json | null, method: 'POST' | 'GET', extra: Record<string, string>): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: unknown }> {
     return new Promise((resolve, reject) => {
       const data = body === null ? null : JSON.stringify(body);
-      const headers: Record<string, string> = {};
-      for (const h of m.headers) headers[h.name] = h.value;
-      Object.assign(headers, extra);
-      if (data !== null) {
-        headers['Content-Type'] = 'application/json';
-        headers['Content-Length'] = String(Buffer.byteLength(data));
-      }
+      const headers = headersOf(m, extra, data);
       const req = http.request(m.url, { method, headers, agent: false }, (res) => {
         const chunks: Buffer[] = [];
         res.on('data', (c: Buffer) => chunks.push(c));
@@ -293,7 +304,7 @@ function run(cfg: Config): void {
     } catch {
       r = { status: 0, headers: {}, body: null };
     }
-    log({ t: 'mcp', method, params: params ?? null, result: r.body, status: r.status });
+    log({ t: 'mcp', method, params: params ?? null, result: r.body, status: r.status, headers: Object.keys(headersOf(m, headers, JSON.stringify(message))) });
     return r;
   }
 
@@ -320,7 +331,7 @@ function run(cfg: Config): void {
     } catch {
       get = { status: 0, body: null };
     }
-    log({ t: 'mcp', method: 'GET', params: null, result: get.body, status: get.status });
+    log({ t: 'mcp', method: 'GET', params: null, result: get.body, status: get.status, headers: Object.keys(headersOf(m, extra, null)) });
     await mcp(m, 'tools/list', {});
     return m;
   }

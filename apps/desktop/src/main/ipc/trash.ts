@@ -26,12 +26,16 @@ function removeFilesAfter(ctx: LibraryContext, assets: PurgeResult['assets']): v
     .catch((e: unknown) => console.warn(`[library] purge: removing its files failed: ${toLearnError(e).code}`));
 }
 
-/** Rows first, files after; one notice for what really went. */
-function announcePurge(ctx: LibraryContext, result: PurgeResult): PurgedRows {
+/**
+ * Rows first, files after; one notice for what really went. The sessions the purge took leave their work folders and
+ * Claude's records of them behind: those go after the commit too, and the answer does not wait for them.
+ */
+function announcePurge(ctx: LibraryContext, result: PurgeResult, deps: IpcDeps): PurgedRows {
   const { itemIds, collectionIds } = result;
   if (itemIds.length > 0) broadcast('libraryChanged', { reason: 'purge', itemIds });
   else if (collectionIds.length > 0) broadcast('libraryChanged', { reason: 'purge' });
   removeFilesAfter(ctx, result.assets);
+  if (result.conversationIds.length > 0) void deps.tutor?.removeWorkFolders(result.conversationIds);
   return { itemIds, collectionIds };
 }
 
@@ -48,12 +52,12 @@ export function registerTrashIpc(handle: Handle, deps: IpcDeps): void {
   handle(Channels.library.purge, purgeInput, ({ itemIds, collectionIds }) => {
     const ctx = deps.getContext();
     // spec 14 budgets the transaction alone; the files go after the answer and are timed on their own.
-    return announcePurge(ctx, timeLast('purge', () => ctx.repo.purge({ itemIds, collectionIds })));
+    return announcePurge(ctx, timeLast('purge', () => ctx.repo.purge({ itemIds, collectionIds })), deps);
   });
 
   handle(Channels.library.emptyTrash, emptyInput, () => {
     const ctx = deps.getContext();
-    return announcePurge(ctx, timeLast('emptyTrash', () => ctx.repo.emptyTrash()));
+    return announcePurge(ctx, timeLast('emptyTrash', () => ctx.repo.emptyTrash()), deps);
   });
 
   handle(Channels.library.keepOneOfDuplicates, keepOneInput, ({ itemIds }) => announceKeepOne(deps.getContext().repo.keepOneOfDuplicates(itemIds)));

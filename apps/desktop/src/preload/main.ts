@@ -3,7 +3,7 @@ import { exposeSurface } from './surface';
 /**
  * The main window, and the gallery board tests load in it: all but the settings window's library location and the
  * sheets' own channels. Channels no page calls yet (collections, tags, trash, the library check) are this window's
- * (M5, M6) — and the fatal screen's 업데이트 전 백업. Equal to CHANNEL_KINDS' main entries (surfaces.test.ts).
+ * (M5, M6) — and the fatal screen's 업데이트 전 백업; the tutor and its sessions. Equal to CHANNEL_KINDS' main entries (surfaces.test.ts).
  */
 exposeSurface({
   requests: {
@@ -21,8 +21,13 @@ exposeSurface({
     search: ['body', 'pages', 'progress'],
     backup: ['create', 'cancel', 'restore'],
     translation: ['translate', 'cancel'],
+    tutor: ['consent', 'agents', 'chooseAgent', 'view', 'warm', 'ask', 'stop', 'resend', 'reground'],
+    sessions: ['list', 'recent', 'get', 'rename', 'delete', 'restore'],
     ui: ['showContextMenu', 'windowState', 'reportContext', 'confirm', 'confirmPurge', 'showShortcuts', 'openSettings', 'themeShown', 'showColumnMenu', 'reportIdle'],
   },
-  events: ['menuCommand', 'libraryChanged', 'windowState', 'settingsChanged', 'prefsChanged', 'nativeMenu', 'demoShortcut', 'import:progress', 'import:finished', 'item:openRequested', 'recovery:show', 'job:progress', 'search:progress'],
+  events: [
+    'menuCommand', 'libraryChanged', 'windowState', 'settingsChanged', 'prefsChanged', 'nativeMenu', 'demoShortcut', 'import:progress', 'import:finished', 'item:openRequested',
+    'recovery:show', 'job:progress', 'search:progress', 'tutor:turn', 'sessions:changed',
+  ],
   pathForFile: true,
 });

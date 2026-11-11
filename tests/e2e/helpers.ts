@@ -9,7 +9,8 @@ import type { ImportQueueState, ImportReport, LibraryCheck, LibraryItem, Storage
 import { unpackOrganize, type OrganizeSnapshot } from '../../packages/domain/src/organize';
 import { TAG_COLORS, type TagColorId } from '../../packages/domain/src/tag-colors';
 import { settingsContentHeight } from '../../apps/desktop/src/main/settings-geometry';
-import type { FsyncProbeInput, FsyncProbeResult, SeedAssetsInput, SeedAssetsResult } from '../../apps/desktop/src/main/test-hooks';
+import type { FsyncProbeInput, FsyncProbeResult, LearnTestHooks, SeedAssetsInput, SeedAssetsResult, SeedSessionsInput } from '../../apps/desktop/src/main/test-hooks';
+import type { FakeScript } from '../../apps/desktop/src/main/tutor/fake-agent/fake-agent';
 import type { SeedBodyTextInput } from '../../apps/desktop/src/main/text/seed-body-text';
 import { keepMainLog, nextLogFile } from './main-log';
 import { compareShots, isTranslucent, sidebarFallback, type Pixels } from './shot-compare';
@@ -1931,3 +1932,26 @@ export const textJobs = (app: ElectronApplication) => app.evaluate(() => (global
 export const textHold = (app: ElectronApplication, afterPages: number | null) => app.evaluate((_e, arg) => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textHold({ afterPages: arg }), afterPages);
 export const textHeld = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textHeld());
 export const textStats = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textStats());
+
+// ---- T1a tutor (main/test-hooks.ts: the fake agent only — E2E never runs a real agent) -------------------------------------
+
+type WithTutorHooks = { __learnTest: LearnTestHooks };
+/** The script the next fake agent start runs; a live fake that is not answering is closed, so none answers with an old one. */
+export const tutorFakeScript = (app: ElectronApplication, name: FakeScript) => app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.tutorFakeScript(arg), name);
+/** What the fake agents of this run logged (<userData>/fake-agent.log), oldest first. */
+export const tutorFakeLog = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithTutorHooks).__learnTest.tutorFakeLog());
+/** The network as the tutor sees it; null: Electron's own again. */
+export const tutorNetwork = (app: ElectronApplication, mode: 'online' | 'offline' | null) =>
+  app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.tutorNetwork(arg), mode);
+/** Shorter turn limits and idle close. */
+export const tutorTimeouts = (app: ElectronApplication, input: Partial<{ firstUpdateMs: number; betweenMs: number; idleMs: number }>) =>
+  app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.tutorTimeouts(arg), input);
+/** The live agent processes (0 or 1), the most at once since launch or `resetMax`, and whose they are. */
+export const tutorProcesses = (app: ElectronApplication, input?: { resetMax?: true }) =>
+  app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.tutorProcesses(arg ?? undefined), input ?? null);
+/** SIGKILL to the agent's group now. */
+export const tutorKillAgent = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithTutorHooks).__learnTest.tutorKillAgent());
+/** Finished sessions of one PDF (the performance fixture), announced once. */
+export const seedSessions = (app: ElectronApplication, input: SeedSessionsInput) => app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.seedSessions(arg), input);
+/** The tool reads recorded on an answer, in order. */
+export const toolReads = (app: ElectronApplication, messageId: string) => app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.toolReads(arg), messageId);

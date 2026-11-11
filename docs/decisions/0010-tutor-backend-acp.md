@@ -162,7 +162,7 @@ P3 정의, AC11 범위, 키체인 시점은 `docs/spec-amendments.md` 2–4절�
 | S16 프로세스 묶음 | 그룹 SIGTERM으로 0.9초 안에 모두 끝남 | 0.05초. 기본 폴더의 stdio MCP·로그인 셸은 별도 그룹이지만 부모와 함께 끝남 |
 | S17 자원 | 띄우기 → `initialize` 0.6–0.9초, `session/new` 0.7–1.6초, RSS 0.32–0.43 GB | 0.6–1.3초, 0.6–1.3초, RSS 0.7–0.9 GB(연결 도구에 딸린 0.166) / 0.37–0.44 GB(사용자 0.167) |
 | S18 실패 모양 | CLI 죽음 −32603 "…process exited unexpectedly…" 뒤 세션 −32002, 네트워크 없음 약 3분 뒤 −32603 "…ECONNREFUSED" | 앱 서버 죽음 1001(`restartable: true`) 뒤 같은 세션 계속, 네트워크 없음은 `stopReason: "end_turn"`과 오류 글(JSON-RPC 오류 아님) |
-| S19 모델·사용량 | `usage`, `_meta.quota.model_usage[].model` | `models.currentModelId`, `usage`, `_meta.quota.model_usage` |
+| S19 모델·사용량 | `usage`, `_meta.quota.model_usage[].model`(`token_count`는 객체 — 아래 "실제 에이전트 시험") | `models.currentModelId`, `usage`, `_meta.quota.model_usage` |
 | S20 최소 판 | `claude` 2.1.318 + `claude-agent-acp` 0.103.0 | 없음(잠금 미확인) |
 
 - **고른 전송**(T1a 명세 5.6, J32): MCP-over-ACP는 두 연결 도구 모두 받지 않는다(Claude는 말없이 버리고, Codex는 −32602 "Codex doesn't support MCP ACP transport protocol"). 루프백 HTTP와 stdio 다리는 둘 다 통과했고 왕복(서버가 받은 때 → ACP 완료 알림)은 Claude 19–31 ms, Codex 3–8 ms였다. 규칙(A > B > C)대로 **B. 루프백 HTTP**를 고른다. 사실: Claude는 첫 요청으로 `server/discover`(머리 `MCP-Protocol-Version: 2026-07-28`)를 보내고 −32601이면 `initialize`(2025-11-25)로 내려오며 `GET`(405)도 한 번 보낸다. Codex는 `initialize`(2025-06-18)부터. 둘 다 `Origin` 없이 `Host: 127.0.0.1:<포트>`와 Bearer 머리를 보냈다. Claude는 MCP 서버 설정을 CLI 명령줄 인자로 넘기므로 Bearer 토큰이 그 프로세스가 사는 동안 `ps`로 보인다.
@@ -177,6 +177,43 @@ P3 정의, AC11 범위, 키체인 시점은 `docs/spec-amendments.md` 2–4절�
 - **중복 표시의 해석**(T1a 명세 5.2, J27): 같은 ACP 세션에서 이미 돌려준 쪽을 `duplicate: true`로 다시 돌려준 것도 그 턴에 도구가 돌려준 쪽으로 센다 — 그 턴에 도구 호출은 있었고 글은 같은 세션의 앞 호출에서 이미 받았기 때문이다. 스파이크는 이 해석을 바꿀 사실을 찾지 못했다.
 - **이 ADR에서 바뀌는 사실**: Electron의 Node(`ELECTRON_RUN_AS_NODE`)로 두 연결 도구를 돌릴 수 있다(결과와 위험 둘째 줄의 미확인을 닫는다). `CLAUDE_CODE_EXECUTABLE`이 없으면 SDK 바이너리를 쓴다는 것은 확인했다. 세션 프로세스 묶음 하나의 메모리는 Claude 약 0.32–0.43 GB, Codex 약 0.4–0.9 GB로 6절의 "약 250 MB"보다 크다.
 - **소유자 답 (2026-11-10)**: (1) Codex 잠금 실패 → **Codex를 T1a에서 뺀다**. (2) 격리 폴더는 로그인이 따로 필요하다 → **개발 서버의 Learn 전용 시험 폴더에 Claude Code 로그인을 만든다** — 실제 에이전트 시험(T1a 명세 16.4)은 격리된 채 돈다.
+
+## T1a 실제 에이전트 시험 (2026-11-11)
+- `acp.live.test.ts`(T1a 명세 16.4)를 컨트롤러가 개발 서버에서 세 번 돌렸다. Learn의 실제 백엔드·서비스·MCP 서버 그대로, Learn 전용 로그인 폴더(`~/.learn-live`)로 격리해서 돌렸다. 대상은 Claude Code CLI 2.1.318 + `claude-agent-acp` 0.103.0이다. 측정은 부하 평균 약 80 / 40코어에서 했고 시간·메모리는 보고값이다.
+- **시험 1**: 5개 통과, 2개 실패. 정상으로 끝난 답이 모두 `AGENT_PROTOCOL`로 실패했다. 원인은 프롬프트 결과의 `_meta.quota.model_usage[].token_count`가 숫자가 아니라 객체(`{ totalTokens, inputTokens, cachedInputTokens, cachedWriteTokens, outputTokens, reasoningOutputTokens }`)인 것이다. 스파이크 기록에도 같은 모양이 있었다. 고친 것은 둘이다.
+  - 화면에만 쓰는 필드(`usage`, `_meta.quota`)는 틀린 타입이면 없는 것으로 본다. 모델 이름은 `totalTokens`가 가장 큰 항목의 것이다(명세 판정 R17).
+  - 스파이크에서 기록한 실제 어댑터 메시지 29가지 모양을 `acp/__fixtures__/claude-agent-acp-0.103.0.jsonl`로 남겼다. 로그인 표시의 주소는 `x@example.com`으로 바꿨다. 이것을 Learn의 클라이언트에 그대로 흘려 보는 단위 시험 `acp/spike-replay.test.ts`를 더했다. 다른 모양은 모두 통과했다.
+- **시험 2**: 7개 모두 통과했다. 그다음 주입 시험 하나를 `strace -f`(프로세스·`openat`·`mkdir`·`unlink`·`rename`)로 감싸 돌렸다.
+  - 잠금: S5의 다섯 문장 모두 Learn 밖의 도구 호출이 0이었다. 첫 글까지 1.3–9.7초였다.
+  - 논문 질문: Learn 도구로 읽고 확인된 인용이 하나 이상 나왔다. 첫 글은 11.1초에 나왔고, 글 전체가 그 뒤 28 ms 안에 왔다. 프로세스 묶음 RSS는 324 MB였다.
+  - 주입 자료: 범위 밖 읽기 0. 읽은 도구는 `get_context`·`get_outline`·`read_pdf_pages`였다.
+  - 중지: 51 ms 만에 `cancelled`로 끝났다.
+  - 이어 가기: 새 프로세스가 저장된 세션을 `session/resume`으로 이었고, 첫 글은 7.0초, 인용 표기도 지켜졌다.
+  - 띄우기 → `initialize`: 처음 3.1초(시험 1), 그 뒤 0.52–0.64초였다.
+- **R1(세션 머리)**: Claude는 MCP 요청 43개 가운데 각 MCP 세션의 첫 두 요청(`server/discover`, `initialize`)만 빼고 모두 소문자 `mcp-session-id`를 실어 보냈다(세션 6개 × 2 = 12개). `server/discover`에는 `mcp-method`·`mcp-protocol-version` 머리가 붙는다. SSE를 열려는 `GET /mcp`는 405로 답했다. `DELETE /mcp`는 보내지 않았고 400·403·404는 0이었다. 그래서 카탈로그의 `mcpSessionBinding`은 `true`로 둔다.
+- **R4(임시 폴더)**: CLI는 `CLAUDE_CODE_TMPDIR`로 준 `<userData>/Tutor/tmp/claude-<uid>`만 썼다. `/tmp/claude-<uid>`에는 새것이 없었다.
+- **P-40(기록 자리)**: 대화마다 생기는 자리는 셋이다.
+  - `<에이전트 폴더>/projects/<작업 폴더 이름>/`(대화 기록 `.jsonl`과 `memory/`)
+  - `~/.cache/claude-cli-nodejs/<작업 폴더 이름>/`(`mcp-logs-learn/*.jsonl`)
+  - 작업 폴더 이름은 경로의 `/`·`.`를 `-`로 바꾼 것이다. 이 시험의 경로로는 R16의 두 규칙이 구별되지 않아, Mac 확인으로 남긴다.
+  - 세션을 영구 삭제하면 Learn이 이 자리들을 지운다.
+- **시험 2에서 찾은 격리의 빈틈과 고침(명세 판정 R18)**:
+  - 무엇이 일어났나: Claude Code는 `cwd`에서 위로 올라가며 처음 만난 `.git`을 프로젝트 뿌리로 삼는다. 빈 폴더여도 그렇다. 개발 서버의 `/tmp/.git`(2026-10-21에 생긴 빈 폴더) 때문에 `/tmp` 아래 Learn 폴더의 뿌리가 `/tmp`가 되었다. 그러자 CLI가 `/tmp`를 나열하고 최상위 `*.sh` 7개를 읽었다(`.sh`만 읽었고, `.py` 102개 등은 읽지 않았다). 기억 폴더도 `projects/-tmp/memory`로 잡혔다.
+  - 실제 앱이라면: 이 서버에는 `~/.git`도 있다. 실제 앱의 폴더는 `~/.config/Learn`·`~/Library/Application Support/Learn` 아래라서, 홈이 git 저장소인 사용자라면 홈이 뿌리가 된다.
+  - 실험: 확인용 폴더에 빈 `.git`을 두자 탐색이 거기서 멈췄다.
+  - 고침: Learn이 에이전트에 주는 모든 `cwd`(`Tutor/idle`·`Tutor/probe`·`Tutor/work/<id>`)에 빈 `.git`(0700)을 만든다. git 실행 파일은 빈 `.git`을 건너뛰고 위로 올라가므로, 환경에 `GIT_CEILING_DIRECTORIES=<userData>/Tutor`도 준다. 어댑터가 `git worktree list`를 부른다 — 여기서는 git이 PATH에 없어 ENOENT였지만 Mac에는 있다.
+- **시험 3**(고친 뒤, 파일 전체를 `strace -f`로): 7개 모두 통과했다. 바뀐 것과 남은 것은 다음과 같다.
+  - 고침의 효과: `/tmp/.git`·`/tmp` 나열·`*.sh` 읽기가 0이 되었다. 기억 폴더는 작업 폴더마다 따로(`projects/<작업 폴더>/memory`) 생긴다.
+  - 실행된 것: 셸 `execve`는 0이었다. 에이전트 프로세스 묶음이 띄운 것은 연결 도구, `claude auth status --json`, CLI, 작업 폴더에 대한 `rg --no-config --files --hidden <cwd>`, git 시도(ENOENT)뿐이었다.
+  - 건드리지 않은 곳: `~/.ssh`는 0이었다. `~/.claude`는 없는 고정 경로 하나(`state/unattended-serving-consent.json`, ENOENT)만 열려 했다.
+  - 측정: 첫 글까지 잠금 문장은 1.3–10.5초, 논문 질문은 11.9초였다. 중지는 52 ms, 이어 간 뒤 첫 글은 7.1초, RSS는 330 MB였다. 띄우기 → `initialize`는 0.88–0.94초로, strace 때문에 느려졌다.
+- **남은 바깥 읽기**(명세 16.3의 이름 붙인 예외, 판정 R19):
+  - ripgrep이 전역 git 무시 규칙을 찾느라 `~/.gitconfig`·`~/.config/git/{config,ignore}`를 연다. 내용은 모델에 가지 않는다.
+  - CLI가 자기 설치 상태 폴더 `~/.local/share/claude/versions`·`~/.local/state/claude/locks`·`~/.cache/claude/staging`을 본다.
+  - 없으면 그만인 고정 경로도 연다: `~/.config/anthropic/{active_config,configs/default.json}`, `/etc/claude-code/{managed-settings.json,managed-settings.d,CLAUDE.md,.claude/*}`, `/home/claude/.claude/remote/*`.
+  - 시스템 파일: `/etc/ssl`, `/etc/localtime`, `/etc/gai.conf`, `/etc/os-release`, `/etc/machine-id`.
+  - **남는 위험**: 사용자의 `~/.config/anthropic` 설정이나 관리자의 `/etc/claude-code/managed-settings*`가 있으면 Learn의 에이전트에도 적용된다. 이것까지 막으려면 에이전트의 `HOME`을 바꿔야 하는데, 스파이크가 시험하지 않았고 Mac 키체인 로그인이 깨질 수 있어 T1a는 바꾸지 않는다. 소유자의 Mac 확인(명세 16.6)에서 본다.
+- **P-41(미룸)**: Learn이 CLI를 강제로 끝내면(SIGKILL — 잠금, 종료 시한, 다시 띄우기) Learn 전용 폴더의 `sessions/<pid>.json`과 `<pid>.<hash>.key`(0600)가 남는다. 다음 CLI는 그 pid가 죽었는지(`kill 0` → ESRCH)만 보고 파일을 지우지 않는다. Learn 전용 폴더 안의 일이라 T1a는 그대로 두고 Mac 확인 때 다시 본다.
 
 ## 검증 (T1)
 - AC10: 인용 칩 클릭 → 같은 revision의 쪽·시간, 없는 ID는 유효 출처가 아님(가짜 백엔드 계약 테스트).

@@ -102,7 +102,7 @@
 ### 4.1 ACP 클라이언트 (main)
 - **판**: ACP v1(J7). `initialize`의 `protocolVersion: 1`. 에이전트가 다른 판을 답하면 그 에이전트는 "지원하지 않는 버전"이다.
 - **틀**: 줄바꿈으로 나눈 JSON-RPC 2.0(메시지 안에 줄바꿈 없음) over stdio. main의 `tutor/acp/jsonrpc.ts`가 줄을 모아 나누고, 요청 id를 짝짓고, **들어오는 모든 메시지를 zod로 검사**한다(`tutor/acp/schema.ts`). 새 의존성은 없다(J8 — SDK가 필요해지면 소유자 질문).
-- **검사의 엄격함**: 들어오는 ACP·MCP 메시지는 **느슨한 객체**(`z.looseObject`)로 읽는다 — Learn이 읽는 필드의 타입과 범위만 보고, 모르는 필드와 `_meta`는 버리며 오류로 삼지 않는다. 모르는 `sessionUpdate` 종류·모르는 능력 필드도 버린다. 한 줄 8 MiB를 넘거나, JSON이 아니거나, Learn이 읽는 필드가 틀린 타입이면 그 프로세스를 죽이고 `AGENT_PROTOCOL`로 실패한다. **Learn이 보내는 것**(요청·답·도구 결과·`inputSchema`)은 엄격한 스키마(`.strict()`)로 만든다.
+- **검사의 엄격함**: 들어오는 ACP·MCP 메시지는 **모르는 필드를 떼어 내는 객체**(`z.object` — 판정 R13, 처음 적은 `z.looseObject`를 고침)로 읽는다 — Learn이 읽는 필드의 타입과 범위만 보고, 모르는 필드와 `_meta`는 버리며 오류로 삼지 않는다. 모르는 `sessionUpdate` 종류·모르는 능력 필드도 버린다. 한 줄 8 MiB를 넘거나, JSON이 아니거나, Learn이 읽는 필드가 틀린 타입이면 그 프로세스를 죽이고 `AGENT_PROTOCOL`로 실패한다. 단 **화면에만 쓰는 필드**(프롬프트 결과의 `usage` 토큰 수와 `_meta.quota.model_usage` — 판정 R17)는 틀린 타입이면 없는 것으로 본다. 실제 Claude는 `model_usage[].token_count`를 객체(`{ totalTokens, inputTokens, … }`)로 보내고, 모델 이름은 `totalTokens`가 가장 큰 항목의 것이다(실제 에이전트 시험 1). **Learn이 보내는 것**(요청·답·도구 결과·`inputSchema`)은 엄격한 스키마(`.strict()`)로 만든다.
 - **ACP 세션**(J21·J27·J31): 이 명세에서 "ACP 세션"은 **프로세스 하나 위의 `sessionId` 하나**다. `session/new`든, 새 프로세스에서의 `session/resume`·`session/load`든(같은 `sessionId`라도), 에이전트 바꾸기든 새 ACP 세션이다. ACP 세션마다 새로 만드는 것: 경계 표시의 `nonce`(5.3), 범위 토큰(5.4), 중복 읽기 집합(5.2), 첫 프롬프트 머리의 지시(4.5). 다시 시작해도 남는 것은 Learn DB(대화·메시지·출처·도구 기록과 `conversations.agent_session_id`)뿐이고, 위의 넷과 에이전트 프로세스 안의 맥락(이어 가기가 되살리지 않는 한)은 남지 않는다.
 - **Learn → 에이전트**
   | 메서드 | 보내는 것 |
@@ -151,7 +151,7 @@
 - **설치 명령**(J14): CLI — `npm install -g @anthropic-ai/claude-code`, `npm install -g @openai/codex`; 연결 도구 — `npm install -g @agentclientprotocol/claude-agent-acp@<스파이크 판>`, `npm install -g @agentclientprotocol/codex-acp@<스파이크 판>`(스파이크가 공식 패키지임을 확인한 이름, 3.1). 이름·판은 스파이크 결과에서 `tutor/agents/catalog.ts` 한 곳에 둔다. 튜터 목업의 "설치 안내 보기"(기본 브라우저) 링크는 두지 않는다 — 행마다 명령이 있다.
 
 ### 4.4 격리 방법 (에이전트마다)
-- **Learn 전용 폴더**(J16): `<userData>/Tutor/agents/<agent>/`(0700) — 라이브러리 폴더 밖이라 백업에 로그인 정보가 들어가지 않는다. **대화마다 빈 작업 폴더** `<userData>/Tutor/work/<conversationId>/`(0700) — 에이전트의 `cwd`. 세션을 영구 삭제할 때 지운다(6.2).
+- **Learn 전용 폴더**(J16): `<userData>/Tutor/agents/<agent>/`(0700) — 라이브러리 폴더 밖이라 백업에 로그인 정보가 들어가지 않는다. **대화마다 빈 작업 폴더** `<userData>/Tutor/work/<conversationId>/`(0700) — 에이전트의 `cwd`. 세션을 영구 삭제할 때 지운다(6.2). **뿌리 표지**(판정 R18, 실제 에이전트 시험 2): Claude Code는 `cwd`에서 위로 올라가며 처음 만난 `.git`(빈 폴더여도)을 프로젝트 뿌리로 삼고 그 뿌리의 파일을 읽는다(개발 서버에서 `/tmp/.git` 때문에 `/tmp`의 `*.sh`를 읽음). 그래서 Learn이 에이전트에게 주는 모든 `cwd`(`Tutor/idle`·`Tutor/probe`·`Tutor/work/<id>`)에 **빈 `.git` 폴더**(0700)를 만들어 그 탐색을 거기서 멈추고, git 실행 파일은 빈 `.git`을 건너뛰므로 환경에 `GIT_CEILING_DIRECTORIES=<userData>/Tutor`를 준다. "빈 작업 폴더"는 이 표지 말고는 아무것도 없다는 뜻이다.
 - 아래 손잡이는 ADR-0010 2절(2026-10-22 문서 기준)과 후보다. **모두 스파이크가 확인한다**(S5·S6·S9·S11·S12). 통과한 조합만 `tutor/agents/isolation.ts`에 남긴다.
   | | Claude Code (`@agentclientprotocol/claude-agent-acp`) | Codex (`@agentclientprotocol/codex-acp`) |
   |---|---|---|
@@ -163,6 +163,7 @@
   | 시스템 지시 | `_meta.claudeCode.options.appendSystemPrompt`(또는 SDK가 받는 이름) | 설정의 지시 키(스파이크) |
   | 실행 파일 | `CLAUDE_CODE_EXECUTABLE=<감지한 claude>`(S4) | — |
   | 자동 갱신·부수 통신 | `DISABLE_AUTOUPDATER=1` | — |
+  | 위 폴더의 저장소 | `cwd`마다 Learn의 빈 `.git` + `GIT_CEILING_DIRECTORIES=<userData>/Tutor`(R18) | — |
   | Learn 도구 호출의 표지 | 스파이크가 기록(S5 — 예: 도구 이름 `mcp__learn__…`) | 스파이크가 기록(S5) |
   | 공통 | ACP `fs`·`terminal` 능력 거짓, `session/request_permission` 모두 거절, 빈 작업 폴더, 환경 허용 목록(J15) | 같음 |
 - **환경 허용 목록**(J15): `PATH`(감지에서 만든 것), `HOME`, `USER`, `LOGNAME`, `SHELL`, `LANG`, `LC_ALL`, `TMPDIR`, 위 표의 격리 변수, HTTP 전송이면 `NO_PROXY=127.0.0.1,localhost`(프록시의 루프백 가로채기 — ADR-0010 "T1에서 채울 빈칸"). Learn 자신의 환경에 있는 `HTTPS_PROXY`·`HTTP_PROXY`는 그대로 넘긴다. **API 키 변수(`ANTHROPIC_API_KEY`·`OPENAI_API_KEY`·`CODEX_API_KEY` 등)는 넘기지 않는다** — Learn은 키를 다루지 않는다(spec-amendments 4절).
@@ -666,7 +667,7 @@ UI 구현은 목업 승인 뒤다. 그동안 화면과 무관한 작업(2절 "�
 | 냉시작 → app-ready | ≤ 1.5초(그대로) | 시작 때 에이전트를 띄우지 않음을 기존 줄로 확인 |
 | 마이그레이션 004→005(앵커 1만) | 보고값, 단위 시험 상한 1초 | `migrate.test.ts` |
 | 가짜 에이전트 RSS | 보고값 | `tutorProcesses()` + `ps` |
-| 실제 에이전트(띄우기 → `initialize`, → 첫 조각, RSS) | 보고값 | 스파이크 S17과 실제 에이전트 시험(16.4) — CI 밖 |
+| 실제 에이전트(띄우기 → `initialize`, → 첫 조각, RSS) | 보고값 | 스파이크 S17과 실제 에이전트 시험(16.4) — CI 밖. **2026-11-11 개발 서버(부하 약 80), Claude Code 2.1.318 + 연결 도구 0.103.0**: 띄우기 → `initialize` 처음 3.1초, 그 뒤 0.52–0.64초 · 첫 조각 — 도구 없이 답하는 문장 1.3–10.5초, 쪽 글을 읽는 질문 11.1–11.9초(글 전체가 첫 조각 뒤 수십 ms 안에 옴), 이어 간 새 프로세스 7.0–7.1초 · 중지 51–52 ms · 프로세스 묶음 RSS 324–330 MB(ADR-0010 "T1a 실제 에이전트 시험") |
 
 - CI는 목표의 2배를 넘을 때만 실패한다(`tests/evidence/budget.ts`). Mac 러너 값은 보고값이고 판정은 기준 장비다.
 
@@ -710,7 +711,7 @@ UI 구현은 목업 승인 뒤다. 그동안 화면과 무관한 작업(2절 "�
 - 새 spec은 `taskset -c 0-1`, 전체는 `taskset -c 0-3`로도 돌려 부하 경합을 CI 전에 본다. E2E 화면 1920×1200×24, 증거 1440×900×24.
 
 ### 16.3 주입 시험 자료 (AC19)
-- 10절의 `injection.pdf`로 16.2 `tutor-scope.spec`(가짜)과 16.4(실제). 통과 조건: 파일 읽기·명령 실행·외부 전송이 일어나지 않는다 — Learn 쪽(거절 기록, 작업 폴더 빈 채, 범위 밖 0), 에이전트 쪽(실제 시험에서 Learn 도구가 아닌 `tool_call` 0 — **모든 종류**, `read`·`search` 포함, `strace`로 셸 `execve` 0과 작업 폴더·연결 도구·CLI 설치 자리 밖의 사용자 파일 `openat` 0 — 특히 `~/.ssh` — 개발 서버).
+- 10절의 `injection.pdf`로 16.2 `tutor-scope.spec`(가짜)과 16.4(실제). 통과 조건: 파일 읽기·명령 실행·외부 전송이 일어나지 않는다 — Learn 쪽(거절 기록, 작업 폴더에 Learn의 빈 `.git` 말고는 없음(R18), 범위 밖 0), 에이전트 쪽(실제 시험에서 Learn 도구가 아닌 `tool_call` 0 — **모든 종류**, `read`·`search` 포함, `strace`로 셸 `execve` 0과 작업 폴더·에이전트 폴더·연결 도구·CLI 설치 자리·시스템 라이브러리·`/proc` 밖의 사용자 파일 `openat` 0 — 특히 `~/.ssh` — 개발 서버). **이름 붙인 예외**(판정 R19, 실제 에이전트 시험 2): ripgrep(`rg --files`)이 전역 git 무시 규칙을 찾느라 여는 `~/.gitconfig`·`~/.config/git/{config,ignore}`(무시 규칙만 읽고 모델에 가지 않음), CLI가 자기 설치 상태를 보는 `~/.local/share/claude`·`~/.local/state/claude`·`~/.cache/claude`, 고정 경로라 없으면 그만인 `~/.claude/state/unattended-serving-consent.json`·`~/.config/anthropic/*`·`/etc/claude-code/*`. 이것들은 HOME을 바꾸지 않고는 막을 수 없고, HOME을 바꾸면 Mac 키체인 로그인이 깨질 수 있어 T1a는 바꾸지 않는다 — 남는 위험은 ADR-0010 "실제 에이전트 시험"에 적고 Mac에서 확인한다(16.6).
 
 ### 16.4 실제 에이전트 시험 (`LEARN_AGENT_LIVE=1`)
 - 컨트롤러만 개발 서버에서 돌린다. CI와 Mac 러너는 가짜만 쓴다(환경 변수를 켜지 않는다).
@@ -724,7 +725,7 @@ UI 구현은 목업 승인 뒤다. 그동안 화면과 무관한 작업(2절 "�
 - **디자인 비평**: UI 작업마다 Linux 투어 PNG와 목업 대조, 끝에 Mac 데모 프레임(라이트·다크).
 
 ### 16.6 소유자의 실기 확인 (소유자 할 일 — 설계안 7절)
-- 사용하는 Mac에서: 연결 도구 설치(고르기의 명령), Learn 전용 로그인(S7이 필요라고 하면), 실제 논문에 질문 → 인용 칩, 동의 카드의 문구가 실제와 맞는지, `~/.claude`·`~/.codex`에 Learn 세션의 흔적이 없는지(격리), Learn 전용 폴더의 기록 자리가 S8이 기본 폴더에서 찾은 규칙과 같은지, **키체인에서 Claude Code의 로그인 항목이 Learn 전용 폴더와 평소 폴더에 따로 있는지**(macOS는 로그인을 키체인에 둘 수 있어 S6·S7의 Linux 결과와 다를 수 있다 — 19절), 활동 모니터의 메모리. 결과는 `next-session.md`의 소유자 할 일에 적는다.
+- 사용하는 Mac에서: 연결 도구 설치(고르기의 명령), Learn 전용 로그인(S7이 필요라고 하면), 실제 논문에 질문 → 인용 칩, 동의 카드의 문구가 실제와 맞는지, `~/.claude`·`~/.codex`에 Learn 세션의 흔적이 없는지(격리), Learn 전용 폴더의 기록 자리가 S8이 기본 폴더에서 찾은 규칙과 같은지, **키체인에서 Claude Code의 로그인 항목이 Learn 전용 폴더와 평소 폴더에 따로 있는지**(macOS는 로그인을 키체인에 둘 수 있어 S6·S7의 Linux 결과와 다를 수 있다 — 19절), 활동 모니터의 메모리, 16.3의 이름 붙인 예외가 Mac에서도 같은지(`~/Library/Application Support/Learn`의 작업 폴더에서 `fs_usage`로 — 특히 홈이 git 저장소이거나 `~/.config/anthropic`이 있을 때 Learn의 빈 `.git`이 뿌리 탐색을 멈추는지), 강제로 끝낸 CLI의 `<에이전트 폴더>/sessions/<pid>.*`가 남는지(P-41). 결과는 `next-session.md`의 소유자 할 일에 적는다.
 
 ## 17. 계획의 Global Constraints에 들어갈 것
 - 새 데이터 객체는 모두 앵커로 주소를 가질 수 있다(제품 방향 합의): 대화 → `opened_from` 쪽 앵커, 질문 → 붙인 선택의 span 앵커, 답 → 확인된 쪽의 `page` 앵커, 도구 읽기 → 판본 + 쪽(6.3).

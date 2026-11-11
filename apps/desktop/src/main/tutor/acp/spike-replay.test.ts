@@ -44,7 +44,10 @@ describe('the spike\'s recorded adapter messages', () => {
     expect(FIXTURE.some((e) => e.msg.method === 'session/request_permission')).toBe(true);
     expect(FIXTURE.some((e) => e.msg.method === '_auth/status_update')).toBe(true);
     expect(FIXTURE.flatMap((e) => (e.msg.error ? [e.msg.error.code] : []))).toEqual(expect.arrayContaining([-32000, -32603, -32002]));
-    expect(JSON.stringify(FIXTURE)).not.toMatch(/gmail|baejs/);
+    // Nothing personal: the only address is the placeholder, and no home folder is named.
+    const text = JSON.stringify(FIXTURE);
+    expect(new Set(text.match(/[\w.%+-]+@[\w-]+(\.[\w-]+)+/g) ?? [])).toEqual(new Set(['x@example.com']));
+    expect(text).not.toMatch(/\/home\/|\/Users\//);
   });
 
   it('initialize, the login status, a session, the mode and a prompt run as Claude answers them', async () => {

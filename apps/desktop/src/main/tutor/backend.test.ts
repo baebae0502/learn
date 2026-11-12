@@ -15,6 +15,7 @@ import type { AcpMcpServer, McpTransport } from './mcp/http';
 import { INSTRUCTIONS } from './prompts';
 import { tutorLog } from './log';
 import { createScopeRegistry } from './scope';
+import { lastMs } from '../perf';
 
 vi.mock('./log', () => ({ tutorLog: vi.fn() }));
 
@@ -265,6 +266,13 @@ describe('the ACP backend', () => {
     expect(s).toMatchObject({ key: KEY, agent: 'claude', sessionId: 'acp-1', resumedBy: 'new', firstPrompt: true });
     expect(scopes.find(s.scope!.token)).toBe(s.scope);
     expect(s.scope).toMatchObject({ ...SCOPE_INIT, bindMcpSession: AGENT_CATALOG[0]!.mcpSessionBinding, activeTurn: null });
+  });
+
+  it('times a new process from its start to the answer of initialize, for tutor-perf (__learnLastMs.tutorInitialize)', async () => {
+    const { backend } = harness();
+    delete lastMs.tutorInitialize;
+    await backend.start({ key: { itemId: ITEM, conversationId: null }, agent: 'claude', conversation: null });
+    expect(lastMs.tutorInitialize).toBeGreaterThanOrEqual(0);
   });
 
   it('warming a new empty session stops after initialize; the process runs in the idle folder holding only the empty .git and Claude gets a private temp folder (R4)', async () => {

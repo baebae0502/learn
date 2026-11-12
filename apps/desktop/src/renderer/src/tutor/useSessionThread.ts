@@ -15,6 +15,11 @@ export interface LiveTurn {
   running: ToolChip | null;
   /** The pages read_pdf_pages returned in this turn so far: a cite of one is drawn as a chip at once, any other as checking. */
   verifiedSoFar: Set<number>;
+  /**
+   * The answer to this tab's own question (tutor:ask answered with its rows): heard from its start for certain. main's notices and its
+   * answers to the window's reads travel apart, so a read of the session can bring what the notices have not brought yet.
+   */
+  fromStart?: true;
 }
 
 /** How often a session is read again while its answer comes and this window did not hear it from the start (main saves it every 2 s). */
@@ -22,15 +27,17 @@ export const JOINED_READ_MS = 2000;
 
 /**
  * The live answer while it is the truth about its message: the stored message is not there yet, or is still coming and agrees with
- * the live one (one text begins the other; its tools a part of the live ones). Null once the stored message ended (the thread read
- * again at the end has its sources), and when the live one missed the beginning: a window reloaded mid-answer draws the stored text,
- * read again every 2 s, until the answer ends.
+ * the live one (one text begins the other; its tools a part of the live ones) — or the live one answers this tab's own question, which
+ * a read that came ahead of the notices never replaces. Null once the stored message ended (the thread read again at the end has its
+ * sources), and when the live one missed the beginning: a window reloaded mid-answer draws the stored text, read again every 2 s, until
+ * the answer ends.
  */
 export function liveOver(thread: SessionThread | null, live: LiveTurn | null): LiveTurn | null {
   if (live === null || thread === null) return live;
   const stored = thread.messages.find((m) => m.id === live.tutorMessageId);
   if (stored === undefined) return live;
   if (stored.status !== 'streaming') return null;
+  if (live.fromStart === true) return live;
   // The stored text may also be a little ahead: main saves what it has not sent yet (one 33 ms batch at most).
   const sameText = live.text.startsWith(stored.text) || stored.text.startsWith(live.text);
   return sameText && live.tools.length >= stored.tools.length ? live : null;

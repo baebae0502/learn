@@ -17,6 +17,9 @@
  * - `learn:dnd:drop`: the drop's handler began (rows onto a collection, a tag onto rows);
  * - `learn:dnd:filed`: the memberships or tags are in the cache — the sidebar's counts (`nav-collection-<id> .count`) draw next;
  * - `learn:dnd:preview` (a measure): building the drag image of a row drag.
+ * The tutor (T1a spec 15 "보내기 → 첫 답 글 그리기"; perfMarkLatest, one each):
+ * - `learn:tutor:send`: the composer's send passed its checks (useSend.ts);
+ * - `learn:tutor:first-text-paint`: the frame that paints the first text of the answer that came in has begun (Bubble.tsx).
  */
 export type PerfMark =
   | 'drop'
@@ -35,6 +38,8 @@ export type PerfMark =
   | 'palette:painted'
   | 'dnd:drop'
   | 'dnd:filed'
+  | 'tutor:send'
+  | 'tutor:first-text-paint'
   | `toast:${string}`;
 
 /** Timed calls (performance.measure): one quick search over the library, and building its index (spec 9). */

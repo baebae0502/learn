@@ -9,6 +9,8 @@ import { pdfViewerModule, pdfjs } from '../pdfjs';
 import { readWindowParams } from '../../ui/platform';
 import { watchDevicePixelRatio } from './displayChange';
 import { CITE_FLASH_MS, INITIAL_PDF, useReader, type PdfPlace, type PdfViewHandle, type ZoomValue } from './readerStore';
+import { drawAttached, type MarkViewport } from './attachedMark';
+import { dropOutline } from './outlineCache';
 import { goBack, goForward, recordJump } from './history';
 import { linkHistory } from './historyAdapter';
 import { usePageColor } from './usePageColor';
@@ -505,7 +507,32 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
           if (failed.delete(e.pageNumber)) setPageDivs(new Map(failed));
           doneOnce.add(e.pageNumber);
           setRendered(doneOnce.size);
+          // A page drawn again (a zoom, a turn, a page that came back into view) gets the attached passage's mark again.
+          markPage(e.pageNumber - 1);
         });
+        /** The passage attached to the tab's question, when it is of this revision (spec 8.4). */
+        const attachedHere = () => {
+          const a = scope.tutor.getState().attached;
+          return a !== null && a.anchor.revisionId === revisionId ? a : null;
+        };
+        /** The page's mark of the attached passage, drawn for its viewport now, or taken off a page the passage is not on. */
+        const markPage = (pageIndex: number) => {
+          const view = viewer.getPageView(pageIndex) as { div?: HTMLElement; viewport?: MarkViewport } | undefined;
+          if (!view?.div || !view.viewport) return;
+          const a = attachedHere();
+          if (a?.pageIndex === pageIndex) drawAttached(view.div, a.anchor, view.viewport, a.lineStart);
+          else drawAttached(view.div, null, view.viewport);
+        };
+        // A chip of another revision cannot go with a question about this one.
+        if (scope.tutor.getState().attached !== null && attachedHere() === null) scope.tutor.getState().setAttached(null);
+        let marked: number | null = null;
+        /** Another passage attached, or none: the old page's mark goes and the new page's is drawn (a page not drawn yet gets it with pagerendered). */
+        const remark = () => {
+          const next = attachedHere()?.pageIndex ?? null;
+          if (marked !== null && marked !== next) markPage(marked);
+          marked = next;
+          if (next !== null) markPage(next);
+        };
         store.setPdf({ ...INITIAL_PDF, pagesCount: doc.numPages });
         store.setHandle(handle);
         // E2E only: a viewer that fails to start, to show the notice that stands in for it.
@@ -583,6 +610,10 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
           // Once, for what the pages need to draw at this size; a stage that changed size is fitted by its observer in this frame.
           viewer.update();
         };
+        const stopMarking = scope.tutor.subscribe((now, before) => {
+          if (now.attached !== before.attached) remark();
+        });
+        remark();
         teardown = () => {
           onShown.current = null;
           unflash();
@@ -598,6 +629,8 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
           viewer.setDocument(null);
           lifetime.abort();
           scope.find.getState().reset();
+          stopMarking();
+          dropOutline(scope);
           store.setHandle(null);
           store.setPdf(null);
         };

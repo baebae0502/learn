@@ -24,8 +24,26 @@ describe('the tutor store of one reader tab', () => {
   });
   it('holds nothing but the tab\'s own fields', () => {
     expect(Object.keys(createTutorTabStore().getState()).sort()).toEqual([
-      'choosing', 'conversationId', 'currentCite', 'drafts', 'live', 'setChoosing', 'setConversation', 'setCurrentCite', 'setDraft', 'setLive', 'setWaiting', 'waiting',
+      'attached', 'choosing', 'conversationId', 'currentCite', 'drafts', 'live', 'setAttached', 'setChoosing', 'setConversation', 'setCurrentCite', 'setDraft', 'setLive',
+      'setWaiting', 'waiting',
     ]);
+  });
+  it('keeps the attached passage per tab, across sessions: only ×, a new selection or the question that took it changes it', () => {
+    const a = createTutorTabStore();
+    const b = createTutorTabStore();
+    const passage = {
+      anchor: { kind: 'pdf', revisionId: '3f0d9a0e-6b1e-4c1e-8f6a-1d2f9b7c5e11', precision: 'span', pageIndex: 0, quads: [[0, 1, 1, 1, 0, 0, 1, 0]], coordinateSpace: 'pdf-user-space', text: { quote: { exact: 'x', prefix: '', suffix: '' } } },
+      text: 'x', pageIndex: 0, multipage: false, long: false, lineStart: 0,
+    } as const;
+    expect(a.getState().attached).toBeNull();
+    a.getState().setAttached(passage as never);
+    expect(b.getState().attached).toBeNull();
+    a.getState().setConversation('3f0d9a0e-6b1e-4c1e-8f6a-1d2f9b7c5e11');
+    a.getState().setWaiting({ text: 'q', busyWith: { conversationId: 'c', messageId: 'm' } });
+    a.getState().setConversation(null);
+    expect(a.getState().attached).toBe(passage);
+    a.getState().setAttached(null);
+    expect(a.getState().attached).toBeNull();
   });
   it('another session drops the live answer of the one before; the same one keeps it', () => {
     const a = createTutorTabStore();

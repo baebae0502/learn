@@ -1,6 +1,6 @@
 // First: ESM evaluates imports in order, so the cold-start marks module runs before anything else (its value is
 // performance.timeOrigin either way).
-import { markPerf, perf } from './perf';
+import { markPerf, perf, timeLastAsync } from './perf';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -551,14 +551,16 @@ if (!app.requestSingleInstanceLock()) {
         if (win) sendEvent(win.webContents, 'tutor:turn', e);
       };
       const scopes = createScopeRegistry();
+      const call = createTutorCall({
+        deps: { text: openCtx.text, prioritize: (sha256) => text?.prioritize(sha256), delay: (ms) => new Promise((resolve) => setTimeout(resolve, ms)), now: () => Date.now() },
+        conversations: () => openCtx.conversations,
+        emitTurn,
+        now: nowIso,
+      });
       const mcpServer = createMcpServer({
         version: app.getVersion(),
-        call: createTutorCall({
-          deps: { text: openCtx.text, prioritize: (sha256) => text?.prioritize(sha256), delay: (ms) => new Promise((resolve) => setTimeout(resolve, ms)), now: () => Date.now() },
-          conversations: () => openCtx.conversations,
-          emitTurn,
-          now: nowIso,
-        }),
+        // A page read with its record, timed for tutor-perf (spec 15: read_pdf_pages in main).
+        call: (scope, name, args) => (name === 'read_pdf_pages' ? timeLastAsync('tutorReadPages', () => call(scope, name, args)) : call(scope, name, args)),
       });
       const transport = createMcpTransport({ server: mcpServer, scopes });
       tutorTransport = transport;

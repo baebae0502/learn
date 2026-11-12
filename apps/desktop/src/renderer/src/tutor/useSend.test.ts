@@ -150,3 +150,39 @@ describe('a question that waits for another session\'s answer is sent once that 
     expect(asks).toHaveLength(1);
   });
 });
+
+describe('the passage attached in the composer goes with the question, and the answer is heard from its start (Task 19)', () => {
+  const passage = {
+    anchor: { kind: 'pdf', revisionId: '3f0d9a0e-6b1e-4c1e-8f6a-1d2f9b7c5e11', precision: 'span', pageIndex: 0, quads: [[0, 1, 1, 1, 0, 0, 1, 0]], coordinateSpace: 'pdf-user-space', text: { quote: { exact: '구간', prefix: '', suffix: '' } } },
+    text: '구간', pageIndex: 0, multipage: false, long: false, lineStart: 0,
+  } as const;
+  beforeEach(() => {
+    tab().setAttached(passage as never);
+    tab().setLive(null);
+    scope.reader.getState().setOutline({ rows: [], flat: [], pages: new Map(), resolvedUpTo: 0 });
+  });
+
+  it('carries the chip and the outline as cached; its rows written, the chip goes and the tab hears the answer from its start', async () => {
+    tab().setDraft(draftKey(null, ITEM), '이 구간은?');
+    const sent = sendQuestion(scope, '이 구간은?', 'fake');
+    await drain();
+    expect(asks[0]!.input).toMatchObject({ selection: { anchor: passage.anchor, text: '구간' }, reader: { pageIndex: 0, pageCount: 10, outline: [], outlineComplete: true, outlineTotal: 0 } });
+    expect(tab().attached).toBe(passage);
+    asks[0]!.settle(ok(MADE));
+    await sent;
+    expect(tab().attached).toBeNull();
+    expect(tab().live).toMatchObject({ tutorMessageId: MADE.tutorMessageId, text: '', fromStart: true });
+  });
+
+  it('keeps the chip when main refuses the question before any row, and while it waits for another session\'s answer', async () => {
+    const sent = sendQuestion(scope, '이 구간은?', 'fake');
+    await drain();
+    asks[0]!.settle(fail('AGENT_NOT_READY'));
+    await sent;
+    expect(tab().attached).toBe(passage);
+    expect(tab().live).toBeNull();
+    asks.length = 0;
+    await waitingWith('이 구간은?');
+    expect(tab().attached).toBe(passage);
+  });
+});

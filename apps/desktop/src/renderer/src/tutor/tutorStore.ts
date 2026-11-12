@@ -1,5 +1,6 @@
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import type { AttachableSelection } from '../viewers/pdf/selectionAnchor';
 import { useReaderScope } from '../viewers/readerScope';
 import type { LiveTurn } from './useSessionThread';
 
@@ -80,6 +81,12 @@ export interface TutorTabStore {
   /** The question that waits for another session's answer; its text stays in the composer, read only, until then. */
   waiting: WaitingQuestion | null;
   setWaiting(w: WaitingQuestion | null): void;
+  /**
+   * The passage the reader's last selection attached to the next question (spec 8.4, J46): one chip over the composer, marked on its
+   * page. It stays when the page's selection goes, and changes only with ×, a new selection or the question that took it with it.
+   */
+  attached: AttachableSelection | null;
+  setAttached(a: AttachableSelection | null): void;
 }
 
 export interface CurrentCite {
@@ -119,6 +126,8 @@ export function createTutorTabStore(tabId = ''): StoreApi<TutorTabStore> {
       }),
     waiting: null,
     setWaiting: (waiting) => set({ waiting }),
+    attached: null,
+    setAttached: (attached) => set({ attached }),
   }));
 }
 

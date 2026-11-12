@@ -13,7 +13,7 @@ import type { PdfAnchor } from '../../packages/domain/src/anchors';
 import type { TutorAskInput } from '../../packages/domain/src/tutor';
 import {
   FIXTURES, backFromReader, expectDisabledReason, expectTooltipText, hoverLikeUser, importPaths, ipcCalls, launch, mainWindow, openItem, readClipboard, readerTab, runMenuCommand, runPalette,
-  textExtraction, textIdle, tutorFailAgents, tutorFakeLog, tutorFakeScript, tutorProcesses, type Session,
+  setPdfZoom, textExtraction, textIdle, tutorFailAgents, tutorFakeLog, tutorFakeScript, tutorProcesses, type Session,
 } from './helpers';
 import { READER_100, askViaApi, consentAndChoose, installFakeAgents, turnEnded } from './tutor-helpers';
 
@@ -1548,6 +1548,251 @@ test('F6 into the tutor\'s panel and ⌃⌘2 land in the composer\'s text area, 
     await page.getByTestId('tutor-new-session').focus();
     await page.keyboard.press('Tab');
     await expect(page.getByTestId('tutor-log')).toBeFocused();
+  } finally {
+    await app.close();
+  }
+});
+
+// ---- The passage attached to a question, its page mark, and the outline a question carries (Task 19) ----
+
+const attachedChip = (page: Page) => page.getByTestId('tutor-attached');
+/** The page mark of the attached passage on page `n` (1-based). */
+const pageMark = (page: Page, n: number) => page.locator(`.pdfViewer .page[data-page-number="${n}"] [data-testid="pdf-attached"]`);
+/** A selection in the reader's text layer as a person leaves one: the focus out of any field first (a field keeps what was selected before). */
+async function selectInPage(page: Page, pageIndex: number, start: number, end: number): Promise<void> {
+  await page.evaluate(async ([i, s, e]) => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    await window.__learnPdf!.selectText(i!, s!, e!);
+  }, [pageIndex, start, end] as const);
+}
+type Box = { left: number; top: number; right: number; bottom: number };
+/** The union of the boxes of `selector` (client px), and of the live selection's text in the page (client px). */
+const boxesOf = (page: Page, selector: string): Promise<Box | null> =>
+  page.evaluate((sel) => {
+    const rs = [...document.querySelectorAll(sel)].map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0);
+    if (rs.length === 0) return null;
+    return { left: Math.min(...rs.map((r) => r.left)), top: Math.min(...rs.map((r) => r.top)), right: Math.max(...rs.map((r) => r.right)), bottom: Math.max(...rs.map((r) => r.bottom)) };
+  }, selector);
+const selectionBox = (page: Page): Promise<Box | null> =>
+  page.evaluate(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return null;
+    const range = sel.getRangeAt(0);
+    const rs: DOMRect[] = [];
+    for (const span of document.querySelectorAll('.textLayer span:not(.markedContent)')) {
+      const node = span.firstChild;
+      if (!node || !range.intersectsNode(node)) continue;
+      const piece = document.createRange();
+      piece.selectNodeContents(node);
+      if (range.compareBoundaryPoints(Range.START_TO_START, piece) > 0) piece.setStart(range.startContainer, range.startOffset);
+      if (range.compareBoundaryPoints(Range.END_TO_END, piece) < 0) piece.setEnd(range.endContainer, range.endOffset);
+      rs.push(...[...piece.getClientRects()].filter((r) => r.width >= 0.5 && r.height >= 0.5));
+    }
+    if (rs.length === 0) return null;
+    return { left: Math.min(...rs.map((r) => r.left)), top: Math.min(...rs.map((r) => r.top)), right: Math.max(...rs.map((r) => r.right)), bottom: Math.max(...rs.map((r) => r.bottom)) };
+  });
+/** The box (client px) of the text layer's span on page `n` that holds exactly `text`: a line drawn as one text item. */
+const spanBox = (page: Page, n: number, text: string): Promise<Box | null> =>
+  page.evaluate(([n, text]) => {
+    const span = [...document.querySelectorAll(`.page[data-page-number="${n}"] .textLayer span:not(.markedContent)`)].find((el) => el.textContent === text);
+    const r = span?.getBoundingClientRect();
+    return r && r.width > 0 ? { left: r.left, top: r.top, right: r.right, bottom: r.bottom } : null;
+  }, [n, text] as const);
+/**
+ * The page mark's wash covers the passage — one line of page `n`, drawn as one span — within the anchor spike's 2 pt (at the zoom of the
+ * moment), and its bar stands in the margin left of it, as tall as it.
+ */
+async function expectMarkOn(page: Page, n: number, passage: string, what: string): Promise<void> {
+  const sel = `.pdfViewer .page[data-page-number="${n}"] [data-testid="pdf-attached"]`;
+  const twoPoints = 2 * (96 / 72) * Number(await page.getByTestId('pdf-viewer').getAttribute('data-scale'));
+  // Both read again until they agree: pdf.js hides a text layer while it lays it out again at a new scale.
+  await expect.poll(async () => {
+    const [got, want] = [await boxesOf(page, `${sel} .attached`), await spanBox(page, n, passage)];
+    return got && want ? Math.max(Math.abs(got.left - want.left), Math.abs(got.top - want.top), Math.abs(got.right - want.right), Math.abs(got.bottom - want.bottom)) : `wash ${JSON.stringify(got)}, selection ${JSON.stringify(want)}`;
+  }, { message: `the wash covers the passage (${what})` }).toBeLessThanOrEqual(twoPoints);
+  const wash = (await boxesOf(page, `${sel} .attached`))!;
+  const bar = (await boxesOf(page, `${sel} .attach-bar`))!;
+  const rotated = (await page.getByTestId('pdf-viewer').getAttribute('data-rotation')) === '90';
+  if (rotated) {
+    // A quarter turn clockwise: the page's left margin is above the text.
+    expect(bar.bottom, `the bar is above the text (${what})`).toBeLessThan(wash.top);
+    expect(Math.abs(bar.left - wash.left), `the bar spans the text (${what})`).toBeLessThanOrEqual(1.5);
+  } else {
+    expect(bar.right, `the bar is left of the text (${what})`).toBeLessThan(wash.left);
+    expect(Math.abs(bar.top - wash.top) + Math.abs(bar.bottom - wash.bottom), `the bar is as tall as the text (${what})`).toBeLessThanOrEqual(1.5);
+  }
+}
+
+test('a selection in the reader attaches itself to the next question: one chip of its page, its tooltip and ×, marked on the page through a zoom and a turn; it stays when the page\'s selection goes, × takes it off, and the question carries it', async ({}, testInfo) => {
+  const { app, page } = await atSession(testInfo);
+  try {
+    await page.waitForFunction(() => window.__learnPdf !== undefined);
+    const passage = 'We propose a new simple network architecture.';
+    const at = (await page.evaluate(() => window.__learnPdf!.pageText(0))).indexOf(passage);
+    expect(at, 'page 1 holds the passage').toBeGreaterThanOrEqual(0);
+    await expect(attachedChip(page)).toHaveCount(0);
+    await selectInPage(page, 0, at, at + passage.length);
+    const chip = attachedChip(page);
+    await expect(chip.getByTestId('tutor-attached-label')).toHaveText(`1쪽 · ${passage}`);
+    await expect(chip).not.toHaveAttribute('data-multipage');
+    await expect(chip).not.toHaveAttribute('data-long');
+    // Marked on its page: one line's wash and the bar in the margin left of it.
+    await expect(pageMark(page, 1).locator('.attached')).toHaveCount(1);
+    await expect(pageMark(page, 1).locator('.attach-bar')).toHaveCount(1);
+    await expectMarkOn(page, 1, passage, '100 %');
+    // The tooltip says it goes with the question; × says what it takes off.
+    await hoverOver(page, chip.getByTestId('tutor-attached-label'));
+    await expectTooltipText(page, '질문에 붙은 구간 · 1쪽 — 질문과 함께 보냅니다', 'tutor-attached-label');
+    const remove = chip.getByTestId('tutor-attached-remove');
+    // Drawn 16 square, pressed 28 square (spec 8.11): a point 5 px past its drawn edges, either side, is still the ×.
+    const x = (await remove.boundingBox())!;
+    expect([Math.round(x.width), Math.round(x.height)]).toEqual([16, 16]);
+    for (const [px, py] of [[x.x + x.width + 5, x.y + x.height / 2], [x.x + x.width / 2, x.y - 5], [x.x + x.width / 2, x.y + x.height + 5]] as const) {
+      expect(await page.evaluate(([px, py]) => document.elementFromPoint(px!, py!)?.closest('[data-testid="tutor-attached-remove"]') != null, [px, py] as const), `the × at ${px}, ${py}`).toBe(true);
+    }
+    await expect(remove).toHaveAccessibleName('구간 떼기');
+    await expect(remove).toHaveAccessibleDescription('질문에 붙은 구간 · 1쪽 — 질문과 함께 보냅니다');
+    await hoverOver(page, remove);
+    await expectTooltipText(page, '구간 떼기', 'tutor-attached-remove');
+    await expectNoSeriousA11y(page, 'tutor composer with an attached passage');
+
+    // A zoom and a quarter turn draw the page again: the mark is drawn again for it.
+    await setPdfZoom(page, 2);
+    await expect.poll(() => page.getByTestId('pdf-viewer').getAttribute('data-scale').then(Number)).toBeCloseTo(2, 5);
+    await expectMarkOn(page, 1, passage, '200 %');
+    await runMenuCommand(app, 'reader.rotateCw');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rotation', '90');
+    await expectMarkOn(page, 1, passage, '200 %, a quarter turn');
+    await runMenuCommand(app, 'reader.rotateCcw');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rotation', '0');
+    await setPdfZoom(page, 'auto');
+
+    // The page's selection goes (past the 300 ms a keyboard selection settles in): the chip and its mark stay.
+    await page.evaluate(() => window.getSelection()!.removeAllRanges());
+    await page.waitForTimeout(600);
+    await expect(chip).toBeVisible();
+    await expect(pageMark(page, 1).locator('.attached')).toHaveCount(1);
+
+    // × is the chip's Tab stop, just before the text area; it takes the chip and its mark off, and the focus goes to the text area.
+    await composerInput(page).focus();
+    await page.keyboard.press('Shift+Tab');
+    await expect(remove).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(chip).toHaveCount(0);
+    await expect(page.locator('[data-testid="pdf-attached"]')).toHaveCount(0);
+    await expect(composerInput(page)).toBeFocused();
+
+    // Selected again, and asked with ↩: the question carries it — the prompt's attached block, the quote and its page in the bubble,
+    // 선택한 구간 확인 over the answer — and the chip and its mark go with it.
+    await selectInPage(page, 0, at, at + passage.length);
+    await expect(chip).toBeVisible();
+    await sendFromComposer(page, '이 문장은 무슨 뜻인가요?');
+    const question = page.getByTestId('tutor-question');
+    await expect(question.locator('.tutor-quote .q')).toHaveText(passage);
+    await expect(question.locator('.tutor-quote').getByTestId('cite-chip')).toHaveText('1쪽');
+    await expect(chip).toHaveCount(0);
+    await expect(page.locator('[data-testid="pdf-attached"]')).toHaveCount(0);
+    await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'complete');
+    await expect(page.getByTestId('tutor-answer').getByTestId('tool-chip').first()).toHaveText('선택한 구간 확인');
+    await expect(question.getByTestId('sent-scope')).toHaveAccessibleName(/^선택\s1\s·\s자료\s1$/);
+    const said = (await tutorFakeLog(app)).filter((e) => e.t === 'prompt').at(-1)!.blocks.map((b) => b.text).join('\n');
+    expect(said).toContain('The user attached this passage from page 1. To cite page 1, read it with read_pdf_pages first:');
+    expect(said).toContain(passage);
+    await expectNoSeriousA11y(page, 'tutor question sent with an attached passage');
+  } finally {
+    await app.close();
+  }
+});
+
+test('a selection across two pages attaches the first page\'s text only, and one over 4,000 characters its first 4,000: the chip\'s tooltip says so on its second line, and that is what goes', async ({}, testInfo) => {
+  const { app, page, itemId } = await atSession(testInfo);
+  try {
+    await page.waitForFunction(() => window.__learnPdf !== undefined);
+    const [text1, text2] = await page.evaluate(async () => [await window.__learnPdf!.pageText(0), await window.__learnPdf!.pageText(1)]);
+    const from = text1.indexOf('We propose a new simple network architecture.');
+    // From page 1's passage to a few characters into page 2: page 2's text layer drawn first, then the selection made across both.
+    await selectInPage(page, 1, 0, 10);
+    await selectInPage(page, 0, from, from + 5);
+    await page.evaluate(() => {
+      const sel = window.getSelection()!;
+      const range = sel.getRangeAt(0).cloneRange();
+      const into = document.querySelector('.page[data-page-number="2"] .textLayer span:not(.markedContent)')!.firstChild!;
+      range.setEnd(into, 5);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    });
+    const chip = attachedChip(page);
+    await expect(chip).toHaveAttribute('data-multipage', '');
+    await expect(chip.getByTestId('tutor-attached-label')).toContainText('1쪽 · We propose a new simple network architecture.');
+    await hoverOver(page, chip.getByTestId('tutor-attached-label'));
+    await expectTooltipText(page, '질문에 붙은 구간 · 1쪽 — 질문과 함께 보냅니다여러 쪽에 걸친 선택은 첫 쪽의 글만 붙습니다.', 'tutor-attached-label');
+    await expect(page.getByRole('tooltip').locator('.tooltip-note')).toHaveText('여러 쪽에 걸친 선택은 첫 쪽의 글만 붙습니다.');
+    await expect(pageMark(page, 2)).toHaveCount(0);
+    await expect(pageMark(page, 1).locator('.attached')).not.toHaveCount(0);
+    await sendFromComposer(page, '이 부분은 무엇을 말하나요?');
+    await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'complete');
+    const [first] = await answersOf(page, itemId);
+    const thread = await page.evaluate((id) => window.learn.sessions.get({ conversationId: id }), first!.conversationId);
+    if (!thread.ok) throw new Error(`sessions.get: ${thread.code}`);
+    const sent = thread.data.messages.find((m) => m.role === 'user')!.attached!;
+    expect(sent.pageIndex).toBe(0);
+    expect(sent.quote!.startsWith('We propose a new simple network architecture.')).toBe(true);
+    expect(text1.trimEnd().endsWith(sent.quote!.trimEnd().slice(-40)), 'it runs to the end of page 1').toBe(true);
+    expect(sent.quote).not.toContain(text2.slice(0, 24));
+
+    // All of page 2, longer than 4,000 characters: the first 4,000 go, and the tooltip says that.
+    expect(text2.length, 'page 2 is longer than 4,000 characters').toBeGreaterThan(4000);
+    await selectInPage(page, 1, 0, text2.length);
+    await expect(chip).toHaveAttribute('data-long', '');
+    await expect(chip).toHaveAttribute('data-page', '2');
+    await expect(chip).not.toHaveAttribute('data-multipage');
+    await hoverOver(page, chip.getByTestId('tutor-attached-label'));
+    await expect(page.getByRole('tooltip').locator('.tooltip-note')).toHaveText('앞 4,000자만 보냅니다.');
+    await expect(chip.getByTestId('tutor-attached-remove')).toHaveAccessibleDescription('질문에 붙은 구간 · 2쪽 — 질문과 함께 보냅니다 앞 4,000자만 보냅니다.');
+    // The mark covers what goes: not the last lines of the page.
+    const markBottom = (await boxesOf(page, '.pdfViewer .page[data-page-number="2"] [data-testid="pdf-attached"] .attached'))!.bottom;
+    expect(markBottom).toBeLessThan((await selectionBox(page))!.bottom - 5);
+    await sendFromComposer(page, '이 쪽을 요약해 주세요.');
+    await expect(page.getByTestId('tutor-question')).toHaveCount(2);
+    await expect(page.getByTestId('tutor-answer').last()).toHaveAttribute('data-status', 'complete');
+    const again = await page.evaluate((id) => window.learn.sessions.get({ conversationId: id }), first!.conversationId);
+    if (!again.ok) throw new Error(`sessions.get: ${again.code}`);
+    const long = again.data.messages.filter((m) => m.role === 'user').at(-1)!.attached!;
+    expect(long.pageIndex).toBe(1);
+    expect(long.quote).toBe(text2.slice(0, 4000).normalize('NFC'));
+  } finally {
+    await app.close();
+  }
+});
+
+test('the tutor\'s first showing resolves the outline for its questions without the outline pane: long-outline.pdf\'s 300 entries go with the question, with their pages', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo), UNSET);
+  try {
+    await (await mainWindow(app)).evaluate((w) => w.setContentSize(1440, w.getContentSize()[1]!));
+    await importPaths(page, [path.join(FIXTURES, 'long-outline.pdf')]);
+    await textExtraction(app, 'now');
+    await textIdle(app);
+    await openItem(page, 'long-outline');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', '6');
+    await consentAndChoose(page, 'fake');
+    await expect(page.getByTestId('tutor-empty')).toBeVisible();
+    await expect(page.getByTestId('pdf-outline')).toHaveCount(0);
+    // The tab's cache has the first 300 entries' pages, the outline pane never shown.
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __learnReader: { getState(): { outline: { resolvedUpTo: number; flat: unknown[] } | null } } }).__learnReader.getState().outline))
+      .toMatchObject({ resolvedUpTo: 300, flat: { length: 300 } });
+    await sendFromComposer(page, '이 자료의 차례를 알려 주세요.');
+    await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'complete');
+    await expect(page.getByTestId('tutor-answer').getByTestId('tool-chip')).toContainText(['목차 확인']);
+    const log = await tutorFakeLog(app);
+    const call = log.filter((e): e is Extract<typeof e, { t: 'mcp' }> => e.t === 'mcp' && e.method === 'tools/call').find((e) => (e.params as { name?: string }).name === 'get_outline')!;
+    const result = (call.result as { result: { structuredContent: { outline: Array<{ depth: number; page: number | null }>; total: number; returned: number; limited: boolean }; content: Array<{ text: string }> } }).result;
+    expect(result.structuredContent).toMatchObject({ returned: 300, total: 300, limited: false });
+    expect(result.structuredContent.outline).toHaveLength(300);
+    expect(result.structuredContent.outline.filter((e) => e.page !== null).length).toBe(300);
+    expect(result.structuredContent.outline.slice(0, 5).map((e) => [e.depth, e.page])).toEqual([[0, 1], [1, 1], [1, 1], [1, 1], [1, 1]]);
+    expect(result.content[0]!.text).not.toContain('outline still loading');
+    await expect(page.getByTestId('pdf-outline')).toHaveCount(0);
   } finally {
     await app.close();
   }

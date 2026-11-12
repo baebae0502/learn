@@ -7,6 +7,7 @@ import {
   agentCwd, agentEnv, agentHome, ceilingDir, idleDir, isLearnToolCall, isLoginRequired, launchSpec, probeDir, sessionMeta, systemPromptParam, tmpDir, workDir, type LaunchSpec,
 } from './agents/isolation';
 import type { ChildPort } from './agents/spawn';
+import { timeLastAsync } from '../perf';
 import type { SessionKey, Supervisor } from './agents/supervisor';
 import { tutorLog } from './log';
 import type { McpTransport } from './mcp/http';
@@ -156,7 +157,8 @@ export function createAcpBackend(d: AcpBackendDeps): TutorBackend {
     const session: Session = { key: copy(key), agent, sessionId: null, scope: null, firstPrompt: true, resumedBy: null };
     const client = connect(child, agent, () => closeScope(session));
     states.set(session, { client, opening: null, prompts: 0, prompting: false, interrupted: null });
-    const info = await client.initialize();
+    // The process was spawned just before this (supervisor): its start to initialize's answer, timed for tutor-perf (spec 15).
+    const info = await timeLastAsync('tutorInitialize', () => client.initialize());
     return { client, info, session };
   };
 

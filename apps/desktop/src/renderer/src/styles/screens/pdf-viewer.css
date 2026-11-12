@@ -71,6 +71,38 @@
     opacity: 1;
     transition: none;
   }
+  /* The passage attached to the tutor's question (spec 8.4; approved mockup .attached and .attach-bar): Learn's own mark — a light wash
+     over its lines and a bar in the margin left of where they begin — never the find colour. Drawn by attachedMark.ts in the page's own
+     layer, as shares of the page, under nothing that takes a pointer. The colours are the page theme's (the mockup's proposed page
+     values: the bar holds 3:1 on each page colour — original 5.05:1, sepia ≈ 4.6:1, dark page ≈ 6:1). */
+  .pdfViewer {
+    --page-attach-wash: oklch(0% 0 0 / 0.08); /* local: attached passage wash, original page (mockup) */
+    --page-attach-bar: oklch(53% 0.088 190); /* local: attached passage bar, original page (mockup) */
+  }
+  .pdfViewer[data-page-color='sepia'] {
+    --page-attach-wash: oklch(35% 0.04 70 / 0.1); /* local: attached passage wash, sepia page (mockup) */
+    --page-attach-bar: oklch(50% 0.088 190); /* local: attached passage bar, sepia page (mockup) */
+  }
+  .pdfViewer[data-page-color='dark'] {
+    --page-attach-wash: oklch(100% 0 0 / 0.12); /* local: attached passage wash, dark page (mockup) */
+    --page-attach-bar: oklch(72% 0.1 190); /* local: attached passage bar, dark page (mockup) */
+  }
+  .pdfViewer .attached-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .pdfViewer .attached-layer > * {
+    position: absolute;
+  }
+  .pdfViewer .attached {
+    border-radius: 2px; /* local: the mockup's .attached */
+    background: var(--page-attach-wash);
+  }
+  .pdfViewer .attach-bar {
+    border-radius: 1px; /* local: the mockup's .attach-bar */
+    background: var(--page-attach-bar);
+  }
   /* A sideways flow (pdf.js's .scrollHorizontal): the pages stand in one row, 12 between them, 12 above and below and 24 at the ends
      (the mockup); the first page's 24 is the room placement.ts gives it, the pages after it have 12 before them. */
   .pdfViewer.scrollHorizontal {

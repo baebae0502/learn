@@ -7,13 +7,15 @@ import { tooltipsBlocked, useTooltipsBlocked } from './tooltipGate';
 /**
  * Tooltip content (design-spec 6 툴팁): the name, then one secondary slot — the shortcut in tertiary colour, or, for an
  * icon button disabled with a reason, the reason in secondary colour (the shortcut cannot run then). Also drawn by the
- * state board.
+ * state board. `note`: a second line under the name, in secondary colour (the attached passage cut to its first page).
  */
-export function TooltipText({ label, accelerator, reason }: { label: string; accelerator?: string | undefined; reason?: string | undefined }) {
+export function TooltipText({ label, accelerator, reason, note }: { label: string; accelerator?: string | undefined; reason?: string | undefined; note?: string | undefined }) {
   return (
     <>
       <span className="tooltip-label">{label}</span>
-      {reason !== undefined ? (
+      {note !== undefined ? (
+        <span className="tooltip-note">{note}</span>
+      ) : reason !== undefined ? (
         <span className="tooltip-reason">{reason}</span>
       ) : (
         accelerator && <span className="tooltip-shortcut">{acceleratorLabel(accelerator, currentPlatform())}</span>
@@ -31,6 +33,8 @@ export function Tooltip({
   label,
   accelerator,
   reason,
+  note,
+  placement = 'bottom',
   isDisabled,
   forceOpen,
   children,
@@ -39,6 +43,10 @@ export function Tooltip({
   accelerator?: string | undefined;
   /** Disabled reason shown after the name, in place of the shortcut. */
   reason?: string | undefined;
+  /** A second line under the name (the tooltip then stacks). */
+  note?: string | undefined;
+  /** Above the target, for one at the window's bottom whose tooltip would cover what follows it (the composer's chip). */
+  placement?: 'bottom' | 'top';
   /** Keep the trigger wrapper (so the child never remounts) but show nothing. */
   isDisabled?: boolean;
   /** Open whatever the hover and focus while true: a short confirmation (복사했습니다). Never while tooltips are blocked. */
@@ -64,8 +72,8 @@ export function Tooltip({
           hold a closed tooltip in the page. On the Mac runner one stayed, unseen but counted (t14-diag5: two tooltips
           at m3-10, one of them the sidebar toggle's from an earlier step). */}
       {shown && (
-        <AriaTooltip className="tooltip" placement="bottom" offset={6}>
-          <TooltipText label={label} accelerator={accelerator} reason={reason} />
+        <AriaTooltip className={note === undefined ? 'tooltip' : 'tooltip has-note'} placement={placement} offset={6}>
+          <TooltipText label={label} accelerator={accelerator} reason={reason} note={note} />
         </AriaTooltip>
       )}
     </TooltipTrigger>

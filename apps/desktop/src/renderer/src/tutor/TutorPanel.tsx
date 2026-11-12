@@ -1,7 +1,10 @@
 import { useEffect, useRef } from 'react';
+import { TUTOR_LIMITS } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { useItem } from '../data/queries';
 import { usePanelFocusRequest } from '../shell/panelFocus';
+import { ensureOutline } from '../viewers/pdf/outlineCache';
+import { useReader } from '../viewers/pdf/readerStore';
 import { useReaderScope } from '../viewers/readerScope';
 import { AgentChooser } from './AgentChooser';
 import { Composer } from './Composer';
@@ -74,6 +77,18 @@ const SELECTOR: Record<Landing, string> = {
 };
 
 /**
+ * The first time the tab's tutor can be seen — or a PDF opens while it can — the outline's pages are resolved for its questions, the
+ * first 300 entries, whether or not the outline pane is open (spec 5.1, P-13). Nothing waits for it: a question carries what is resolved.
+ */
+function useOutlineForQuestions(visible: boolean): void {
+  const scope = useReaderScope();
+  const doc = useReader((s) => s.handle)?.document() ?? null;
+  useEffect(() => {
+    if (visible && doc !== null) ensureOutline(scope, doc, TUTOR_LIMITS.outlineEntries);
+  }, [visible, doc, scope]);
+}
+
+/**
  * The right panel's tutor mode, under the head the inspector draws: before consent the card (or, after 나중에, the off state), and
  * after consent the agent chooser until an agent is chosen (or 에이전트 고르기… asks for it again), then the tab's session — empty, or
  * the conversation (spec 8.2). Nothing here starts an agent, asks main which agents exist, or tells it a session is on screen before
@@ -81,6 +96,7 @@ const SELECTOR: Record<Landing, string> = {
  * button that was pressed never leaves it on <body>; after 동의 it lands in the chooser, after 시작 in the composer.
  */
 export function TutorPanel({ visible }: { visible: boolean }) {
+  useOutlineForQuestions(visible);
   const prefs = useTutorPrefs();
   const consented = prefs.consent !== null;
   const setChoosing = useTutorTab((s) => s.setChoosing);

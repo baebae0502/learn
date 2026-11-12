@@ -74,21 +74,25 @@ async function pageOfDestination(doc: PDFDocumentProxy, dest: string | unknown[]
 export const OUTLINE_BATCH = 32; /* local: entries per batch */
 
 /**
- * The page of every entry that goes to one, asked a batch at a time. `onBatch` gets the pages found so far after each batch
- * (the numbers appear in order); `isCancelled` is asked before each batch and each entry: a document that is going away
- * rejects what is in flight, and nobody is left to read the answer.
+ * The page of every entry that goes to one, asked a batch at a time — of the entries in reading order from `from`, `limit` of them
+ * (all by default). `onBatch` gets the pages found so far after each batch (the numbers appear in order) and the reading-order index
+ * the entries are resolved up to; `isCancelled` is asked before each batch and each entry: a document that is going away rejects what
+ * is in flight, and nobody is left to read the answer.
  */
 export async function outlinePages(
   doc: PDFDocumentProxy,
   rows: readonly OutlineRow[],
   isCancelled: () => boolean,
-  onBatch?: (pages: ReadonlyMap<string, number>) => void,
+  onBatch?: (pages: ReadonlyMap<string, number>, upTo: number) => void,
+  range: { from?: number; limit?: number } = {},
 ): Promise<Map<string, number>> {
   const pages = new Map<string, number>();
   const all = flattenOutline(rows);
-  for (let at = 0; at < all.length; at += OUTLINE_BATCH) {
+  const from = Math.max(0, range.from ?? 0);
+  const end = range.limit === undefined ? all.length : Math.min(all.length, from + Math.max(0, range.limit));
+  for (let at = from; at < end; at += OUTLINE_BATCH) {
     if (isCancelled()) break;
-    const batch = all.slice(at, at + OUTLINE_BATCH);
+    const batch = all.slice(at, Math.min(at + OUTLINE_BATCH, end));
     const found = await Promise.all(
       batch.map(async (row): Promise<number | null> => {
         if (row.dest === null) return null;
@@ -106,7 +110,7 @@ export async function outlinePages(
       const page = found[i];
       if (page !== null && page !== undefined) pages.set(row.id, page);
     });
-    onBatch?.(new Map(pages));
+    onBatch?.(new Map(pages), at + batch.length);
   }
   return pages;
 }

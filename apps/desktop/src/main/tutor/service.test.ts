@@ -20,6 +20,7 @@ import { INSTRUCTIONS, regroundInstruction } from './prompts';
 import { createScopeRegistry, type ScopeRegistry } from './scope';
 import { createTutorService, type TutorService } from './service';
 import { tutorLog } from './log';
+import { lastMs } from '../perf';
 
 vi.mock('./log', () => ({ tutorLog: vi.fn() }));
 
@@ -355,6 +356,17 @@ describe('the tutor service', () => {
   });
 
   describe('a question', () => {
+    it('times its work in main up to the rows it writes, for tutor-perf (__learnLastMs.tutorAsk), a refused one too', async () => {
+      const r = rig();
+      delete lastMs.tutorAsk;
+      askIds(await r.ask());
+      expect(lastMs.tutorAsk).toBeGreaterThanOrEqual(0);
+      await r.ended();
+      delete lastMs.tutorAsk;
+      expect(await code(r.ask({ itemId: '0d4f5b8e-1c2a-4e7f-9a3b-5c6d7e8f9a01' }))).toBe('VALIDATION_FAILED');
+      expect(lastMs.tutorAsk).toBeGreaterThanOrEqual(0);
+    });
+
     it('answers with the rows before the agent starts, the key reserved at that moment (I3)', async () => {
       const r = rig();
       const started = gate<AgentSession>();

@@ -13,6 +13,7 @@ import { Spinner } from '../ui/Spinner';
 import { Tooltip } from '../ui/Tooltip';
 import { useReaderScope } from '../viewers/readerScope';
 import { AgentMenu } from './AgentMenu';
+import { AttachedChip, useAttachSelection } from './AttachedChip';
 import { composerKey } from './composerKeys';
 import { draftKey, useTutorTab } from './tutorStore';
 import { useAgents } from './useAgents';
@@ -51,8 +52,9 @@ function SendStopButton({ streaming, onSend, onStop, reason }: { streaming: bool
 }
 
 /**
- * The composer under the conversation (spec 8.4, 8.11; approved mockup .tu-composer): the text area — two lines high at rest, growing
- * to eight, then scrolling — and its foot: the agent button, the status of the moment ("답하는 중…" while an answer comes, "에이전트를 찾는
+ * The composer under the conversation (spec 8.4, 8.11; approved mockup .tu-composer): the passage attached by the reader's last
+ * selection, as a chip over the text area (× takes it off); the text area — two lines high at rest, growing to eight, then scrolling —
+ * and its foot: the agent button, the status of the moment ("답하는 중…" while an answer comes, "에이전트를 찾는
  * 중…" while a send waits for the agent's check past 300 ms, as the chooser says it) and 보내기 / 중지. ↩ sends and ⇧↩ breaks the line,
  * never during a Korean composition. While an answer comes, or a send is on its way, the text area is read only; while the item opens
  * it is off. A question waiting for another session's answer stays in it, read only, under the line that says so with 보내지 않기. The
@@ -74,6 +76,9 @@ export function Composer({ visible }: { visible: boolean }) {
   const checking = onTheWay && searching;
   const { send, stop, cancelWaiting, disabledReason } = useSend();
   const input = useRef<HTMLTextAreaElement>(null);
+  useAttachSelection(visible);
+  const attached = useTutorTab((s) => s.attached);
+  const setAttached = useTutorTab((s) => s.setAttached);
 
   const opening = disabledReason === 'opening';
   const held = waiting !== null;
@@ -99,6 +104,11 @@ export function Composer({ visible }: { visible: boolean }) {
       el.setSelectionRange(el.value.length, el.value.length);
     }
   };
+  const detach = () => {
+    setAttached(null);
+    // The × goes with its chip: the focus goes to the text, where the question is written.
+    input.current?.focus();
+  };
   const warm = () => {
     // A guess at the next question: main starts the agent when it can, and never answers with an error that matters here.
     api().tutor.warm({ itemId: scope.id, conversationId }).catch(() => {});
@@ -118,6 +128,7 @@ export function Composer({ visible }: { visible: boolean }) {
         </div>
       )}
       <div className={cx('tutor-composer', opening && 'is-disabled', held && 'is-readonly')} data-testid="tutor-composer">
+        {attached !== null && <AttachedChip attached={attached} onRemove={detach} />}
         <textarea
           ref={input}
           className="tutor-input"

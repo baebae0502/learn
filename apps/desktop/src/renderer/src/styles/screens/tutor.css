@@ -774,6 +774,63 @@
   :root[data-window-inactive] .tutor-composer:has(> .tutor-input:focus) {
     box-shadow: inset 0 0 0 1px var(--border);
   }
+  /* The passage attached to the question (spec 8.4; mockup .attach): one chip over the text area — its page and words on one line, cut
+     with an ellipsis — and × to take it off. As high as a tool chip (22 · r6). */
+  .tutor-attach {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    align-self: flex-start;
+    max-width: 100%;
+    min-width: 0;
+    height: 22px; /* local: one chip size for tool and attachment chips (mockup .attach) */
+    padding: 0 var(--space-4) 0 var(--space-8);
+    border-radius: var(--radius-md);
+    background: var(--fill-hover);
+    color: var(--text-primary);
+    font: var(--type-footnote);
+  }
+  .tutor-attach .attach-label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    min-width: 0;
+    outline: none;
+  }
+  .tutor-attach .attach-label > .icon {
+    flex: none;
+    color: var(--text-secondary);
+  }
+  /* × (구간 떼기): 16 drawn, its press 28 square (spec 8.11) — the chip's 22 and 3 more each way into the room around it. */
+  .tutor-attach .x {
+    position: relative;
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 16px; /* local: the mockup's × */
+    height: 16px; /* local: the mockup's × */
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    outline: none;
+    cursor: default;
+  }
+  .tutor-attach .x::before {
+    content: '';
+    position: absolute;
+    inset: -6px;
+  }
+  /* The chip under the pointer shows its × as the way to take it off (mockup .attach.is-hover). */
+  .tutor-attach:hover .x,
+  .tutor-attach .x[data-pressed] {
+    background: var(--fill-pressed);
+  }
+  .tutor-attach .x[data-focus-visible] {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
+  }
   /* Two lines at rest, growing with its text to eight, then scrolling. */
   .tutor-input {
     display: block;

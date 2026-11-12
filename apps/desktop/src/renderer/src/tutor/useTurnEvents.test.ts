@@ -56,6 +56,15 @@ describe('which of the live and the stored answer is drawn', () => {
     // main saves what it has not sent yet (the 33 ms batch): the stored text may be a little ahead of the live one.
     expect(liveOver(thread(answer({ text: '읽은 쪽을 바탕으로 답합', tools: [read(41, 42)] })), live)).toBe(live);
   });
+  it('the live one of the tab\'s own question while the answer comes, even when the stored one is read ahead of the notices', () => {
+    // main's notices and its answers to the window's reads travel apart: a read can bring a tool or text the notices have not yet.
+    const own = { ...live, fromStart: true as const };
+    expect(liveOver(thread(answer({ tools: [read(1), read(41, 42)] })), own)).toBe(own);
+    expect(liveOver(thread(answer({ text: '앞서 받은 글 ', tools: [read(41, 42)] })), { ...own, text: '' })).toMatchObject({ fromStart: true });
+    expect(liveOver(thread(answer({ status: 'complete', text: '읽은 쪽을 바탕으로' })), own)).toBeNull();
+    // A notice keeps the mark.
+    expect(applyTurnEvent(own, ev({ kind: 'text', append: ' 답' }))).toMatchObject({ fromStart: true, text: '읽은 쪽을 바탕으로 답' });
+  });
   it('the stored one once the answer ended, or when the live one missed its beginning (a window reloaded mid-answer)', () => {
     expect(liveOver(thread(answer({ status: 'complete', text: '읽은 쪽을 바탕으로' })), live)).toBeNull();
     expect(liveOver(thread(answer({ text: '앞서 받은 글 ' })), { ...live, text: '그 뒤의 글' })).toBeNull();

@@ -33,4 +33,14 @@
     color: var(--text-tertiary);
     font-variant-numeric: tabular-nums;
   }
+  /* A second line under the name (mockup .tooltip.multi): the two stack, the note in secondary colour and wrapping in the 280. */
+  .tooltip.has-note {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+    padding: var(--space-4) var(--space-8);
+  }
+  .tooltip-note {
+    color: var(--text-secondary);
+  }
 }

@@ -1,8 +1,8 @@
 // The tutor's copy (spec 13: 합니다체; U+00A0 binds a determiner to its noun, a kind to its count, "Claude Code" and "이 Mac" into one
 // piece). T1a has one real agent and one company: the card says Claude Code and Anthropic, as the approved mockup does.
 // Rows join this file with the task that draws them: the mode segment, the consent card, the off state, the agent chooser, the
-// conversation (Task 17: the empty session, the chips, the sent-scope line and list, the lines under an answer, 최신으로), and the
-// composer with its agent button and menu (Task 18).
+// conversation (Task 17: the empty session, the chips, the sent-scope line and list, the lines under an answer, 최신으로), the
+// composer with its agent button and menu (Task 18), and the passage attached to a question (Task 19).
 import { SPIKE_FACTS, type AgentId } from '@learn/domain';
 import { euroRo } from './josa';
 
@@ -150,6 +150,17 @@ export const tutor = {
     /** Above the composer while another session's answer comes (AGENT_BUSY): the question waits in the composer. */
     waiting: '다른\u00a0세션의 답이 끝나면 보냅니다',
     dontSend: '보내지 않기',
+  },
+  /**
+   * The passage attached to the next question (spec 8.4, J46; the approved mockup's chip and its tooltip): its page and words on one
+   * line, the tooltip's second line when only part of the selection goes, and the ×.
+   */
+  attached: {
+    chip: (n: number, text: string) => `${n}쪽 · ${text}`,
+    tip: (n: number) => `질문에 붙은 구간 · ${n}쪽 — 질문과 함께 보냅니다`,
+    multipage: '여러 쪽에 걸친 선택은 첫 쪽의 글만 붙습니다.',
+    long: '앞 4,000자만 보냅니다.',
+    remove: '구간 떼기',
   },
   /**
    * The composer's agent button and its menu (spec 8.4, 8.7; the approved mockup: the button's tooltip, the disabled row's reason by

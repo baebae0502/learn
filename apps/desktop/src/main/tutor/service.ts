@@ -6,6 +6,7 @@ import {
 } from '@learn/domain';
 import type { LibraryContext } from '../library-context';
 import type { PrefsStore } from '../prefs';
+import { timeLast } from '../perf';
 import { mainStrings } from '../strings';
 import type { PromptOutcome } from './acp/client';
 import type { AgentDetector } from './agents/detect';
@@ -334,6 +335,41 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
     return { anchor: anchor.data, text: sel.text };
   };
 
+  /** tutor:ask up to the rows it writes; the agent's part runs after it answers (launch). */
+  const askNow = (i: TutorAskInput): TutorAskAnswer => {
+    const agent = precheck();
+    const asked: SessionKey = { itemId: i.itemId, conversationId: i.conversationId };
+    const busy = busyTurn(asked);
+    if (busy === 'unknown') throw new LearnError('AGENT_BUSY', 'Another answer is streaming.');
+    if (busy !== null) return { busyWith: { conversationId: busy.conversationId, messageId: busy.tutorMessageId } };
+    const ctx = d.context();
+    const target = targetOf(ctx, i.itemId, i.conversationId);
+    if (target === null) throw invalid();
+    const selection = passage(i.selection);
+    if (!guardPromptSelection({ revisionId: target.revisionId }, selection).ok) throw invalid();
+    const b = ctx.conversations.beginTurn({
+      conversationId: i.conversationId, itemId: i.itemId, revisionId: target.revisionId, agent, openedAtPage: i.reader.pageIndex,
+      user: {
+        kind: 'question', text: i.text,
+        // What was sent is known once the prompt is built.
+        sent: { selection: selection ? 1 : 0, replayedTurns: 0, preamble: false },
+        attached: selection && { anchor: selection.anchor, quote: selection.text, label: mainStrings.tutor.pageLabel(selection.anchor.pageIndex + 1) },
+      },
+      now: d.now(),
+    });
+    const key: SessionKey = { itemId: i.itemId, conversationId: b.conversationId };
+    if (b.created) {
+      d.supervisor.rekey(asked, key);
+      sessionsChanged('created', { itemId: i.itemId, conversationId: b.conversationId });
+    }
+    const conversation = conversationInput(b.conversationId, agent, target, i.reader);
+    launch({
+      key, agent, target, conversationId: b.conversationId, userMessageId: b.userMessageId, tutorMessageId: b.tutorMessageId,
+      userSeq: ctx.conversations.message(b.userMessageId)!.seq, question: i.text, selection, reader: i.reader, beforeAnswer: 'drop-pair', session: null, stopped: false,
+    }, conversation);
+    return { conversationId: b.conversationId, userMessageId: b.userMessageId, tutorMessageId: b.tutorMessageId };
+  };
+
   return {
     consent() {
       d.prefs.set({ tutor: { ...tutorPrefs(), consent: { version: CONSENT_VERSION, at: d.now() } } });
@@ -388,38 +424,9 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
       }
     },
 
+    // Timed for tutor-perf (spec 15: main's part of a send, up to the rows): all of it runs before the answer goes back.
     async ask(i) {
-      const agent = precheck();
-      const asked: SessionKey = { itemId: i.itemId, conversationId: i.conversationId };
-      const busy = busyTurn(asked);
-      if (busy === 'unknown') throw new LearnError('AGENT_BUSY', 'Another answer is streaming.');
-      if (busy !== null) return { busyWith: { conversationId: busy.conversationId, messageId: busy.tutorMessageId } };
-      const ctx = d.context();
-      const target = targetOf(ctx, i.itemId, i.conversationId);
-      if (target === null) throw invalid();
-      const selection = passage(i.selection);
-      if (!guardPromptSelection({ revisionId: target.revisionId }, selection).ok) throw invalid();
-      const b = ctx.conversations.beginTurn({
-        conversationId: i.conversationId, itemId: i.itemId, revisionId: target.revisionId, agent, openedAtPage: i.reader.pageIndex,
-        user: {
-          kind: 'question', text: i.text,
-          // What was sent is known once the prompt is built.
-          sent: { selection: selection ? 1 : 0, replayedTurns: 0, preamble: false },
-          attached: selection && { anchor: selection.anchor, quote: selection.text, label: mainStrings.tutor.pageLabel(selection.anchor.pageIndex + 1) },
-        },
-        now: d.now(),
-      });
-      const key: SessionKey = { itemId: i.itemId, conversationId: b.conversationId };
-      if (b.created) {
-        d.supervisor.rekey(asked, key);
-        sessionsChanged('created', { itemId: i.itemId, conversationId: b.conversationId });
-      }
-      const conversation = conversationInput(b.conversationId, agent, target, i.reader);
-      launch({
-        key, agent, target, conversationId: b.conversationId, userMessageId: b.userMessageId, tutorMessageId: b.tutorMessageId,
-        userSeq: ctx.conversations.message(b.userMessageId)!.seq, question: i.text, selection, reader: i.reader, beforeAnswer: 'drop-pair', session: null, stopped: false,
-      }, conversation);
-      return { conversationId: b.conversationId, userMessageId: b.userMessageId, tutorMessageId: b.tutorMessageId };
+      return timeLast('tutorAsk', () => askNow(i));
     },
 
     stop(messageId) {

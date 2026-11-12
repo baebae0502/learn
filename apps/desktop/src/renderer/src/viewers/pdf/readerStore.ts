@@ -3,6 +3,7 @@ import type { EventBus, PDFLinkService, PDFViewer } from 'pdfjs-dist/web/pdf_vie
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type { ReadingLocator, ReaderNav, ScrollModeName, SpreadModeName } from '@learn/domain';
 import { emptyHistory, type History } from './history';
+import type { OutlineCache } from './outlineCache';
 import type { ImageZoom, Rotation, Size } from '../image/imageFit';
 
 export type { ReaderNav };
@@ -122,6 +123,12 @@ export interface ReaderStore {
    */
   pendingJump: PendingJump | null;
   setPendingJump(j: PendingJump | null): void;
+  /**
+   * The outline of the open document, resolved as far as the tutor or the outline pane has asked (outlineCache.ts); null until it is
+   * loaded and once the document goes.
+   */
+  outline: OutlineCache | null;
+  setOutline(c: OutlineCache | null): void;
   setNoPages(source: 'host' | 'reader', reason: NoPages | null): void;
   setPdf(p: Partial<PdfState> | null): void;
   setHandle(h: PdfViewHandle | null): void;
@@ -141,6 +148,8 @@ export function createReaderStore(): StoreApi<ReaderStore> {
     setHistory: (history) => set({ history }),
     pendingJump: null,
     setPendingJump: (pendingJump) => set({ pendingJump }),
+    outline: null,
+    setOutline: (outline) => set({ outline }),
     setNoPages: (source, reason) => set((s) => (s.noPages[source] === reason ? s : { noPages: { ...s.noPages, [source]: reason } })),
     setPdf: (p) => set((s) => ({ pdf: p === null ? null : { ...(s.pdf ?? INITIAL_PDF), ...p } })),
     setHandle: (handle) => set({ handle }),

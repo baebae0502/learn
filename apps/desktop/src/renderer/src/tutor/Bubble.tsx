@@ -1,9 +1,10 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { Check, Copy } from 'lucide-react';
 import { citationCopyText, verifiedPages, type AgentId, type MessageView, type SourceChip } from '@learn/domain';
 import { t } from '../strings';
 import { IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
+import { perfMarkLatest } from '../ui/perfMarks';
 import { useCopyFeedback } from '../ui/useCopyFeedback';
 import { AnswerText } from './AnswerText';
 import { CitationChip, type CiteState } from './CitationChip';
@@ -77,6 +78,19 @@ function CopyAnswer({ message }: { message: MessageView }) {
 }
 
 /**
+ * tutor-perf's end of a send (T1a spec 15): `learn:tutor:first-text-paint` at the start of the frame that paints the first text of an
+ * answer heard as it came in. Once per answer; a stored one drawn again marks nothing.
+ */
+function useFirstTextPaint(coming: boolean, hasText: boolean): void {
+  const marked = useRef(false);
+  useLayoutEffect(() => {
+    if (!coming || !hasText || marked.current) return;
+    marked.current = true;
+    requestAnimationFrame(() => perfMarkLatest('tutor:first-text-paint'));
+  }, [coming, hasText]);
+}
+
+/**
  * The tutor's turn (design-spec 2.6): the tool chips over it, the answer on the left in --fill-hover (full width while it comes), then
  * copy, the line of how it ended and — in a session of several agents — whose answer it is. While `live` (the answer coming, heard from
  * its start) a cite of a page this turn read is a chip at once, any other "확인 중"; once it ended, the stored sources decide.
@@ -84,6 +98,7 @@ function CopyAnswer({ message }: { message: MessageView }) {
 export function TutorBubble({ message, live, mixed, target }: { message: MessageView; live: LiveTurn | null; mixed: boolean; target: CiteTarget }) {
   const streaming = live !== null || message.status === 'streaming';
   const text = live?.text ?? message.text;
+  useFirstTextPaint(live !== null, text !== '');
   const storedVerified = useMemo(() => verifiedPages(message.tools), [message.tools]);
   const verified = live?.verifiedSoFar ?? storedVerified;
   const sources = message.sources;

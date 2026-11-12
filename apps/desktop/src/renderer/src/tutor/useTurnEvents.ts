@@ -45,6 +45,9 @@ function tabShowing(conversationId: string) {
 export function useTurnEvents(): void {
   useLearnEvent('tutor:turn', (e) => {
     if (e.kind === 'done' || e.kind === 'failed') {
+      // Failed before any answer: its rows may be gone with it, and no stored copy will end the live turn of the tab's own question.
+      const tab = e.kind === 'failed' && e.phase === 'before' ? tabShowing(e.conversationId) : null;
+      if (tab?.getState().live?.tutorMessageId === e.messageId) tab.getState().setLive(null);
       void queryClient.invalidateQueries({ queryKey: keys.sessionThread(e.conversationId) });
       return;
     }

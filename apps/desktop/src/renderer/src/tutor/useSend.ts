@@ -5,6 +5,8 @@ import { api } from '../api';
 import { keys } from '../data/queries';
 import { queryClient } from '../data/query-client';
 import { useLearnEvent } from '../events';
+import { perfMarkLatest } from '../ui/perfMarks';
+import { outlineSnapshot } from '../viewers/pdf/outlineCache';
 import { useReader } from '../viewers/pdf/readerStore';
 import { readerScopes, useReaderScope, type ReaderScope } from '../viewers/readerScope';
 import { afterBusy } from './composerKeys';
@@ -19,6 +21,8 @@ import { useTutorPrefs } from './useTutorPrefs';
  */
 const useOnTheWay = create<{ ids: readonly string[] }>()(() => ({ ids: [] }));
 const onTheWay = (id: string): boolean => useOnTheWay.getState().ids.includes(id);
+/** Whether a question of tab `id` is on its way to main (its chip goes with it: a selection meanwhile is not attached). */
+export const questionOnTheWay = onTheWay;
 async function carrying(id: string, run: () => Promise<void>): Promise<void> {
   useOnTheWay.setState(({ ids }) => ({ ids: [...ids, id] }));
   try {
@@ -29,13 +33,13 @@ async function carrying(id: string, run: () => Promise<void>): Promise<void> {
 }
 
 /**
- * The reader's numbers a question carries: its page and page count. The outline is the next task's (its snapshot cache): until then a
- * question carries none, and says the outline is not complete. Null while the PDF is still opening.
+ * The reader's numbers a question carries: its page, its page count and its outline as far as the tab's cache has resolved it — never
+ * waited for (spec 5.1, J25, J63). Null while the PDF is still opening.
  */
 function readerNow(scope: ReaderScope): TutorAskInput['reader'] | null {
-  const pdf = scope.reader.getState().pdf;
+  const { pdf, outline } = scope.reader.getState();
   if (pdf?.ready !== true || pdf.pagesCount < 1) return null;
-  return { pageIndex: Math.min(Math.max(pdf.pageNumber, 1), pdf.pagesCount) - 1, pageCount: pdf.pagesCount, outline: [], outlineComplete: false, outlineTotal: 0 };
+  return { pageIndex: Math.min(Math.max(pdf.pageNumber, 1), pdf.pagesCount) - 1, pageCount: pdf.pagesCount, ...outlineSnapshot(outline) };
 }
 
 /** Whether the agents report this window has says the agent is 준비됨 (no report yet: not known to be). */
@@ -65,21 +69,23 @@ async function statusOf(busyWith: WaitingQuestion['busyWith']): Promise<MessageS
 }
 
 /**
- * tutor:ask for the tab of `scope`, and what its answer means for the tab (the caller carries the tab). Rows written: the draft goes,
- * the tab is on the session the question made, and its thread is read again, so the question's bubble shows at once. Another session's
- * answer still coming ({ busyWith }): the question waits in the composer — and goes at once if that answer has already ended, by the
- * status read now or by its end notice that came while the read was out (main may answer busy just before it ends the turn). Refused
- * before anything was written (offline, the agent not ready or its login): the question stays in the composer; the failure's notice is
- * the next task's. Answers whether the question is to be sent again now.
+ * tutor:ask for the tab of `scope`, and what its answer means for the tab (the caller carries the tab). The question carries the passage
+ * attached in the composer, if any. Rows written: the draft and the chip go, the tab is on the session the question made, and its thread
+ * is read again, so the question's bubble shows at once. Another session's answer still coming ({ busyWith }): the question waits in the
+ * composer with its chip — and goes at once if that answer has already ended, by the status read now or by its end notice that came
+ * while the read was out (main may answer busy just before it ends the turn). Refused before anything was written (offline, the agent
+ * not ready or its login): the question and its chip stay in the composer; the failure's notice is the next task's. Answers whether the
+ * question is to be sent again now.
  */
 async function ask(scope: ReaderScope, text: string): Promise<boolean> {
   const reader = readerNow(scope);
   if (reader === null) return false;
   const from = scope.tutor.getState().conversationId;
   const key = draftKey(from, scope.id);
+  const attached = scope.tutor.getState().attached;
   let answer: Awaited<ReturnType<ReturnType<typeof api>['tutor']['ask']>>;
   try {
-    answer = await api().tutor.ask({ itemId: scope.id, conversationId: from, text, selection: null, reader });
+    answer = await api().tutor.ask({ itemId: scope.id, conversationId: from, text, selection: attached === null ? null : { anchor: attached.anchor, text: attached.text }, reader });
   } catch {
     answer = { ok: false, code: 'INTERNAL', message: '', retryable: false };
   }
@@ -100,10 +106,18 @@ async function ask(scope: ReaderScope, text: string): Promise<boolean> {
     if (waiting === null || waiting.busyWith.messageId !== busyWith.messageId) return false;
     return waiting.ended === true || afterBusy(status) === 'send-now';
   }
-  // Only the text that went: a question let go of while it was on its way may have been edited since.
+  // Only the text that went: a question let go of while it was on its way may have been edited since. The same for the chip.
   if ((tab.drafts[key] ?? '').trim() === text) tab.setDraft(key, '');
+  if (attached !== null && tab.attached === attached) tab.setAttached(null);
   tab.setWaiting(null);
-  if (tab.conversationId === from) tab.setConversation(answer.data.conversationId);
+  if (tab.conversationId === from) {
+    tab.setConversation(answer.data.conversationId);
+    // This tab's own question: its answer is heard from the start (notices before this one made it already), whatever order main's
+    // notices and its answer to the read below arrive in — a read that came first must not leave the answer to the 2 s re-reads.
+    const { live, setLive } = scope.tutor.getState();
+    const id = answer.data.tutorMessageId;
+    setLive(live?.tutorMessageId === id ? { ...live, fromStart: true } : { tutorMessageId: id, text: '', tools: [], running: null, verifiedSoFar: new Set(), fromStart: true });
+  }
   void queryClient.invalidateQueries({ queryKey: keys.sessionThread(answer.data.conversationId) });
   return false;
 }
@@ -175,6 +189,8 @@ export async function sendQuestion(scope: ReaderScope, text: string, agent: Agen
   const question = text.trim();
   const tab = scope.tutor.getState();
   if (question === '' || agent === null || onTheWay(scope.id) || tab.waiting !== null || answerComingIn(scope) !== null || readerNow(scope) === null) return;
+  // Where tutor-perf times a send from (to its first text painted, Bubble.tsx).
+  perfMarkLatest('tutor:send');
   if (knownReady(agent)) {
     await carrying(scope.id, () => askAndFollow(scope, question));
     return;

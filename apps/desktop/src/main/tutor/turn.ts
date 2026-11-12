@@ -74,8 +74,10 @@ export async function runTurn(d: TurnDeps, t: TurnInput): Promise<TurnEnd> {
   let savedLen = 0;
   let anyUpdate = false;
   let toolSeen = false;
-  /** A tool call came after some text: the next text starts a paragraph of its own (Claude narrates before a tool, then answers). */
+  /** A new tool call came after some text: the next text starts a paragraph of its own (Claude narrates before a tool, then answers). */
   let toolAfterText = false;
+  /** The tool calls of this turn so far: a later update of one (its completion) is not a new call, and breaks no text. */
+  const calls = new Set<string>();
   let sawForeignTool = false;
   let timedOut = false;
   let failed = false;
@@ -123,7 +125,10 @@ export async function runTurn(d: TurnDeps, t: TurnInput): Promise<TurnEnd> {
     if (u.kind === 'activity') return;
     if (u.kind === 'tool') {
       toolSeen = true;
-      if (text !== '') toolAfterText = true;
+      if (!calls.has(u.call.toolCallId)) {
+        calls.add(u.call.toolCallId);
+        if (text !== '') toolAfterText = true;
+      }
       if (!u.learn && !sawForeignTool) { sawForeignTool = true; d.interrupt('always'); }
       return;
     }

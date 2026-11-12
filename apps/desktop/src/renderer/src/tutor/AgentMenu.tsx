@@ -36,12 +36,13 @@ function rowsOf(report: { agents: AgentStatus[]; fake: AgentStatus | null } | nu
 
 /**
  * The composer's agent button and its menu (spec 8.4, 8.7; design-spec 7.3): the chosen agent's name and ▾ when it is ready, its state
- * too in the warning colour when it is not ("Claude Code · 로그인 필요 ▾"), "가짜 에이전트 ▾" with its flask for the fake. Narrow, the label
- * gives way from its state end (the tooltip keeps all of it), so the foot's other controls stay in the composer. The menu: the agents
- * (the chosen one ✓, kept on its row when that row is off), a separator, 에이전트 고르기… (the registry's command). Another agent is
- * chosen through main, which checks it is ready (the next question of this session goes to it). It opens 4 px below the button, or
- * above it when there is no room below. `visible`: the panel can be seen (the agents report is read only then). `disabled`: the
- * composer is off (the item still opens).
+ * too in the warning colour when it is not ("Claude Code · 로그인 필요 ▾"), "가짜 에이전트 ▾" with its flask for the fake. The name is
+ * one piece that never breaks or shortens; while the foot shows a status of the moment the state words step aside as a whole (the
+ * flag, the colour and the tooltip keep it on screen, and it stays in the button's name), and a narrow composer drops the flag too.
+ * The menu: the agents (the chosen one ✓, kept on its row when that row is off), a separator, 에이전트 고르기… (the registry's
+ * command). Another agent is chosen through main, which checks it is ready (the next question of this session goes to it). It opens
+ * 4 px below the button, or above it when there is no room below. `visible`: the panel can be seen (the agents report is read only
+ * then). `disabled`: the composer is off (the item still opens).
  */
 export function AgentMenu({ visible, disabled = false }: { visible: boolean; disabled?: boolean }) {
   const current = useTutorPrefs().agent;
@@ -54,7 +55,7 @@ export function AgentMenu({ visible, disabled = false }: { visible: boolean; dis
   const state = status?.state ?? 'ready';
   const fake = current === 'fake';
   const flag = fake ? FlaskConical : state === 'ready' ? null : FLAG[state].icon;
-  const label = fake || state === 'ready' ? name : words.withState(name, agents.flag[state]);
+  const stateWords = fake || state === 'ready' ? null : words.stateAfterName(agents.flag[state]);
   const tip = fake ? words.fakeTip : words.tip(name, agents.flag[state]);
   const rows = rowsOf(report);
   const choose = commandById('tutor.chooseAgent').label;
@@ -75,8 +76,9 @@ export function AgentMenu({ visible, disabled = false }: { visible: boolean; dis
           data-testid="tutor-agent"
           data-state={fake ? 'fake' : state}
         >
-          {flag !== null && <Icon icon={flag} size="sm" />}
-          <span className="ellipsis">{label}</span>
+          {flag !== null && <Icon icon={flag} size="sm" className="flag" />}
+          <span className="name">{name}</span>
+          {stateWords !== null && <span className="state ellipsis">{stateWords}</span>}
           <Icon icon={ChevronDown} size="xs" />
         </AriaButton>
       </Tooltip>

@@ -5,6 +5,7 @@ import { usePanelFocusRequest } from '../shell/panelFocus';
 import { useReaderScope } from '../viewers/readerScope';
 import { AgentChooser } from './AgentChooser';
 import { Composer } from './Composer';
+import { createComposerFocus } from './composerFocus';
 import { composerKey } from './composerKeys';
 import { ConsentCard } from './ConsentCard';
 import { Conversation } from './Conversation';
@@ -40,7 +41,8 @@ function useEscStops(streaming: boolean): void {
   useEffect(() => {
     if (!streaming) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (composerKey(e, { hasText: false, streaming: true, canSend: false }) !== 'stop') return;
+      // A held esc repeats: the one stop is its first press.
+      if (e.repeat || composerKey(e, { hasText: false, streaming: true, canSend: false }) !== 'stop') return;
       const at = document.activeElement;
       if (!(at instanceof Element) || at.closest('[data-pane="inspector"]') === null) return;
       stopAnswer(scope);
@@ -94,21 +96,19 @@ export function TutorPanel({ visible }: { visible: boolean }) {
     landing.current = null;
     document.querySelector<HTMLElement>(SELECTOR[want])?.focus();
   }, [state]);
-  // 시작 pressed in the chooser (the focus in it): the composer's text area takes the focus once the session is on screen, through the
-  // panel's focus request (which lands where F6 does). main's answer and its prefs notice may come in either order, so the request is
-  // made now when the session already shows, else at the state change.
+  // 시작 pressed in the chooser (the focus in it): the composer's text area takes the focus once this tab's session is on screen,
+  // through the panel's focus request (which lands where F6 does). main's answer and its prefs notice may come in either order.
+  const tabId = useReaderScope().id;
   const stateNow = useRef(state);
   stateNow.current = state;
-  const composerFocus = useRef(false);
+  const owedFocus = useRef(createComposerFocus());
   useEffect(() => {
-    if (state !== 'ready' || !composerFocus.current) return;
-    composerFocus.current = false;
-    usePanelFocusRequest.getState().request();
-  }, [state]);
+    if (owedFocus.current.step(state, tabId)) usePanelFocusRequest.getState().request();
+  }, [state, tabId]);
   const started = (focusInside: boolean) => {
     if (focusInside) {
-      if (stateNow.current === 'ready') usePanelFocusRequest.getState().request();
-      else composerFocus.current = true;
+      owedFocus.current.owe(tabId);
+      if (owedFocus.current.step(stateNow.current, tabId)) usePanelFocusRequest.getState().request();
     }
     setChoosing(false);
   };

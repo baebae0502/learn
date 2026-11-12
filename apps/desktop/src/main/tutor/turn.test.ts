@@ -16,6 +16,8 @@ const text = (t: string): SessionUpdate => ({ kind: 'text', text: t });
 const activity: SessionUpdate = { kind: 'activity' };
 const learnTool: SessionUpdate = { kind: 'tool', call: { toolCallId: 't', title: null, kind: null, toolName: null, rawInput: null }, learn: true };
 const foreignTool: SessionUpdate = { kind: 'tool', call: { toolCallId: 'b', title: 'Bash', kind: 'execute', toolName: null, rawInput: null }, learn: false };
+/** A Learn tool call by its id: a second notice with the same id is an update of that call. */
+const call = (id: string): SessionUpdate => ({ kind: 'tool', call: { toolCallId: id, title: null, kind: null, toolName: null, rawInput: null }, learn: true });
 
 /** Timers that run only when the test advances them. */
 function fakeTimers() {
@@ -121,12 +123,12 @@ describe('runTurn', () => {
     const r = rig(async (o) => { on = o; return g.p; });
     const run = runTurn(r.d, t);
     // A tool call before any text: nothing to keep apart.
-    on(learnTool); on(text('No outline; read the first pages.'));
-    on(learnTool); on(learnTool); on(text('먼저 짚어 둘 점이 '));
+    on(call('c1')); on(text('No outline; read the first pages.'));
+    on(call('c2')); on(call('c3')); on(text('먼저 짚어 둘 점이 '));
     on(text('있습니다.'));
     // Text that already ends a paragraph gets no second break; one that ends a line gets the other half.
-    on(text('\n\n')); on(learnTool); on(text('셋째.'));
-    on(text('\n')); on(learnTool); on(text('넷째.'));
+    on(text('\n\n')); on(call('c4')); on(text('셋째.'));
+    on(text('\n')); on(call('c5')); on(text('넷째.'));
     r.t.advance(TUTOR_LIMITS.textBatchMs);
     g.resolve(OK);
     await run;
@@ -134,6 +136,21 @@ describe('runTurn', () => {
     expect(row(t.tutorMessageId).text).toBe(want);
     // What streamed out is the same text: nothing dropped, the break sent with the text after the tool.
     expect(appended(r.events).join('')).toBe(want);
+  });
+
+  it('a late update of a tool call already announced puts no break in the text; only a new call does', async () => {
+    const t = begin();
+    const g = gate<PromptOutcome>(); let on!: (u: SessionUpdate) => void;
+    const r = rig(async (o) => { on = o; return g.p; });
+    const run = runTurn(r.d, t);
+    on(text('Before.')); on(call('t1')); on(text('첫 문장은 '));
+    on(call('t1')); // its completion, late: the answer is already being written
+    on(text('이어집니다.'));
+    on(call('t2')); on(text('새 문단.'));
+    r.t.advance(TUTOR_LIMITS.textBatchMs);
+    g.resolve(OK);
+    await run;
+    expect(row(t.tutorMessageId).text).toBe('Before.\n\n첫 문장은 이어집니다.\n\n새 문단.');
   });
 
   it('saves at once when 2,000 characters have come since the last save', async () => {

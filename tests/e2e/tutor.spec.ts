@@ -399,7 +399,12 @@ test('the fake agent: its own group and badge in a test build, chosen and starte
     await expect(page.getByTestId('tutor-chooser')).toBeVisible();
     await expect(band).toBeVisible();
     await expect(dev.getByRole('radio', { name: /가짜 에이전트/ })).toBeChecked();
+    // While the chooser shows, no agent runs: the fake's process from the first 시작 closed with the session out of sight, and nothing in
+    // the chooser starts one before 시작.
+    await expect.poll(async () => (await tutorProcesses(app)).count).toBe(0);
     await claudeRow(page).click();
+    await expect(page.getByTestId('agent-start')).toHaveText('Claude Code로 시작');
+    expect((await tutorProcesses(app)).count).toBe(0);
     await page.getByTestId('agent-start').click();
     await expect(page.getByTestId('tutor-panel')).toHaveAttribute('data-state', 'ready');
     await expect(band).toHaveCount(0);
@@ -1007,6 +1012,22 @@ async function answersOf(page: Page, itemId: string): Promise<Array<{ conversati
     return out;
   }, itemId);
 }
+/**
+ * The agent button while a status line shows: "Claude Code" whole (its box not clipped, clear of the ▾), the state words stepped aside
+ * as a whole but still in the button's name (`accessibleName`), and the foot not overflowing.
+ */
+async function expectAgentNameWhole(page: Page, accessibleName: string): Promise<void> {
+  const button = page.getByTestId('tutor-agent');
+  const name = button.locator('.name');
+  await expect(name).toHaveText('Claude Code');
+  expect(await name.evaluate((el) => el.scrollWidth <= el.clientWidth), 'the name is clipped').toBe(true);
+  const [n, chevron] = [(await name.boundingBox())!, (await button.locator('.lucide-chevron-down').boundingBox())!];
+  expect(n.x + n.width, 'the name runs into the ▾').toBeLessThanOrEqual(chevron.x + 0.5);
+  expect((await button.locator('.state').boundingBox())!.width, 'the state words are on screen').toBeLessThanOrEqual(1);
+  await expect(button).toHaveAccessibleName(accessibleName);
+  expect(await page.getByTestId('tutor-composer').locator('.foot').evaluate((el) => el.scrollWidth <= el.clientWidth), 'the foot scrolls').toBe(true);
+}
+
 /** A popover that has finished coming in: its geometry is final. */
 const popoverSettled = (page: Page, selector: string) =>
   expect.poll(() => page.locator(selector).evaluate((el) => el.getAnimations({ subtree: true }).length + (el.hasAttribute('data-entering') ? 1 : 0))).toBe(0);
@@ -1099,10 +1120,17 @@ test('the composer: ↩ sends and ⇧↩ breaks the line; the question shows at 
     await page.keyboard.press('Enter');
     await expect(answer.last()).toHaveAttribute('data-status', 'streaming');
     await expect.poll(() => prompts(app)).toBe(3);
+    // And esc held down (its key repeating) stops once: one tutor:stop, not one per repeat.
     await page.getByTestId('tutor-new-session').focus();
-    await page.keyboard.press('Escape');
+    const stopsBefore = (await ipcCalls(app))['tutor:stop'] ?? 0;
+    const cdp = await page.context().newCDPSession(page);
+    const esc = { key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 };
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', ...esc });
+    for (let i = 0; i < 3; i++) await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', ...esc, autoRepeat: true });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...esc });
     await expect(answer.last()).toHaveAttribute('data-status', 'stopped');
     await expect(answer).toHaveCount(3);
+    expect((await ipcCalls(app))['tutor:stop']).toBe(stopsBefore + 1);
     expect(await prompts(app)).toBe(3);
   } finally {
     await app.close();
@@ -1224,6 +1252,10 @@ test('the agent not known as ready does not hold the send back: ↩ checks it ag
     fs.writeFileSync(path.join(dir, 'bin', 'claude'), `#!/bin/sh\n/bin/sleep 1.5\necho "${READY.cli} (Claude Code)"\n`, { mode: 0o755 });
     const agentsBefore = (await ipcCalls(app))['tutor:agents'] ?? 0;
     const asksBefore = (await ipcCalls(app))['tutor:ask'] ?? 0;
+    // At the narrowest tutor (320), where the line and the button share the least room.
+    await (await mainWindow(app)).evaluate((w) => w.setContentSize(1000, w.getContentSize()[1]!));
+    await expect.poll(() => page.getByTestId('inspector-panel').evaluate((e) => Math.round(e.getBoundingClientRect().width))).toBe(320);
+    await composerInput(page).focus();
     await page.keyboard.press('Enter');
     await page.keyboard.press('Enter');
     const checking = page.getByTestId('tutor-checking');
@@ -1231,6 +1263,10 @@ test('the agent not known as ready does not hold the send back: ↩ checks it ag
     await expect(checking.locator('.spinner')).toHaveCount(1);
     await expectDisabledReason(page.getByTestId('tutor-send'), '에이전트를 찾는 중입니다');
     await expect(composerInput(page)).toHaveAttribute('readonly', '');
+    // The button keeps "Claude Code" whole: its state words step aside as a whole (still its name), and the narrow composer drops the
+    // flag; nothing leaves the foot.
+    await expectAgentNameWhole(page, 'Claude Code · 로그인 필요');
+    await expect(button.locator('.flag')).toBeHidden();
     await expectNoSeriousA11y(page, 'tutor composer while the agent is checked again');
     await expect(page.getByTestId('tutor-question').locator('.bubble')).toHaveText('다시 묻습니다.');
     await expect(checking).toHaveCount(0);
@@ -1244,7 +1280,7 @@ test('the agent not known as ready does not hold the send back: ↩ checks it ag
   }
 });
 
-test('the foot never overflows: while an answer comes, the agent button\'s longest not-ready label gives way, at tutor widths 380 and 320, and 중지 stays in the composer', async ({}, testInfo) => {
+test('the foot never overflows: while an answer comes, the agent button\'s longest not-ready state steps aside whole and "Claude Code" stays whole, at tutor widths 380 and 320, and 중지 stays in the composer', async ({}, testInfo) => {
   const dir = testInfo.outputPath('npm');
   // Claude Code's fake logs where tutorFakeLog reads (the isolated environment drops the fake's own variables).
   const log = path.join(dirs(testInfo)[1], 'fake-agent.log');
@@ -1286,8 +1322,10 @@ test('the foot never overflows: while an answer comes, the agent button\'s longe
       const [c, b] = [(await page.getByTestId('tutor-composer').boundingBox())!, (await stop.boundingBox())!];
       expect(b.x + b.width, `중지 at ${tutor} is in the composer`).toBeLessThanOrEqual(c.x + c.width);
       await expect(page.getByTestId('tutor-answering')).toBeVisible();
-      // The label gave way at its state end; the tooltip has it all.
-      expect(await button.locator('.ellipsis').evaluate((el) => el.scrollWidth > el.clientWidth), `the label at ${tutor} is cut`).toBe(true);
+      // The name stays whole; the state steps aside as a whole (the tooltip has it all); the flag goes only below about 300 of composer.
+      await expectAgentNameWhole(page, 'Claude Code · 지원하지 않는 버전');
+      if (tutor === 380) await expect(button.locator('.flag')).toBeVisible();
+      else await expect(button.locator('.flag')).toBeHidden();
     }
     await hoverLikeUser(page, 'tutor-agent');
     await expectTooltipText(page, '에이전트: Claude Code · 지원하지 않는 버전 — 누르면 에이전트를 바꿉니다', 'tutor-agent');

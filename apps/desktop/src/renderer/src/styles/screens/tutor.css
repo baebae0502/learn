@@ -821,14 +821,39 @@
     padding: 0;
   }
   /* The agent button: the name never breaks; not ready (its state after the name) and the fake in the warning colour. */
-  /* The agent button gives way first when the foot is narrow: its label ends in an ellipsis from the state end (the tooltip has it
-     all), never pushing the status or 보내기 / 중지 out of the composer. */
+  /* The agent button gives way first when the foot is narrow, never pushing the status or 보내기 / 중지 out of the composer. Its name
+     is one piece that never shortens; the state words after it give way as a whole (below), an ellipsis only as the last resort. */
   .tutor-agent {
     flex: 0 1 auto;
     min-width: 0;
   }
-  .tutor-agent .ellipsis {
+  .tutor-agent .name {
+    flex: none;
+    white-space: nowrap;
+  }
+  /* The state words follow the name with their own space (" · 로그인 필요"), not the button's gap. */
+  .tutor-agent .state {
     flex: 0 1 auto;
+    margin-left: calc(var(--space-6) * -1);
+  }
+  /* While the foot shows a status of the moment, the state words step aside whole: out of sight, still in the button's name (the flag,
+     the colour and the tooltip say it on screen). */
+  .tutor-composer:has(.tutor-status) .tutor-agent .state {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  /* A composer narrower than about 300 then drops the flag too (the colour and the tooltip keep the state). */
+  .tutor-composer {
+    container-type: inline-size;
+  }
+  @container (max-width: 300px) {
+    .foot:has(> .tutor-status) .tutor-agent .flag {
+      display: none;
+    }
   }
   /* The status of the moment ("답하는 중…", "에이전트를 찾는 중…") keeps its words whole. */
   .tutor-status {

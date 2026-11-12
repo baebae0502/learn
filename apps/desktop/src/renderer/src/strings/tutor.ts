@@ -156,7 +156,8 @@ export const tutor = {
    * state, the fake row's tooltip). The agent's name is one piece wherever a tooltip may wrap.
    */
   agentMenu: {
-    withState: (name: string, state: string) => `${name} · ${state}`,
+    /** After the name, a piece of its own ("Claude Code" + " · 로그인 필요"): it may step aside whole while the name stays. */
+    stateAfterName: (state: string) => `\u00a0· ${state}`,
     tip: (name: string, state: string) => `에이전트: ${String(name).replace(/ /g, '\u00a0')} · ${state} — 누르면 에이전트를 바꿉니다`,
     fakeTip: '가짜 에이전트 · 개발·데모 빌드에서만 보입니다',
     disabled: (name: string, state: string) => `${name} — ${state}`,

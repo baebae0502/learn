@@ -22,7 +22,7 @@ export function composerKey(
 }
 
 /**
- * After tutor:ask's { busyWith }: the other answer's status as sessions:get reads it now (M19). That answer may have ended before the
+ * After tutor:ask's { busyWith }: the other answer's status as sessions:get reads it now. That answer may have ended before the
  * busy answer came back, and then no end notice is still to come: the question goes at once. Otherwise it waits for that notice.
  */
 export function afterBusy(status: MessageStatus | null): 'wait' | 'send-now' {

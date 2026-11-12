@@ -32,6 +32,15 @@ const prefs = (page: Page) => page.evaluate(() => window.learn.prefs.get());
 /** The calls that would start or probe an agent, or tell main a session is on screen. */
 const tutorCalls = async (app: ElectronApplication) => Object.entries(await ipcCalls(app)).filter(([k]) => /^tutor:(agents|chooseAgent|view|warm|ask|stop|resend|reground)$/.test(k));
 
+/** From nowhere, F6 until the focus is in the right pane: where F6 lands there is the test's. */
+async function f6IntoPanel(page: Page): Promise<void> {
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  for (let i = 0; i < 4; i++) {
+    await page.keyboard.press('F6');
+    if (await page.evaluate(() => document.activeElement?.closest('[data-pane]')?.getAttribute('data-pane') === 'inspector')) break;
+  }
+}
+
 async function openPaper(page: Page): Promise<void> {
   await importPaths(page, [PAPER]);
   await openItem(page, 'paper-100');
@@ -105,11 +114,7 @@ test('the focus follows every state change of the panel, with the keyboard: 나�
     const card = page.getByTestId('tutor-consent');
     await expect(card).toBeVisible();
     // Into the panel by F6 and Tab to the card's buttons: the keyboard's way, no .focus().
-    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-    for (let i = 0; i < 4; i++) {
-      await page.keyboard.press('F6');
-      if (await page.evaluate(() => document.activeElement?.closest('[data-pane]')?.getAttribute('data-pane') === 'inspector')) break;
-    }
+    await f6IntoPanel(page);
     await expect(page.getByRole('tab', { name: '튜터' })).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(card.getByRole('button', { name: '나중에' })).toBeFocused();
@@ -364,7 +369,7 @@ test('a search that takes longer than 300 ms says so, and 다시 찾기 keeps th
   }
 });
 
-test('the fake agent: its own group and badge in a test build, chosen and started, and the band says what it is', async ({}, testInfo) => {
+test('the fake agent: its own group and badge in a test build, chosen and started, and the band says what it is; 시작 puts the focus in the composer', async ({}, testInfo) => {
   const { app, page } = await atChooser(testInfo, READY);
   try {
     const dev = page.getByTestId('agent-dev-group');
@@ -399,13 +404,17 @@ test('the fake agent: its own group and badge in a test build, chosen and starte
     await expect(page.getByTestId('tutor-panel')).toHaveAttribute('data-state', 'ready');
     await expect(band).toHaveCount(0);
     expect(((await prefs(page)) as { data: { tutor: { agent: string } } }).data.tutor.agent).toBe('claude');
-    expect((await tutorProcesses(app)).count).toBe(0);
+    // 시작 was pressed in the chooser: the composer takes the focus, and that focus starts the agent ahead of a question — one process,
+    // never two (the fake's, started the same way after the first 시작, closed when the chooser showed again).
+    await expect(composerInput(page)).toBeFocused();
+    await expect.poll(async () => (await tutorProcesses(app)).count).toBe(1);
+    expect((await tutorProcesses(app)).max).toBe(1);
   } finally {
     await app.close();
   }
 });
 
-test('↩ on the chosen radio starts it, and ↩ on 다시 찾기 searches and starts nothing', async ({}, testInfo) => {
+test('↩ on the chosen radio starts it and the composer takes the focus, and ↩ on 다시 찾기 searches and starts nothing', async ({}, testInfo) => {
   const { app, page } = await atChooser(testInfo, READY);
   try {
     await expect(claudeRow(page).getByRole('radio')).toBeFocused();
@@ -418,6 +427,8 @@ test('↩ on the chosen radio starts it, and ↩ on 다시 찾기 searches and s
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('tutor-panel')).toHaveAttribute('data-state', 'ready');
     expect(((await prefs(page)) as { data: { tutor: { agent: string } } }).data.tutor.agent).toBe('claude');
+    // The keyboard is where it was: in the composer that took the chooser's place.
+    await expect(composerInput(page)).toBeFocused();
   } finally {
     await app.close();
   }
@@ -837,7 +848,7 @@ test('a cite of a page the answer did not read: 확인 중 while it comes, 출�
   }
 });
 
-test('an answer in Markdown is drawn as its blocks: a numbered list with chips in its items and a code block under one, bold, inline code, a quote, a nested list; a tag stays text', async ({}, testInfo) => {
+test('an answer in Markdown is drawn as its blocks: the line before its page read apart, a numbered list with chips in its items and a code block under one, bold, inline code, a quote, a nested list; a tag stays text', async ({}, testInfo) => {
   const { app, page, itemId } = await atSession(testInfo);
   try {
     await tutorFakeScript(app, 'markdown');
@@ -845,9 +856,11 @@ test('an answer in Markdown is drawn as its blocks: a numbered list with chips i
     await turnEnded(page, asked.conversationId, asked.tutorMessageId);
     const body = page.getByTestId('tutor-answer-text');
     await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'complete');
+    // What the agent wrote before it read its pages is a paragraph of its own, apart from the answer after the read.
+    await expect(body.locator(':scope > p').first()).toHaveText('I will read the pages first.');
     // The heading is a bold paragraph; the paragraph's bold stays bold.
-    await expect(body.locator(':scope > p').first().locator('strong')).toHaveText('요점');
-    await expect(body.locator(':scope > p').nth(1).locator('strong')).toHaveText('세 단계');
+    await expect(body.locator(':scope > p').nth(1).locator('strong')).toHaveText('요점');
+    await expect(body.locator(':scope > p').nth(2).locator('strong')).toHaveText('세 단계');
     // A numbered list of three items: the paragraph and the code block under the second stay in it. After the quote the list goes on
     // at its own number.
     const lists = body.locator(':scope > ol');
@@ -858,7 +871,7 @@ test('an answer in Markdown is drawn as its blocks: a numbered list with chips i
     await expect(lists.nth(1).locator(':scope > li')).toHaveCount(1);
     await expect(lists.nth(1).getByTestId('cite-chip')).toHaveText('42쪽');
     // 8 px between blocks: from the paragraph's last line to the list's first.
-    const para = body.locator(':scope > p').nth(1);
+    const para = body.locator(':scope > p').nth(2);
     expect(Math.abs((await ol.evaluate((el) => el.getBoundingClientRect().top)) - (await para.evaluate((el) => el.getBoundingClientRect().bottom)) - 8)).toBeLessThanOrEqual(1);
     expect(await ol.evaluate((el) => getComputedStyle(el).listStyleType)).toBe('decimal'); // its numbers show
     expect(await body.locator(':scope > ul').evaluate((el) => getComputedStyle(el).listStyleType)).toBe('disc');
@@ -998,7 +1011,7 @@ async function answersOf(page: Page, itemId: string): Promise<Array<{ conversati
 const popoverSettled = (page: Page, selector: string) =>
   expect.poll(() => page.locator(selector).evaluate((el) => el.getAnimations({ subtree: true }).length + (el.hasAttribute('data-entering') ? 1 : 0))).toBe(0);
 
-test('the composer: ↩ sends and ⇧↩ breaks the line; the question shows at once; while the answer comes the text is read only, 답하는 중… and 중지; esc in the panel stops it', async ({}, testInfo) => {
+test('the composer: ↩ sends and ⇧↩ breaks the line; the question shows at once; while the answer comes the text is read only, 답하는 중… and 중지; one esc stops it from 중지 (its tooltip open) or from the head; 보내기 and 중지 are one stop', async ({}, testInfo) => {
   const { app, page } = await atSession(testInfo);
   try {
     await tutorFakeScript(app, 'slow');
@@ -1042,25 +1055,55 @@ test('the composer: ↩ sends and ⇧↩ breaks the line; the question shows at 
     await expect.poll(() => prompts(app)).toBe(1);
     await hoverLikeUser(page, 'tutor-stop');
     await expectTooltipText(page, /^중지\s*(esc|Esc)$/, 'tutor-stop');
+    await page.mouse.move(400, 400);
     // Nothing can be typed meanwhile (the next question is written once the answer ended: spec 8.4).
     await box.focus();
     await page.keyboard.insertText('더');
     await expect(box).toHaveValue('');
     await expectNoSeriousA11y(page, 'tutor composer while an answer comes');
-    // esc from the conversation, not only from the text area: anywhere in the panel. (An open tooltip takes the first esc for itself, as
-    // every tooltip does: the pointer leaves 중지 first.)
-    await page.mouse.move(400, 400);
-    await expect(page.getByRole('tooltip')).toHaveCount(0);
-    await page.getByTestId('tutor-log').focus();
+    // The keyboard on 중지 (text area → agent button → 중지), its tooltip open: one esc stops.
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId('tutor-agent')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(stop).toBeFocused();
+    await expect(page.getByRole('tooltip')).toHaveText(/^중지\s*(esc|Esc)$/);
     await page.keyboard.press('Escape');
-    await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'stopped');
+    const answer = page.getByTestId('tutor-answer');
+    await expect(answer).toHaveAttribute('data-status', 'stopped');
     await expect(page.getByTestId('tutor-ended')).toHaveText('중지함');
     await expect(page.getByTestId('tutor-said')).toHaveText('답을 중지했습니다');
     await expect(page.getByTestId('tutor-answering')).toHaveCount(0);
-    await expect(send).toBeVisible();
+    // 중지 and 보내기 are one stop: the focus is still on it, now 보내기 (off: no text).
+    await expect(send).toBeFocused();
     await expect(box).not.toHaveAttribute('readonly');
     await expect(box).toHaveAttribute('placeholder', '질문을 입력하세요');
     expect(await prompts(app)).toBe(1);
+
+    // Space on 보내기 sends, and the focus stays on the button that is now 중지; Space on it stops, and the focus is on 보내기 again.
+    await box.click();
+    await page.keyboard.insertText('한 번 더 천천히 답해 주세요.');
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    await expect(send).toBeFocused();
+    await page.keyboard.press('Space');
+    await expect(answer.last()).toHaveAttribute('data-status', 'streaming');
+    await expect(stop).toBeFocused();
+    await expect.poll(() => prompts(app)).toBe(2);
+    await page.keyboard.press('Space');
+    await expect(answer.last()).toHaveAttribute('data-status', 'stopped');
+    await expect(send).toBeFocused();
+
+    // esc from the panel's head (새 세션, which stays on while the answer comes) stops too.
+    await box.click();
+    await page.keyboard.insertText('세 번째로 천천히 답해 주세요.');
+    await page.keyboard.press('Enter');
+    await expect(answer.last()).toHaveAttribute('data-status', 'streaming');
+    await expect.poll(() => prompts(app)).toBe(3);
+    await page.getByTestId('tutor-new-session').focus();
+    await page.keyboard.press('Escape');
+    await expect(answer.last()).toHaveAttribute('data-status', 'stopped');
+    await expect(answer).toHaveCount(3);
+    expect(await prompts(app)).toBe(3);
   } finally {
     await app.close();
   }
@@ -1110,10 +1153,13 @@ test('the agent button and its menu: the fake checked, a Claude Code that needs 
     expect(Math.abs(m.y + m.height + 4 - b.y)).toBeLessThanOrEqual(1);
     expect(Math.abs(m.x - b.x)).toBeLessThanOrEqual(1);
     await expectNoSeriousA11y(page, 'tutor agent menu');
-    // The keyboard passes over the row that is off.
+    // The keyboard moves through the rows that can be chosen and passes over the one that is off: the first row it reaches is the fake,
+    // below Claude Code, then 에이전트 고르기….
     await page.keyboard.press('ArrowDown');
-    await page.keyboard.press('ArrowDown');
+    await expect(fake).toHaveAttribute('data-focused', 'true');
     await expect(claude).not.toHaveAttribute('data-focused');
+    await page.keyboard.press('ArrowDown');
+    await expect(menu.getByTestId('tutor-agent-choose')).toHaveAttribute('data-focused', 'true');
 
     // 에이전트 고르기… is the registry's command: the chooser shows.
     await menu.getByRole('menuitem', { name: '에이전트 고르기…' }).click();
@@ -1172,17 +1218,81 @@ test('the agent not known as ready does not hold the send back: ↩ checks it ag
     await expectDisabledReason(page.getByTestId('tutor-send'), null);
 
     // Logged in, in a terminal: ↩ checks Claude Code again (the window's one check), then sends; a second ↩ meanwhile does nothing.
+    // The check is slow here (its version answers after 1.5 s): past 300 ms the composer says so, as the chooser does, and 보내기 is off
+    // with that reason.
     install(READY);
+    fs.writeFileSync(path.join(dir, 'bin', 'claude'), `#!/bin/sh\n/bin/sleep 1.5\necho "${READY.cli} (Claude Code)"\n`, { mode: 0o755 });
     const agentsBefore = (await ipcCalls(app))['tutor:agents'] ?? 0;
     const asksBefore = (await ipcCalls(app))['tutor:ask'] ?? 0;
     await page.keyboard.press('Enter');
     await page.keyboard.press('Enter');
+    const checking = page.getByTestId('tutor-checking');
+    await expect(checking).toHaveText('에이전트를 찾는 중…');
+    await expect(checking.locator('.spinner')).toHaveCount(1);
+    await expectDisabledReason(page.getByTestId('tutor-send'), '에이전트를 찾는 중입니다');
+    await expect(composerInput(page)).toHaveAttribute('readonly', '');
+    await expectNoSeriousA11y(page, 'tutor composer while the agent is checked again');
     await expect(page.getByTestId('tutor-question').locator('.bubble')).toHaveText('다시 묻습니다.');
+    await expect(checking).toHaveCount(0);
     await expect(button).toHaveText('Claude Code');
     await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', /^(streaming|complete)$/);
     expect((await ipcCalls(app))['tutor:agents']).toBe(agentsBefore + 1);
     expect((await ipcCalls(app))['tutor:ask']).toBe(asksBefore + 1);
     await expect(page.getByTestId('tutor-question')).toHaveCount(1);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the foot never overflows: while an answer comes, the agent button\'s longest not-ready label gives way, at tutor widths 380 and 320, and 중지 stays in the composer', async ({}, testInfo) => {
+  const dir = testInfo.outputPath('npm');
+  // Claude Code's fake logs where tutorFakeLog reads (the isolated environment drops the fake's own variables).
+  const log = path.join(dirs(testInfo)[1], 'fake-agent.log');
+  const install = (l: Layout) => {
+    fs.rmSync(dir, { recursive: true, force: true });
+    return installFakeAgents(dir, { ...l, log });
+  };
+  // Claude Code answers and never ends until it is stopped.
+  const { app, page } = await launch(...dirs(testInfo), { env: { LEARN_E2E_SETTINGS: '', LEARN_AGENT_SEARCH_PATH: install({ ...READY, script: 'hang' }) } });
+  try {
+    const window = await mainWindow(app);
+    await window.evaluate((w) => w.setContentSize(1440, w.getContentSize()[1]!));
+    const [paper] = await importPaths(page, [PAPER]);
+    await importPaths(page, [path.join(FIXTURES, 'sample.pdf')]);
+    await openItem(page, 'paper-100');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
+    await consentAndChoose(page, 'claude');
+    await sendFromComposer(page, '오래 걸리는 질문입니다.');
+    await expect(page.getByTestId('tutor-answering')).toBeVisible();
+    await expect.poll(() => prompts(app)).toBe(1);
+    // Meanwhile another tab's chooser finds Claude Code too old: the window's one report says so, and so does this tab's button.
+    install({ cli: '2.1.300', adapter: '0.103.0' });
+    await backFromReader(page);
+    await openItem(page, 'sample');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
+    await runPalette(page, app, '에이전트', 'tutor.chooseAgent');
+    await page.getByTestId('agent-research').click();
+    await expect(flagOf(page)).toHaveText('지원하지 않는 버전');
+    await readerTab(page, paper!.id).click();
+    const button = page.getByTestId('tutor-agent');
+    await expect(button).toHaveText('Claude Code · 지원하지 않는 버전');
+    await expect(page.getByTestId('tutor-answering')).toBeVisible();
+    const stop = page.getByTestId('tutor-stop');
+    for (const [width, tutor] of [[1440, 380], [1000, 320]] as const) {
+      await window.evaluate((w, x) => w.setContentSize(x, w.getContentSize()[1]!), width);
+      await expect.poll(() => page.getByTestId('inspector-panel').evaluate((e) => Math.round(e.getBoundingClientRect().width))).toBe(tutor);
+      const foot = page.getByTestId('tutor-composer').locator('.foot');
+      expect(await foot.evaluate((el) => el.scrollWidth <= el.clientWidth), `the foot at ${tutor} scrolls`).toBe(true);
+      const [c, b] = [(await page.getByTestId('tutor-composer').boundingBox())!, (await stop.boundingBox())!];
+      expect(b.x + b.width, `중지 at ${tutor} is in the composer`).toBeLessThanOrEqual(c.x + c.width);
+      await expect(page.getByTestId('tutor-answering')).toBeVisible();
+      // The label gave way at its state end; the tooltip has it all.
+      expect(await button.locator('.ellipsis').evaluate((el) => el.scrollWidth > el.clientWidth), `the label at ${tutor} is cut`).toBe(true);
+    }
+    await hoverLikeUser(page, 'tutor-agent');
+    await expectTooltipText(page, '에이전트: Claude Code · 지원하지 않는 버전 — 누르면 에이전트를 바꿉니다', 'tutor-agent');
+    await stop.click();
+    await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'stopped');
   } finally {
     await app.close();
   }
@@ -1257,11 +1367,7 @@ test('while the item opens the composer is off: its text area and agent button, 
     await hoverLikeUser(page, 'tutor-send');
     await expectTooltipText(page, /^보내기\s*자료를 여는 중입니다$/, 'tutor-send');
     // F6 into the panel lands past the text area while it is off: on the head's selected tab, as before there was a composer.
-    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-    for (let i = 0; i < 4; i++) {
-      await page.keyboard.press('F6');
-      if (await page.evaluate(() => document.activeElement?.closest('[data-pane]')?.getAttribute('data-pane') === 'inspector')) break;
-    }
+    await f6IntoPanel(page);
     await expect(page.getByRole('tab', { name: '튜터' })).toBeFocused();
     await page.evaluate(() => (window as unknown as { __learnReader: { getState(): { setPdf(p: { ready: boolean }): void } } }).__learnReader.getState().setPdf({ ready: true }));
     await expect(box).toBeEnabled();
@@ -1272,7 +1378,7 @@ test('while the item opens the composer is off: its text area and agent button, 
   }
 });
 
-test('one agent process (J17): a question in a new session while another session\'s answer comes waits above the composer and is sent once that answer ends; 보내지 않기 makes it a draft again', async ({}, testInfo) => {
+test('one agent process: a question in a new session while another session\'s answer comes waits above the composer and is sent once that answer ends; 보내지 않기 makes it a draft again', async ({}, testInfo) => {
   const { app, page, itemId } = await atSession(testInfo);
   try {
     await tutorFakeScript(app, 'slow');
@@ -1322,6 +1428,29 @@ test('one agent process (J17): a question in a new session while another session
   }
 });
 
+test('답 중지 from the palette while the tutor is not on screen: 정보 shown, the answer still comes, and the palette stops it; ended, it is off', async ({}, testInfo) => {
+  const { app, page, itemId } = await atSession(testInfo);
+  try {
+    await tutorFakeScript(app, 'slow');
+    await sendFromComposer(page, '천천히 답해 주세요.');
+    await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'streaming');
+    await expect.poll(() => prompts(app)).toBe(1);
+    const [first] = await answersOf(page, itemId);
+    await runMenuCommand(app, 'view.inspectorInfo');
+    await expect(page.getByTestId('tutor-panel')).toHaveCount(0);
+    await runPalette(page, app, '답 중지', 'tutor.stop');
+    expect((await turnEnded(page, first!.conversationId, first!.tutorMessageId)).status).toBe('stopped');
+    // The window saw the end though the tutor was not on screen: the palette offers 튜터 보기 (the control) and no 답 중지.
+    await runMenuCommand(app, 'app.palette');
+    await page.getByTestId('palette-input').fill('튜터');
+    await expect(page.locator('[data-testid="palette-item"][data-command-id="view.inspectorTutor"]')).toBeVisible();
+    await expect(page.locator('[data-testid="palette-item"][data-command-id="tutor.stop"]')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+  } finally {
+    await app.close();
+  }
+});
+
 test('보내지 않기: the question that waited is a draft to edit again, and nothing is sent when the other answer ends', async ({}, testInfo) => {
   const { app, page, itemId } = await atSession(testInfo);
   try {
@@ -1359,14 +1488,7 @@ test('F6 into the tutor\'s panel and ⌃⌘2 land in the composer\'s text area, 
   const { app, page } = await atSession(testInfo);
   try {
     const box = composerInput(page);
-    const intoPanel = async () => {
-      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-      for (let i = 0; i < 4; i++) {
-        await page.keyboard.press('F6');
-        if (await page.evaluate(() => document.activeElement?.closest('[data-pane]')?.getAttribute('data-pane') === 'inspector')) break;
-      }
-    };
-    await intoPanel();
+    await f6IntoPanel(page);
     await expect(box).toBeFocused();
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await runMenuCommand(app, 'view.inspectorTutor');
@@ -1374,7 +1496,7 @@ test('F6 into the tutor\'s panel and ⌃⌘2 land in the composer\'s text area, 
     await sendFromComposer(page, '이 장은 무엇을 다루나요?');
     await expect(page.getByTestId('tutor-question')).toBeVisible();
     await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'complete');
-    await intoPanel();
+    await f6IntoPanel(page);
     await expect(box).toBeFocused();
     await runMenuCommand(app, 'view.inspectorInfo');
     await expect(page.getByTestId('tutor-panel')).toHaveCount(0);

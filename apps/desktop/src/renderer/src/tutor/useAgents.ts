@@ -54,7 +54,7 @@ function run(input: TutorAgentsInput): Promise<void> | null {
 
 /**
  * One agent checked again, as its row's 다시 확인 does — the same one check of the window, so the chooser and the agent button see it.
- * The composer waits for it before a send when the cached state is not 준비됨 (R7). Null while a check or a search already runs.
+ * The composer waits for it before a send when the cached state is not 준비됨. Null while a check or a search already runs.
  */
 export const recheckAgent = (agent: AgentId): Promise<void> | null => run({ mode: 'recheck', agent });
 

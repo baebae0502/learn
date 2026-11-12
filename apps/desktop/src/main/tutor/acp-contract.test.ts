@@ -536,13 +536,15 @@ const CASES: Record<FakeScript, { name: string; run: () => Promise<void> }> = {
   },
 
   markdown: {
-    name: 'an answer in the tutor\'s small Markdown, citing the two pages it read; a token inside a code block is no citation',
+    name: 'a line before its page read, then an answer in the tutor\'s small Markdown, citing the two pages it read; a token inside a code block is no citation',
     async run() {
       const r = await makeRig({ script: 'markdown' });
       const asked = await r.ask('정리해 줘');
       const end = (await r.ended(asked.tutorMessageId)) as Done;
       expect(end).toMatchObject({ kind: 'done', status: 'complete', stopReason: 'end_turn' });
       const text = r.message(asked.tutorMessageId).text;
+      // The line written before the page read and the answer after it are two paragraphs (Learn puts the break in).
+      expect(text.startsWith('I will read the pages first.\n\n## 요점\n')).toBe(true);
       expect(text).toContain('1. ');
       expect(text).toContain('   ```\n   score = softmax(q · k) [[p1]] <b>\n   ```');
       expect(end.sources.map((s) => s.pageIndex)).toEqual([2, 3]);

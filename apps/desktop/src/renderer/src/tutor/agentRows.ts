@@ -1,7 +1,17 @@
+import { CircleCheck, CircleDashed, LogIn, Plug, TriangleAlert, type LucideIcon } from 'lucide-react';
 import type { AgentId, AgentState, AgentStatus } from '@learn/domain';
 import { t } from '../strings';
 
 const { agents } = t.tutor;
+
+/** A flag: an icon, a colour token and the words (the words carry the meaning; the icon and colour only help). The chooser's rows and the composer's agent button show it. */
+export const FLAG: Record<AgentState, { icon: LucideIcon; tone: 'c-success' | 'c-warning' | 'c-secondary' }> = {
+  ready: { icon: CircleCheck, tone: 'c-success' },
+  login: { icon: LogIn, tone: 'c-warning' },
+  missing: { icon: CircleDashed, tone: 'c-secondary' },
+  old: { icon: TriangleAlert, tone: 'c-warning' },
+  adapter: { icon: Plug, tone: 'c-warning' },
+};
 
 /** One row of the chooser as the screen draws it: the words come from the approved copy, chosen by state and note (spec 4.3, 13). */
 export interface AgentRowView {

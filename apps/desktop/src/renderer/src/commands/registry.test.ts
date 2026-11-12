@@ -413,6 +413,10 @@ describe('renderer command registry', () => {
     const e = env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor', tutorHasMessages: true, tutorStreaming: true });
     expect(runCommand('tutor.stop', e)).toBe(true);
     expect(e.stopAnswer).toHaveBeenCalledTimes(1);
+    // The tutor not on screen (정보 shown): the answer still comes, and 답 중지 still stops it.
+    const info = env({ view: 'viewer', pdfOpen: true, inspectorMode: 'info', tutorStreaming: true });
+    expect(runCommand('tutor.stop', info)).toBe(true);
+    expect(info.stopAnswer).toHaveBeenCalledTimes(1);
     for (const off of [
       env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor', tutorHasMessages: true }), // the answer ended
       env({ view: 'viewer', inspectorMode: 'tutor', tutorStreaming: true }), // no PDF open

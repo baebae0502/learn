@@ -115,6 +115,27 @@ describe('runTurn', () => {
     expect(db.prepare('SELECT model, input_tokens, output_tokens FROM messages WHERE id = ?').get(t.tutorMessageId)).toEqual({ model: 'm1', input_tokens: 5, output_tokens: 7 });
   });
 
+  it('puts a paragraph break between text before a tool call and text after it, and only there', async () => {
+    const t = begin();
+    const g = gate<PromptOutcome>(); let on!: (u: SessionUpdate) => void;
+    const r = rig(async (o) => { on = o; return g.p; });
+    const run = runTurn(r.d, t);
+    // A tool call before any text: nothing to keep apart.
+    on(learnTool); on(text('No outline; read the first pages.'));
+    on(learnTool); on(learnTool); on(text('먼저 짚어 둘 점이 '));
+    on(text('있습니다.'));
+    // Text that already ends a paragraph gets no second break; one that ends a line gets the other half.
+    on(text('\n\n')); on(learnTool); on(text('셋째.'));
+    on(text('\n')); on(learnTool); on(text('넷째.'));
+    r.t.advance(TUTOR_LIMITS.textBatchMs);
+    g.resolve(OK);
+    await run;
+    const want = 'No outline; read the first pages.\n\n먼저 짚어 둘 점이 있습니다.\n\n셋째.\n\n넷째.';
+    expect(row(t.tutorMessageId).text).toBe(want);
+    // What streamed out is the same text: nothing dropped, the break sent with the text after the tool.
+    expect(appended(r.events).join('')).toBe(want);
+  });
+
   it('saves at once when 2,000 characters have come since the last save', async () => {
     const t = begin();
     const g = gate<PromptOutcome>(); let on!: (u: SessionUpdate) => void;

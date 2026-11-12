@@ -7,7 +7,7 @@ import { t } from '../strings';
 import { cx } from '../ui/cx';
 import { Icon } from '../ui/Icon';
 import { Tooltip } from '../ui/Tooltip';
-import { FLAG } from './AgentChooser';
+import { FLAG } from './agentRows';
 import { useAgents } from './useAgents';
 import { useTutorPrefs } from './useTutorPrefs';
 
@@ -36,10 +36,11 @@ function rowsOf(report: { agents: AgentStatus[]; fake: AgentStatus | null } | nu
 
 /**
  * The composer's agent button and its menu (spec 8.4, 8.7; design-spec 7.3): the chosen agent's name and ▾ when it is ready, its state
- * too in the warning colour when it is not ("Claude Code · 로그인 필요 ▾"), "가짜 에이전트 ▾" with its flask for the fake. The menu: the
- * agents (the chosen one ✓, kept on its row when that row is off), a separator, 에이전트 고르기… (the registry's command). Another agent
- * is chosen through main, which checks it is ready (the next question of this session goes to it, J23). It opens 4 px below the button,
- * or above it when there is no room below. `visible`: the panel can be seen (the agents report is read only then). `disabled`: the
+ * too in the warning colour when it is not ("Claude Code · 로그인 필요 ▾"), "가짜 에이전트 ▾" with its flask for the fake. Narrow, the label
+ * gives way from its state end (the tooltip keeps all of it), so the foot's other controls stay in the composer. The menu: the agents
+ * (the chosen one ✓, kept on its row when that row is off), a separator, 에이전트 고르기… (the registry's command). Another agent is
+ * chosen through main, which checks it is ready (the next question of this session goes to it). It opens 4 px below the button, or
+ * above it when there is no room below. `visible`: the panel can be seen (the agents report is read only then). `disabled`: the
  * composer is off (the item still opens).
  */
 export function AgentMenu({ visible, disabled = false }: { visible: boolean; disabled?: boolean }) {
@@ -75,7 +76,7 @@ export function AgentMenu({ visible, disabled = false }: { visible: boolean; dis
           data-state={fake ? 'fake' : state}
         >
           {flag !== null && <Icon icon={flag} size="sm" />}
-          {label}
+          <span className="ellipsis">{label}</span>
           <Icon icon={ChevronDown} size="xs" />
         </AriaButton>
       </Tooltip>

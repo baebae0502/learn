@@ -626,10 +626,11 @@
   .tool .icon {
     color: var(--text-tertiary);
   }
-  .tool .spinner {
-    width: 12px; /* local: 12 px spinner in a chip */
-    height: 12px; /* local: 12 px spinner in a chip */
-    border-width: 1.5px; /* local: 12 px spinner in a chip */
+  /* The small spinner of a chip, the composer's status and the waiting line (mockup .spinner.sm), beside footnote text. */
+  :is(.tool, .tutor-status, .tutor-wait) .spinner {
+    width: 12px; /* local: the mockup's small spinner */
+    height: 12px; /* local: the mockup's small spinner */
+    border-width: 1.5px; /* local: the mockup's small spinner */
   }
   .tool[data-tone='warning'],
   .tool[data-tone='warning'] .icon {
@@ -820,8 +821,22 @@
     padding: 0;
   }
   /* The agent button: the name never breaks; not ready (its state after the name) and the fake in the warning colour. */
+  /* The agent button gives way first when the foot is narrow: its label ends in an ellipsis from the state end (the tooltip has it
+     all), never pushing the status or 보내기 / 중지 out of the composer. */
   .tutor-agent {
+    flex: 0 1 auto;
     min-width: 0;
+  }
+  .tutor-agent .ellipsis {
+    flex: 0 1 auto;
+  }
+  /* The status of the moment ("답하는 중…", "에이전트를 찾는 중…") keeps its words whole. */
+  .tutor-status {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-6);
+    white-space: nowrap;
   }
   .tutor-agent.warn,
   .tutor-agent.warn .icon {
@@ -841,11 +856,6 @@
     flex: 1 1 auto;
     min-width: 0;
   }
-  .tutor-wait .spinner {
-    width: 12px; /* local: the mockup's small spinner, beside footnote text */
-    height: 12px; /* local: the mockup's small spinner, beside footnote text */
-    border-width: 1.5px; /* local: the mockup's small spinner, beside footnote text */
-  }
   /* The agent menu: the mockup's width; a row's tooltip covers the whole row, its check and label laid out as a menu row's. */
   .agent-menu .menu {
     width: 272px; /* local: the mockup's agent menu */
@@ -857,5 +867,13 @@
     align-items: center;
     gap: var(--space-8);
     min-width: 0;
+  }
+  /* A glyph after a row's name (the fake's flask) sits a space after it, as the mockup writes it. */
+  .agent-menu .mi-row > .icon {
+    margin-left: calc(var(--space-4) * -1);
+  }
+  /* The current agent keeps its ✓ in the primary colour when its row is off (the approved menu), the row itself dimmed. */
+  .agent-menu .mi[data-disabled] .check {
+    color: var(--text-primary);
   }
 }

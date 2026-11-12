@@ -35,13 +35,18 @@ function keepSession(tabId: string, conversationId: string | null): void {
 /** The tab closed (or its item is gone): the session it showed is not its any more. */
 export const forgetTutorTab = (tabId: string): void => keepSession(tabId, null);
 
-/** Where a session's draft is kept in its tab: under the session, or for a new empty one under its item (J48). */
+/** Where a session's draft is kept in its tab: under the session, or for a new empty one under its item. */
 export const draftKey = (conversationId: string | null, itemId: string): string => conversationId ?? `new:${itemId}`;
 
-/** A question sent while another session's answer still came (tutor:ask's { busyWith }, J17): it is sent once that answer ends. */
+/**
+ * A question sent while another session's answer still came (tutor:ask's { busyWith }; one agent process at a time): it is sent once
+ * that answer ends.
+ */
 export interface WaitingQuestion {
   text: string;
   busyWith: { conversationId: string; messageId: string };
+  /** That answer's end notice came while this tab's status read was out: the read's caller sends the question, whatever it read. */
+  ended?: true;
 }
 
 /**
@@ -66,13 +71,13 @@ export interface TutorTabStore {
   currentCite: CurrentCite | null;
   setCurrentCite(c: CurrentCite | null): void;
   /**
-   * What the composer holds for each session of the tab, by draftKey (J48): kept while the tab is open, across tabs, modes and
+   * What the composer holds for each session of the tab, by draftKey: kept while the tab is open, across tabs, modes and
    * sessions, in memory only — a reload or a new run starts without them.
    */
   drafts: Record<string, string>;
   /** An empty text removes the draft. */
   setDraft(key: string, text: string): void;
-  /** The question that waits for another session's answer (J17); its text stays in the composer, read only, until then. */
+  /** The question that waits for another session's answer; its text stays in the composer, read only, until then. */
   waiting: WaitingQuestion | null;
   setWaiting(w: WaitingQuestion | null): void;
 }

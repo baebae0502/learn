@@ -147,7 +147,7 @@ export const tutor = {
     sendWaiting: '다른\u00a0세션의 답이 끝나면 보냅니다',
     stop: '중지',
     answering: '답하는 중…',
-    /** Above the composer while another session's answer comes (AGENT_BUSY, J17): the question waits in the composer. */
+    /** Above the composer while another session's answer comes (AGENT_BUSY): the question waits in the composer. */
     waiting: '다른\u00a0세션의 답이 끝나면 보냅니다',
     dontSend: '보내지 않기',
   },
@@ -157,7 +157,7 @@ export const tutor = {
    */
   agentMenu: {
     withState: (name: string, state: string) => `${name} · ${state}`,
-    tip: (name: string, state: string) => `에이전트: ${`${name}`.replace(/ /g, '\u00a0')} · ${state} — 누르면 에이전트를 바꿉니다`,
+    tip: (name: string, state: string) => `에이전트: ${String(name).replace(/ /g, '\u00a0')} · ${state} — 누르면 에이전트를 바꿉니다`,
     fakeTip: '가짜 에이전트 · 개발·데모 빌드에서만 보입니다',
     disabled: (name: string, state: string) => `${name} — ${state}`,
     why: {

@@ -11,6 +11,7 @@ export const INSTRUCTIONS = (nonce: string): string => [
   'this conversation so far.',
   `When a statement relies on the document, write the page's cite token right after it, exactly as the tool gave it`,
   '(for example [[p42]]). Cite only pages that read_pdf_pages returned while you write this answer; read a page before citing it.',
+  `Write nothing before or between your tool calls: write the answer after your last tool call, in the language of the user's question.`,
   `Answer in the language of the user's question.`,
 ].join('\n');
 

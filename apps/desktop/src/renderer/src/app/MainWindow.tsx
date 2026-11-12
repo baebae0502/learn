@@ -407,10 +407,10 @@ export function MainWindow(_props: { info: AppInfo }) {
   const tutorConversation = useTutorTab((s) => s.conversationId);
   const tutorShown = view.kind === 'reader' && showsInspector && !inspectorHidden && inspectorMode === 'tutor' && tutorState === 'ready';
   useTutorView(tutorShown ? { itemId: view.itemId, conversationId: tutorConversation } : null);
-  // 새 세션 needs a session with a question on screen; 답 중지 an answer of it still coming.
+  // 새 세션 needs a session with a question on screen; 답 중지 an answer of the active tab's session still coming, shown or not.
   const tutorHasMessages = tutorShown && tutorConversation !== null;
   const answerComing = useAnswerComing(tutorConversation) !== null;
-  const tutorStreaming = tutorShown && answerComing;
+  const tutorStreaming = view.kind === 'reader' && answerComing;
   // What main says about answers goes to the tab that shows their session, shown or not.
   useTurnEvents();
   // A question that waited for another session's answer goes once that answer ends, in whatever tab it waits.

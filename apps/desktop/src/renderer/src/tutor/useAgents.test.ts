@@ -28,7 +28,7 @@ describe('the failure line of the agents report', () => {
   });
 });
 
-describe('the recheck the composer waits for before a send (R7)', () => {
+describe('the recheck the composer waits for before a send to an agent not known as ready', () => {
   const READY: AgentsReport = { agents: [{ id: 'claude', name: 'Claude Code', state: 'ready', cliVersion: '2.1.318', adapterVersion: '0.103.0', minimum: null, command: null, note: null }], fake: null };
   it('is the window\'s one check: the shared state is busy while it runs, a second ask gets none, and it ends with the report in the cache', async () => {
     calls.length = 0;

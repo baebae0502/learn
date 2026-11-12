@@ -15,20 +15,33 @@ import { useReaderScope } from '../viewers/readerScope';
 import { AgentMenu } from './AgentMenu';
 import { composerKey } from './composerKeys';
 import { draftKey, useTutorTab } from './tutorStore';
+import { useAgents } from './useAgents';
 import { useQuestionOnTheWay, useSend } from './useSend';
 import { useAnswerComing } from './useSessionThread';
 
-const { composer: words } = t.tutor;
+const { composer: words, agents } = t.tutor;
 
-/** 보내기: the accent square with its arrow, named 보내기; its tooltip says ↩, or why it is off (still focusable then). */
-function SendButton({ onPress, reason }: { onPress(): void; reason: string | null }) {
-  const disabled = useDisabledReason(reason !== null, reason ?? undefined);
+/**
+ * 보내기 and 중지 are one button, one stop of the Tab order (spec 8.11): it changes its face and its press when an answer starts or ends,
+ * so a focus on it stays on it. 보내기 is the accent square with its arrow, named 보내기, its tooltip "보내기 ↩" — or, off, the reason
+ * (still focusable). 중지 is the plain button with its 14 px glyph and its word, its tooltip "중지 esc".
+ */
+function SendStopButton({ streaming, onSend, onStop, reason }: { streaming: boolean; onSend(): void; onStop(): void; reason: string | null }) {
+  const off = !streaming && reason !== null;
+  const disabled = useDisabledReason(off, off ? reason : undefined);
   return (
     <>
-      <Tooltip label={words.send} accelerator="Enter" reason={reason ?? undefined}>
+      <Tooltip label={streaming ? words.stop : words.send} accelerator={streaming ? 'Escape' : 'Enter'} reason={off ? reason : undefined}>
         <SoftDisabled>
-          <AriaButton {...withoutPresses({ onPress }, disabled.soft)} {...disabled.controlProps} aria-label={words.send} className="btn btn-primary tutor-send" data-testid="tutor-send">
-            <Icon icon={ArrowUp} />
+          <AriaButton
+            {...withoutPresses({ onPress: streaming ? onStop : onSend }, disabled.soft)}
+            {...disabled.controlProps}
+            aria-label={streaming ? undefined : words.send}
+            className={cx('btn', streaming ? 'btn-secondary has-icon tutor-stop' : 'btn-primary tutor-send')}
+            data-testid={streaming ? 'tutor-stop' : 'tutor-send'}
+          >
+            <Icon icon={streaming ? CircleStop : ArrowUp} size={streaming ? 'sm' : 'md'} />
+            {streaming && words.stop}
           </AriaButton>
         </SoftDisabled>
       </Tooltip>
@@ -39,11 +52,13 @@ function SendButton({ onPress, reason }: { onPress(): void; reason: string | nul
 
 /**
  * The composer under the conversation (spec 8.4, 8.11; approved mockup .tu-composer): the text area — two lines high at rest, growing
- * to eight, then scrolling — and its foot: the agent button, "답하는 중…" while an answer comes, and 보내기, which 중지 replaces then.
- * ↩ sends and ⇧↩ breaks the line, never during a Korean composition. While an answer comes the text area is read only; while the item
- * opens it is off. A question waiting for another session's answer stays in it, read only, under the line that says so with 보내지 않기
- * (J17). The text is this session's draft (J48). The focus here starts the agent ahead of the question (tutor:warm — main decides
- * whether it can). F6 and ⌃⌘2 land in the text area. `visible`: the panel can be seen.
+ * to eight, then scrolling — and its foot: the agent button, the status of the moment ("답하는 중…" while an answer comes, "에이전트를 찾는
+ * 중…" while a send waits for the agent's check past 300 ms, as the chooser says it) and 보내기 / 중지. ↩ sends and ⇧↩ breaks the line,
+ * never during a Korean composition. While an answer comes, or a send is on its way, the text area is read only; while the item opens
+ * it is off. A question waiting for another session's answer stays in it, read only, under the line that says so with 보내지 않기. The
+ * text is this session's draft. The text area's name is the approved placeholder whatever its state says. The focus here starts the
+ * agent ahead of the question (tutor:warm — main decides whether it can). F6 and ⌃⌘2 land in the text area. `visible`: the panel can
+ * be seen.
  */
 export function Composer({ visible }: { visible: boolean }) {
   const scope = useReaderScope();
@@ -54,13 +69,16 @@ export function Composer({ visible }: { visible: boolean }) {
   const waiting = useTutorTab((s) => s.waiting);
   const streaming = useAnswerComing(conversationId) !== null;
   const onTheWay = useQuestionOnTheWay();
+  // The agent checked again before a send (the window's one check): shown as the chooser shows a search, once it has run 300 ms.
+  const { searching } = useAgents(visible);
+  const checking = onTheWay && searching;
   const { send, stop, cancelWaiting, disabledReason } = useSend();
   const input = useRef<HTMLTextAreaElement>(null);
 
   const opening = disabledReason === 'opening';
   const held = waiting !== null;
   const readOnly = streaming || held || onTheWay;
-  const reason = opening ? words.sendOpening : held ? words.sendWaiting : disabledReason === 'empty' ? words.sendEmpty : null;
+  const reason = opening ? words.sendOpening : held ? words.sendWaiting : checking ? agents.searchingTip : disabledReason === 'empty' ? words.sendEmpty : null;
   const placeholder = streaming ? words.receiving : opening ? words.opening : words.placeholder;
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -107,6 +125,7 @@ export function Composer({ visible }: { visible: boolean }) {
           onChange={(e) => setDraft(key, e.target.value)}
           onKeyDown={onKeyDown}
           onFocus={warm}
+          aria-label={words.placeholder}
           placeholder={placeholder}
           readOnly={readOnly}
           disabled={opening}
@@ -118,20 +137,19 @@ export function Composer({ visible }: { visible: boolean }) {
         <div className="foot">
           <AgentMenu visible={visible} disabled={opening} />
           <span className="spacer" />
-          {streaming && (
-            <span className="t-footnote c-secondary" data-testid="tutor-answering">
+          {streaming ? (
+            <span className="tutor-status t-footnote c-secondary" data-testid="tutor-answering">
               {words.answering}
             </span>
-          )}
-          {streaming ? (
-            <Tooltip label={words.stop} accelerator="Escape">
-              <Button icon={CircleStop} onPress={stop} testId="tutor-stop">
-                {words.stop}
-              </Button>
-            </Tooltip>
           ) : (
-            <SendButton onPress={() => void send(draft)} reason={reason} />
+            checking && (
+              <span className="tutor-status t-footnote c-secondary" role="status" data-testid="tutor-checking">
+                <Spinner />
+                {agents.searching}
+              </span>
+            )
           )}
+          <SendStopButton streaming={streaming} onSend={() => void send(draft)} onStop={stop} reason={reason} />
         </div>
       </div>
     </div>

@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
-import { FIXTURES, importPaths, ipcCalls, launch, openDialogCalls, openItem, runMenuCommand, stubOpenDialog, tutorFakeLog, tutorFakeScript } from './helpers';
+import { FIXTURES, importPaths, ipcCalls, launch, openDialogCalls, openItem, runMenuCommand, settled, stubOpenDialog, tutorFakeLog, tutorFakeScript } from './helpers';
 import { consentAndChoose } from './tutor-helpers';
 
 test('palette: ↓, Enter and Escape during a composition neither move, run nor close; after commit ↩ runs once', async ({}, testInfo) => {
@@ -113,7 +113,8 @@ test('the tutor composer: ↩ during a composition sends nothing and after the c
     // ↩ that confirms a syllable is the IME's: nothing is sent, the text stays editable.
     await cdp.send('Input.imeSetComposition', { text: '질문', selectionStart: 2, selectionEnd: 2 });
     await page.keyboard.press('Enter');
-    await page.waitForTimeout(300);
+    // A send would have called main from the key's own handler: once a later call to main has come back, it would have been counted.
+    await settled(page);
     expect(await asks()).toBe(0);
     await expect(page.getByTestId('tutor-question')).toHaveCount(0);
     await expect(box).not.toHaveAttribute('readonly');
@@ -130,7 +131,8 @@ test('the tutor composer: ↩ during a composition sends nothing and after the c
     await box.focus();
     await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 229, nativeVirtualKeyCode: 229 });
     await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 229, nativeVirtualKeyCode: 229 });
-    await page.waitForTimeout(300);
+    // As above: a stop is sent from the key's own handler, so it would be counted once a later call to main has come back.
+    await settled(page);
     expect((await ipcCalls(app))['tutor:stop'] ?? 0).toBe(0);
     await expect(answer).toHaveAttribute('data-status', 'streaming');
     // The control: esc itself stops it.

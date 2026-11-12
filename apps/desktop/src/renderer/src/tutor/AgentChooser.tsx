@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type MutableRefObject } from 'react';
-import { CircleCheck, CircleDashed, LogIn, Plug, TriangleAlert, type LucideIcon } from 'lucide-react';
+import { TriangleAlert } from 'lucide-react';
 import { Radio, RadioGroup } from 'react-aria-components';
 import type { AgentId, AgentState } from '@learn/domain';
 import { api, unwrap } from '../api';
@@ -8,22 +8,13 @@ import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { Spinner } from '../ui/Spinner';
 import { Tooltip } from '../ui/Tooltip';
-import { agentRow, type AgentRowView } from './agentRows';
+import { agentRow, FLAG, type AgentRowView } from './agentRows';
 import { createFocusRestore } from './focusRestore';
 import { CommandText } from './CommandText';
 import { useAgents } from './useAgents';
 import { useTutorPrefs } from './useTutorPrefs';
 
 const { agents } = t.tutor;
-
-/** A flag: an icon, a colour token and the words (the words carry the meaning; the icon and colour only help). The agent button shows it too. */
-export const FLAG: Record<AgentState, { icon: LucideIcon; tone: 'c-success' | 'c-warning' | 'c-secondary' }> = {
-  ready: { icon: CircleCheck, tone: 'c-success' },
-  login: { icon: LogIn, tone: 'c-warning' },
-  missing: { icon: CircleDashed, tone: 'c-secondary' },
-  old: { icon: TriangleAlert, tone: 'c-warning' },
-  adapter: { icon: Plug, tone: 'c-warning' },
-};
 
 interface RowProps {
   row: AgentRowView;
@@ -81,7 +72,7 @@ function AgentRow({ row, state, disabled, onRecheck }: RowProps) {
  * `focusRequest`: after 동의 the focus comes here — onto the chosen (else the first usable) radio, else the region itself until the report
  * is in; read once the chooser is on screen, and cleared when it has landed or the user went elsewhere.
  */
-export function AgentChooser({ onStarted, focusRequest, visible }: { onStarted(): void; focusRequest: MutableRefObject<boolean>; visible: boolean }) {
+export function AgentChooser({ onStarted, focusRequest, visible }: { onStarted(focusInside: boolean): void; focusRequest: MutableRefObject<boolean>; visible: boolean }) {
   const { report, busy, searching, failed, recheck, research } = useAgents(visible);
   const current = useTutorPrefs().agent;
   const [picked, setPicked] = useState<AgentId | null>(null);
@@ -131,8 +122,10 @@ export function AgentChooser({ onStarted, focusRequest, visible }: { onStarted()
   const start = () => {
     if (chosen === null || starting.current || searching) return;
     starting.current = true;
+    // Where the focus is at the press (a click on 시작 focuses it, ↩ comes from a radio): the panel moves it on only from here.
+    const focusInside = region.current?.parentElement?.contains(document.activeElement) ?? false;
     unwrap(api().tutor.chooseAgent({ agent: chosen }))
-      .then(onStarted)
+      .then(() => onStarted(focusInside))
       // main re-checks that the agent is ready (AGENT_NOT_READY after a change since the report): the screen stays; the code only goes to the log.
       .catch((e: unknown) => console.warn(`[tutor] choose agent failed: ${(e as { code?: string }).code ?? 'INTERNAL'}`))
       .finally(() => void (starting.current = false));

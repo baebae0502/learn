@@ -53,6 +53,9 @@ export function stripErrorTail(text: string, message: string): string {
   return text;
 }
 
+/** What separates text that ends here from a new paragraph: nothing when it already ends one, the rest of the blank line otherwise. */
+const paragraphBreak = (before: string): string => (before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n');
+
 type TurnEvent = TutorTurnEvent extends infer E ? (E extends unknown ? Omit<E, 'conversationId' | 'messageId'> : never) : never;
 
 type Reason = 'lockdown' | 'timeout' | 'too-long' | 'stopped' | 'error' | 'ok';
@@ -71,6 +74,8 @@ export async function runTurn(d: TurnDeps, t: TurnInput): Promise<TurnEnd> {
   let savedLen = 0;
   let anyUpdate = false;
   let toolSeen = false;
+  /** A tool call came after some text: the next text starts a paragraph of its own (Claude narrates before a tool, then answers). */
+  let toolAfterText = false;
   let sawForeignTool = false;
   let timedOut = false;
   let failed = false;
@@ -118,12 +123,17 @@ export async function runTurn(d: TurnDeps, t: TurnInput): Promise<TurnEnd> {
     if (u.kind === 'activity') return;
     if (u.kind === 'tool') {
       toolSeen = true;
+      if (text !== '') toolAfterText = true;
       if (!u.learn && !sawForeignTool) { sawForeignTool = true; d.interrupt('always'); }
       return;
     }
-    if (tooLong || sawForeignTool) return;
+    if (tooLong || sawForeignTool || u.text === '') return;
+    // Text written before a tool call and text written after it are two paragraphs, never one glued line; nothing is dropped.
+    const gap = toolAfterText ? paragraphBreak(text) : '';
+    toolAfterText = false;
+    const incoming = gap + u.text;
     const room = TUTOR_LIMITS.answerChars - text.length;
-    const piece = u.text.length > room ? u.text.slice(0, room) : u.text;
+    const piece = incoming.length > room ? incoming.slice(0, room) : incoming;
     if (piece !== '') {
       text += piece;
       pending += piece;
@@ -131,7 +141,7 @@ export async function runTurn(d: TurnDeps, t: TurnInput): Promise<TurnEnd> {
       if (text.length - savedLen >= TUTOR_LIMITS.saveEveryChars && !saveFailed) save();
       else saveTimer ??= arm(() => { save(); }, TUTOR_LIMITS.saveEveryMs);
     }
-    if (piece.length < u.text.length) { tooLong = true; d.interrupt('if-not-ended'); }
+    if (piece.length < incoming.length) { tooLong = true; d.interrupt('if-not-ended'); }
   };
 
   let outcome: PromptOutcome | null = null;

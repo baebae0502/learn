@@ -75,7 +75,7 @@ describe('the tutor store of one reader tab', () => {
   });
 });
 
-describe('drafts (J48) and the question that waits (J17)', () => {
+describe('drafts and the question that waits for another session\'s answer', () => {
   const A = '3f0d9a0e-6b1e-4c1e-8f6a-1d2f9b7c5e11';
   const B = '9b1c2d3e-4f50-4a6b-8c7d-0e1f2a3b4c5d';
   it('keeps a draft per session of the tab, the new empty session under its item, while the tab is open', () => {

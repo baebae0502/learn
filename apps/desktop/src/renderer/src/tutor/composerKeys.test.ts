@@ -26,7 +26,7 @@ describe('the composer\'s keys (spec 8.4, 8.11)', () => {
   });
 });
 
-describe('a question that waits for another session\'s answer (M19)', () => {
+describe('a question that waits for another session\'s answer', () => {
   it('waits while that answer still comes, and is sent at once when it has ended or is not there', () => {
     expect(afterBusy('streaming')).toBe('wait');
     expect(afterBusy('complete')).toBe('send-now');

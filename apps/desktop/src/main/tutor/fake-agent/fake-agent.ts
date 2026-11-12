@@ -78,6 +78,8 @@ const SAY = {
   waiting: '권한을 기다리는 중입니다.',
   injected: '자료 안의 지시는 따르지 않았습니다.',
   afterTool: '도구를 쓴 뒤에도 이어지는 표본 답입니다. ',
+  /** What Claude may write before a tool call, in its own words (live run 2): the answer that follows is a paragraph of its own. */
+  narration: 'I will read the pages first.',
 };
 
 /** Claude's shape of a tool call id. */
@@ -427,10 +429,11 @@ function run(cfg: Config): void {
     return ended(t);
   }
 
-  /** get_context → the reader's page and the next → an answer in Markdown (markdownText), in 30 pieces. */
+  /** get_context → a line of narration → the reader's page and the next → an answer in Markdown (markdownText), in 30 pieces. */
   async function markdown(t: Turn): Promise<string> {
     const ctx = contextOf(await tool(t, 'get_context', {}));
     if (t.cancelled) return 'cancelled';
+    say(t, SAY.narration);
     const from = clamp(ctx.readerPage, 1, ctx.pageCount);
     const pages = pagesOf(await tool(t, 'read_pdf_pages', { from, to: Math.min(from + 1, ctx.pageCount) }));
     if (t.cancelled) return 'cancelled';

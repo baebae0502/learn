@@ -46,25 +46,31 @@ function knownReady(agent: AgentId): boolean {
 }
 
 /**
- * The status of the answer a question waits for, read now (M19). A read that fails says nothing about it: the question keeps waiting
- * for that answer's end notice rather than asking main again at once (which would answer busy again while it still comes).
+ * The status of the answer a question waits for, read now. A session that is gone (deleted, or its only question failed before any
+ * answer, which takes the session with it) has no answer coming: null. Any other failed read is tried once more; failing again, it
+ * counts as ended too — the question is then asked, and main answers busy again if that answer still comes. A wait never hangs.
  */
 async function statusOf(busyWith: WaitingQuestion['busyWith']): Promise<MessageStatus | null> {
-  try {
-    const r = await api().sessions.get({ conversationId: busyWith.conversationId });
-    if (!r.ok) return 'streaming';
-    return r.data.messages.find((m) => m.id === busyWith.messageId)?.status ?? null;
-  } catch {
-    return 'streaming';
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const r = await api().sessions.get({ conversationId: busyWith.conversationId });
+      if (r.ok) return r.data.messages.find((m) => m.id === busyWith.messageId)?.status ?? null;
+      if (r.code === 'NOT_FOUND') return null;
+      console.warn(`[tutor] status read failed: ${r.code}`);
+    } catch {
+      console.warn('[tutor] status read failed: INTERNAL');
+    }
   }
+  return null;
 }
 
 /**
  * tutor:ask for the tab of `scope`, and what its answer means for the tab (the caller carries the tab). Rows written: the draft goes,
  * the tab is on the session the question made, and its thread is read again, so the question's bubble shows at once. Another session's
- * answer still coming ({ busyWith }, J17): the question waits in the composer — and goes at once if that answer has already ended (M19).
- * Refused before anything was written (offline, the agent not ready or its login): the question stays in the composer; the failure's
- * notice is the next task's. Answers whether the question is to be sent again now.
+ * answer still coming ({ busyWith }): the question waits in the composer — and goes at once if that answer has already ended, by the
+ * status read now or by its end notice that came while the read was out (main may answer busy just before it ends the turn). Refused
+ * before anything was written (offline, the agent not ready or its login): the question stays in the composer; the failure's notice is
+ * the next task's. Answers whether the question is to be sent again now.
  */
 async function ask(scope: ReaderScope, text: string): Promise<boolean> {
   const reader = readerNow(scope);
@@ -86,10 +92,13 @@ async function ask(scope: ReaderScope, text: string): Promise<boolean> {
   if ('busyWith' in answer.data) {
     // The tab went to another session meanwhile: that session's composer holds no question.
     if (tab.conversationId !== from) return false;
-    const waiting = { text, busyWith: answer.data.busyWith };
-    tab.setWaiting(waiting);
-    const now = afterBusy(await statusOf(waiting.busyWith)) === 'send-now';
-    return now && scope.tutor.getState().waiting === waiting;
+    const { busyWith } = answer.data;
+    tab.setWaiting({ text, busyWith });
+    const status = await statusOf(busyWith);
+    const waiting = scope.tutor.getState().waiting;
+    // Let go of meanwhile (보내지 않기, another session): nothing is sent.
+    if (waiting === null || waiting.busyWith.messageId !== busyWith.messageId) return false;
+    return waiting.ended === true || afterBusy(status) === 'send-now';
   }
   // Only the text that went: a question let go of while it was on its way may have been edited since.
   if ((tab.drafts[key] ?? '').trim() === text) tab.setDraft(key, '');
@@ -100,9 +109,9 @@ async function ask(scope: ReaderScope, text: string): Promise<boolean> {
 }
 
 /**
- * The question asked, and asked once more at once when main answered busy for an answer that had already ended (M19). Main clears
- * an ended answer before it reads the next request, so the second ask is not busy with it; were it busy with an ended one again, the
- * question keeps waiting (보내지 않기 lets it go) rather than asking main in a loop.
+ * The question asked, and asked once more at once when the answer it waited for had already ended. Main clears an ended answer before
+ * it reads the next request, so the second ask is not busy with it; were it busy with an ended one again, the question keeps waiting
+ * (보내지 않기 lets it go, the next end notice sends it) rather than asking main in a loop.
  */
 async function askAndFollow(scope: ReaderScope, text: string): Promise<void> {
   if (!(await ask(scope, text))) return;
@@ -117,16 +126,24 @@ function sendWaiting(scope: ReaderScope): void {
 }
 
 /**
- * Once per window (MainWindow): a question that waits for another session's answer is sent once that answer ends — completed, failed
- * or stopped — in whatever tab it waits, shown or not. It is the send the user pressed, put off (spec 8.8: no other send is automatic).
+ * The answer `messageId` ended (completed, failed or stopped): a question that waits for it is sent once, in whatever tab it waits,
+ * shown or not — the send the user pressed, put off (spec 8.8: no other send is automatic). While that tab's question is on its way
+ * (the status read is out), the end is kept on the waiting question for the read's caller to act on, never dropped.
  */
+export function waitEnded(messageId: string): void {
+  for (const id of readerScopes.ids()) {
+    const scope = readerScopes.peek(id);
+    const waiting = scope?.tutor.getState().waiting;
+    if (scope === null || scope === undefined || waiting?.busyWith.messageId !== messageId) continue;
+    if (onTheWay(scope.id)) scope.tutor.getState().setWaiting({ ...waiting, ended: true });
+    else sendWaiting(scope);
+  }
+}
+
+/** Once per window (MainWindow): the end notices of answers, for the questions that wait for them. */
 export function useWaitingSends(): void {
   useLearnEvent('tutor:turn', (e) => {
-    if (e.kind !== 'done' && e.kind !== 'failed') return;
-    for (const id of readerScopes.ids()) {
-      const scope = readerScopes.peek(id);
-      if (scope !== null && scope.tutor.getState().waiting?.busyWith.messageId === e.messageId) sendWaiting(scope);
-    }
+    if (e.kind === 'done' || e.kind === 'failed') waitEnded(e.messageId);
   });
 }
 
@@ -149,36 +166,38 @@ export const useQuestionOnTheWay = (): boolean => {
 };
 
 /**
- * The composer's send, stop and 보내지 않기 for the tab around it (spec 8.4). A send needs text and the item open (`disabledReason` says
- * which is missing), no answer of this session coming, no question waiting and none on its way. The agent's state never holds it back
- * (R7): when this window does not know the agent as 준비됨, it is checked again first — the window's one check, so a second ↩ while it
- * runs does nothing — and the question is asked whatever the check found; main refuses it if the agent is still not ready.
+ * A send from the composer of the tab of `scope`: it needs text, the item open, no answer of this session coming, no question waiting
+ * and none on its way. The agent's state never holds it back: when this window does not know the agent as 준비됨, it is checked again
+ * first — the window's one check, so a second ↩ while it runs does nothing — and the question is asked whatever the check found; main
+ * refuses it if the agent is still not ready.
+ */
+export async function sendQuestion(scope: ReaderScope, text: string, agent: AgentId | null): Promise<void> {
+  const question = text.trim();
+  const tab = scope.tutor.getState();
+  if (question === '' || agent === null || onTheWay(scope.id) || tab.waiting !== null || answerComingIn(scope) !== null || readerNow(scope) === null) return;
+  if (knownReady(agent)) {
+    await carrying(scope.id, () => askAndFollow(scope, question));
+    return;
+  }
+  const check = recheckAgent(agent);
+  if (check === null) return;
+  await carrying(scope.id, async () => {
+    await check;
+    await askAndFollow(scope, question);
+  });
+}
+
+/**
+ * The composer's send, stop and 보내지 않기 for the tab around it (spec 8.4); `disabledReason` says what a send is missing (the agent's
+ * state is never one).
  */
 export function useSend(): { send(text: string): Promise<void>; stop(): void; cancelWaiting(): void; disabledReason: 'empty' | 'opening' | null } {
   const scope = useReaderScope();
   const opening = useReader((s) => s.pdf?.ready !== true);
   const empty = useTutorTab((s) => (s.drafts[draftKey(s.conversationId, scope.id)] ?? '').trim() === '');
   const agent = useTutorPrefs().agent;
-  const send = useCallback(
-    async (text: string) => {
-      const question = text.trim();
-      const tab = scope.tutor.getState();
-      if (question === '' || agent === null || onTheWay(scope.id) || tab.waiting !== null || answerComingIn(scope) !== null || readerNow(scope) === null) return;
-      if (knownReady(agent)) {
-        await carrying(scope.id, () => askAndFollow(scope, question));
-        return;
-      }
-      const check = recheckAgent(agent);
-      if (check === null) return;
-      await carrying(scope.id, async () => {
-        await check;
-        await askAndFollow(scope, question);
-      });
-    },
-    [scope, agent],
-  );
   return {
-    send,
+    send: useCallback((text: string) => sendQuestion(scope, text, agent), [scope, agent]),
     stop: useCallback(() => stopAnswer(scope), [scope]),
     cancelWaiting: useCallback(() => scope.tutor.getState().setWaiting(null), [scope]),
     disabledReason: opening ? 'opening' : empty ? 'empty' : null,

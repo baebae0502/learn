@@ -716,7 +716,7 @@ export interface CommandContextState {
   tutorConsented?: boolean;
   /** The tutor shows the active tab's session and it has a question: 새 세션 needs it. Absent otherwise. */
   tutorHasMessages?: boolean;
-  /** The tutor shows the active tab's session and an answer of it is coming: 답 중지 needs it. Absent otherwise. */
+  /** The active reader tab's session has an answer coming, whether or not the tutor is on screen: 답 중지 needs it. Absent otherwise. */
   tutorStreaming?: boolean;
   /** UI text size in pt (prefs.fontSize, Task 10): ⌘+ / ⌘− stop at 15 / 12, ⌘0 only away from 13. */
   textSize: 12 | 13 | 14 | 15;

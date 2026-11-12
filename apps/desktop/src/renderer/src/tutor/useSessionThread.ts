@@ -59,12 +59,13 @@ const threadQuery = (conversationId: string | null) => ({
 });
 
 /**
- * The answer still coming in this session of the tab around the component, from what the window already has (the session as it was
- * last read, its live answer): it reads nothing itself, so the panel, the composer and the window's commands can ask it alike.
+ * The answer still coming in this session of the tab around the component: the session as read (the same shared query as the
+ * conversation's, so it is read once) and its live answer. It keeps the session read even while the tutor is not on screen, so the
+ * answer's end is seen there too (답 중지 is the palette's whatever the panel shows).
  */
 export function useAnswerComing(conversationId: string | null): string | null {
   const stored = useTutorTab((s) => s.live);
-  const read = useQuery({ ...threadQuery(conversationId), enabled: false });
+  const read = useQuery({ ...threadQuery(conversationId), enabled: conversationId !== null });
   return conversationId === null ? null : comingAnswer(read.data ?? null, stored);
 }
 

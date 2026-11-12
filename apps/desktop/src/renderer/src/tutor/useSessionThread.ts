@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import type { SessionThread, ToolChip } from '@learn/domain';
 import { api, ApiError, unwrap } from '../api';
 import { keys } from '../data/queries';
+import { queryClient } from '../data/query-client';
+import type { ReaderScope } from '../viewers/readerScope';
 import { useTutorTab } from './tutorStore';
 
 /** An answer still coming, as the window heard it from its first notice: the text so far, the tools recorded and the one running. */
@@ -40,6 +42,39 @@ export function startsLive(thread: SessionThread | undefined, messageId: string)
   return stored === undefined || (stored.text === '' && stored.tools.length === 0);
 }
 
+/**
+ * The answer of the session still coming: the live one, or a stored answer whose status is still streaming (a window that joined it
+ * late); null when none comes. What 중지, esc and 답 중지 stop.
+ */
+export function comingAnswer(thread: SessionThread | null, stored: LiveTurn | null): string | null {
+  const live = liveOver(thread, stored);
+  if (live !== null) return live.tutorMessageId;
+  return thread?.messages.find((m) => m.role === 'tutor' && m.status === 'streaming')?.id ?? null;
+}
+
+/** sessions:get as a query: the one read of a session that every reader of it shares. */
+const threadQuery = (conversationId: string | null) => ({
+  queryKey: keys.sessionThread(conversationId ?? ''),
+  queryFn: () => unwrap(api().sessions.get({ conversationId: conversationId! })),
+});
+
+/**
+ * The answer still coming in this session of the tab around the component, from what the window already has (the session as it was
+ * last read, its live answer): it reads nothing itself, so the panel, the composer and the window's commands can ask it alike.
+ */
+export function useAnswerComing(conversationId: string | null): string | null {
+  const stored = useTutorTab((s) => s.live);
+  const read = useQuery({ ...threadQuery(conversationId), enabled: false });
+  return conversationId === null ? null : comingAnswer(read.data ?? null, stored);
+}
+
+/** The same, outside a component: the answer still coming in the session the tab of `scope` shows. */
+export function answerComingIn(scope: ReaderScope): string | null {
+  const { conversationId, live } = scope.tutor.getState();
+  if (conversationId === null) return null;
+  return comingAnswer(queryClient.getQueryData<SessionThread>(keys.sessionThread(conversationId)) ?? null, live);
+}
+
 /** An answer of the thread is coming and the window has no live one over it: it joined that answer late. */
 const joinedLate = (thread: SessionThread | undefined, live: LiveTurn | null): boolean =>
   thread !== undefined && liveOver(thread, live) === null && thread.messages.some((m) => m.role === 'tutor' && m.status === 'streaming');
@@ -54,8 +89,7 @@ export function useSessionThread(conversationId: string | null): { thread: Sessi
   const setLive = useTutorTab((s) => s.setLive);
   const setConversation = useTutorTab((s) => s.setConversation);
   const read = useQuery({
-    queryKey: keys.sessionThread(conversationId ?? ''),
-    queryFn: () => unwrap(api().sessions.get({ conversationId: conversationId! })),
+    ...threadQuery(conversationId),
     enabled: conversationId !== null,
     refetchInterval: (q) => (joinedLate(q.state.data, stored) ? JOINED_READ_MS : false),
   });

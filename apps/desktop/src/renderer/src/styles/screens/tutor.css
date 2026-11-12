@@ -740,4 +740,122 @@
     background: var(--bg-raised);
     box-shadow: var(--shadow-e1);
   }
+
+  /* ---- The composer (spec 8.4; mockup .tu-composer, .tu-wait, the agent button and ?menu=agent) ---- */
+
+  /* The tab's session: the conversation (or the empty session) over the composer. */
+  .tutor-session {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .tutor-compose {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+  }
+  /* A field's box (design-spec 6 입력): the text area, then the foot; 16 from the panel's sides and bottom. */
+  .tutor-composer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+    margin: 0 var(--space-16) var(--space-16);
+    padding: var(--space-8) var(--space-8) var(--space-8) var(--space-12);
+    border-radius: var(--radius-lg);
+    background: var(--bg-field);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  /* A text field shows its ring whenever it has the focus, as the app's fields do. */
+  .tutor-composer:has(> .tutor-input:focus) {
+    box-shadow: inset 0 0 0 1px var(--focus), 0 0 0 3px color-mix(in oklch, var(--focus) 28%, transparent);
+  }
+  :root[data-window-inactive] .tutor-composer:has(> .tutor-input:focus) {
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  /* Two lines at rest, growing with its text to eight, then scrolling. */
+  .tutor-input {
+    display: block;
+    width: 100%;
+    min-height: 2lh;
+    max-height: 8lh;
+    field-sizing: content;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-primary);
+    font: var(--type-paragraph);
+    resize: none;
+    outline: none;
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+  }
+  .tutor-input::placeholder {
+    color: var(--text-tertiary);
+    opacity: 1;
+  }
+  :root:not([data-platform='darwin']) .tutor-input::selection {
+    background: color-mix(in oklch, var(--accent) 35%, transparent);
+    color: inherit;
+  }
+  /* The item still opens: the text area off at 45 %, as a disabled control (its buttons dim themselves). */
+  .tutor-composer.is-disabled .tutor-input {
+    opacity: 0.45;
+  }
+  /* A question that waits for another session's answer: its text stays, dimmed — it cannot be sent yet. */
+  .tutor-composer.is-readonly .tutor-input {
+    color: var(--text-secondary);
+  }
+  .tutor-composer .foot {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    min-width: 0;
+    margin-left: calc(var(--space-8) * -1);
+  }
+  /* 보내기: the accent square, as high as a button. */
+  .tutor-send {
+    width: var(--control-height);
+    padding: 0;
+  }
+  /* The agent button: the name never breaks; not ready (its state after the name) and the fake in the warning colour. */
+  .tutor-agent {
+    min-width: 0;
+  }
+  .tutor-agent.warn,
+  .tutor-agent.warn .icon {
+    color: var(--warning-text);
+  }
+  /* Above the composer while another session's answer comes: the spinner, the line, 보내지 않기. */
+  .tutor-wait {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    margin: 0 var(--space-16) var(--space-8);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  .tutor-wait .w-text {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .tutor-wait .spinner {
+    width: 12px; /* local: the mockup's small spinner, beside footnote text */
+    height: 12px; /* local: the mockup's small spinner, beside footnote text */
+    border-width: 1.5px; /* local: the mockup's small spinner, beside footnote text */
+  }
+  /* The agent menu: the mockup's width; a row's tooltip covers the whole row, its check and label laid out as a menu row's. */
+  .agent-menu .menu {
+    width: 272px; /* local: the mockup's agent menu */
+  }
+  .agent-menu .mi-row {
+    flex: 1 1 auto;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    min-width: 0;
+  }
 }

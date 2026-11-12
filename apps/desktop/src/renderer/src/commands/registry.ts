@@ -65,6 +65,8 @@ export interface CommandEnv extends CommandContextState {
   chooseAgent(): void;
   /** 새 세션: this tab's tutor goes to a new empty session (the one it showed stays in the session list). */
   newSession(): void;
+  /** 답 중지: the answer this tab's session receives stops (the panel's esc and 중지 do the same, as the panel's own keys). */
+  stopAnswer(): void;
   /** ⌘/ (Task 6). */
   showShortcuts(): void;
   /** ⌘K (Task 9): opens the palette, or selects its field when it is already open. */
@@ -267,6 +269,7 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'view.inspectorTutor': (env) => env.setInspectorMode('tutor'),
   'tutor.chooseAgent': (env) => env.chooseAgent(),
   'tutor.newSession': (env) => env.newSession(),
+  'tutor.stop': (env) => env.stopAnswer(),
   'app.shortcuts': (env) => env.showShortcuts(),
   'app.palette': (env) => env.openPalette(),
   'app.settings': (env) => env.openSettings(),
@@ -336,6 +339,7 @@ export function contextOf(env: CommandEnv): CommandContextState {
     ...(env.pdfOpen && env.inspectorMode ? { inspectorMode: env.inspectorMode } : {}),
     ...(env.pdfOpen && env.tutorConsented ? { tutorConsented: true } : {}),
     ...(env.pdfOpen && env.tutorHasMessages ? { tutorHasMessages: true } : {}),
+    ...(env.pdfOpen && env.tutorStreaming ? { tutorStreaming: true } : {}),
     ...(env.importRunning ? { importRunning: true } : {}),
     ...(env.backupRunning ? { backupRunning: true } : {}),
     ...(env.restoreRunning ? { restoreRunning: true } : {}),

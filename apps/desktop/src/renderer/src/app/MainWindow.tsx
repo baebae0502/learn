@@ -58,6 +58,8 @@ import { useAgentsReread } from '../tutor/useAgents';
 import { useTutorPanelState } from '../tutor/TutorPanel';
 import { useTutorTab } from '../tutor/tutorStore';
 import { useTurnEvents } from '../tutor/useTurnEvents';
+import { stopAnswer, useWaitingSends } from '../tutor/useSend';
+import { useAnswerComing } from '../tutor/useSessionThread';
 import { useTutorView } from '../tutor/useTutorView';
 import { useTabsPersistence } from './useTabsPersistence';
 import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell/useSidebar';
@@ -405,10 +407,14 @@ export function MainWindow(_props: { info: AppInfo }) {
   const tutorConversation = useTutorTab((s) => s.conversationId);
   const tutorShown = view.kind === 'reader' && showsInspector && !inspectorHidden && inspectorMode === 'tutor' && tutorState === 'ready';
   useTutorView(tutorShown ? { itemId: view.itemId, conversationId: tutorConversation } : null);
-  // 새 세션 needs a session with a question on screen.
+  // 새 세션 needs a session with a question on screen; 답 중지 an answer of it still coming.
   const tutorHasMessages = tutorShown && tutorConversation !== null;
+  const answerComing = useAnswerComing(tutorConversation) !== null;
+  const tutorStreaming = tutorShown && answerComing;
   // What main says about answers goes to the tab that shows their session, shown or not.
   useTurnEvents();
+  // A question that waited for another session's answer goes once that answer ends, in whatever tab it waits.
+  useWaitingSends();
   // The consent main recorded: 에이전트 고르기… needs it.
   const tutorConsented = useTutorPrefs().consent !== null;
   // A turn that failed on the login or the lockdown makes the agents report of this run stale, whatever the panel shows.
@@ -484,6 +490,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     ...(pdfOpen ? { inspectorMode } : {}),
     ...(tutorConsented ? { tutorConsented: true } : {}),
     ...(tutorHasMessages ? { tutorHasMessages: true } : {}),
+    ...(tutorStreaming ? { tutorStreaming: true } : {}),
     // ⌘+ / ⌘− stop at 15 / 12 and ⌘0 is off at 13 (prefs.fontSize; the default until prefs are read).
     textSize,
     libraryCount: count,
@@ -575,6 +582,8 @@ export function MainWindow(_props: { info: AppInfo }) {
     },
     // The shown tab's tutor goes to a new empty session; the one it showed stays in the session list.
     newSession: () => currentScope().tutor.getState().setConversation(null),
+    // The answer the shown tab's session receives stops (the panel's esc and 중지 do the same).
+    stopAnswer: () => stopAnswer(currentScope()),
     showShortcuts: () => void showShortcuts(),
     checkLibrary: () => checkLibrary(false),
     openPalette,
@@ -599,7 +608,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, pdfOpen, imageDrawn, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, inspectorMode, tutorConsented, tutorHasMessages, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAtPage, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, pdfOpen, imageDrawn, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, inspectorMode, tutorConsented, tutorHasMessages, tutorStreaming, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAtPage, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);

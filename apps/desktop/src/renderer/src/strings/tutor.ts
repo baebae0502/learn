@@ -1,7 +1,8 @@
 // The tutor's copy (spec 13: 합니다체; U+00A0 binds a determiner to its noun, a kind to its count, "Claude Code" and "이 Mac" into one
 // piece). T1a has one real agent and one company: the card says Claude Code and Anthropic, as the approved mockup does.
-// Rows join this file with the task that draws them: the mode segment, the consent card, the off state, the agent chooser, and the
-// conversation (Task 17: the empty session, the chips, the sent-scope line and list, the lines under an answer, 최신으로).
+// Rows join this file with the task that draws them: the mode segment, the consent card, the off state, the agent chooser, the
+// conversation (Task 17: the empty session, the chips, the sent-scope line and list, the lines under an answer, 최신으로), and the
+// composer with its agent button and menu (Task 18).
 import { SPIKE_FACTS, type AgentId } from '@learn/domain';
 import { euroRo } from './josa';
 
@@ -131,6 +132,41 @@ export const tutor = {
     cut: '답이 길이 한도에서 끊겼습니다.',
     steps: '에이전트가 한 답에서 할 수 있는 단계를 다 썼습니다.',
     refused: '에이전트가 이\u00a0질문에 답하지 않았습니다.',
+  },
+  /**
+   * The composer (spec 8.4, 13; the approved mockup's .tu-composer and its tooltips). A disabled 보내기 says its name and then why,
+   * as every control disabled with a reason does ("보내기 — 질문을 입력하면 보낼 수 있습니다").
+   */
+  composer: {
+    placeholder: '질문을 입력하세요',
+    receiving: '답을 받는 중입니다',
+    opening: '자료를 여는 중입니다',
+    send: '보내기',
+    sendEmpty: '질문을 입력하면 보낼 수 있습니다',
+    sendOpening: '자료를 여는 중입니다',
+    sendWaiting: '다른\u00a0세션의 답이 끝나면 보냅니다',
+    stop: '중지',
+    answering: '답하는 중…',
+    /** Above the composer while another session's answer comes (AGENT_BUSY, J17): the question waits in the composer. */
+    waiting: '다른\u00a0세션의 답이 끝나면 보냅니다',
+    dontSend: '보내지 않기',
+  },
+  /**
+   * The composer's agent button and its menu (spec 8.4, 8.7; the approved mockup: the button's tooltip, the disabled row's reason by
+   * state, the fake row's tooltip). The agent's name is one piece wherever a tooltip may wrap.
+   */
+  agentMenu: {
+    withState: (name: string, state: string) => `${name} · ${state}`,
+    tip: (name: string, state: string) => `에이전트: ${`${name}`.replace(/ /g, '\u00a0')} · ${state} — 누르면 에이전트를 바꿉니다`,
+    fakeTip: '가짜 에이전트 · 개발·데모 빌드에서만 보입니다',
+    disabled: (name: string, state: string) => `${name} — ${state}`,
+    why: {
+      adapter: 'Learn과 연결하는 도구를 설치한 뒤 에이전트 고르기에서 다시 확인하세요',
+      login: 'Learn 전용 설정으로 로그인한 뒤 에이전트 고르기에서 다시 확인하세요',
+      old: '업데이트한 뒤 에이전트 고르기에서 다시 확인하세요',
+      missing: '설치한 뒤 에이전트 고르기에서 다시 찾으세요',
+    },
+    fakeRowTip: '개발·데모 빌드에서만 보입니다',
   },
   /** The copied answer's cites (citationCopyText): "(42쪽)", "(출처 없음)". */
   copy: { page: (n: number) => `(${n}쪽)`, none: '(출처 없음)' },

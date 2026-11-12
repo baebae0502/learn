@@ -4,7 +4,7 @@ import type { MessageView, SessionThread, ToolChip, TutorTurnEvent } from '@lear
 vi.mock('../api', async (original) => ({ ...(await original<typeof import('../api')>()), api: () => ({}) }));
 
 const { applyTurnEvent, createdSession } = await import('./useTurnEvents');
-const { liveOver } = await import('./useSessionThread');
+const { comingAnswer, liveOver } = await import('./useSessionThread');
 
 const C = '8a6e1c52-2f3b-4d0e-9a41-7b5c3e2d1f00';
 const M = '3f0d9a0e-6b1e-4c1e-8f6a-1d2f9b7c5e11';
@@ -61,6 +61,18 @@ describe('which of the live and the stored answer is drawn', () => {
     expect(liveOver(thread(answer({ text: '앞서 받은 글 ' })), { ...live, text: '그 뒤의 글' })).toBeNull();
     expect(liveOver(thread(answer({ tools: [read(1), read(41, 42)] })), live)).toBeNull();
     expect(liveOver(thread(answer()), null)).toBeNull();
+  });
+});
+
+describe('the answer still coming in a session: what 중지, esc and 답 중지 stop', () => {
+  const live = { tutorMessageId: M, text: '읽은 쪽을', tools: [], running: null, verifiedSoFar: new Set<number>() };
+  it('is the live one, or a stored answer still streaming (a window that joined late), else none', () => {
+    expect(comingAnswer(null, live)).toBe(M); // the session not read yet
+    expect(comingAnswer(thread(), live)).toBe(M); // its rows not read yet
+    expect(comingAnswer(thread(answer()), null)).toBe(M);
+    expect(comingAnswer(thread(answer({ status: 'complete' })), null)).toBeNull();
+    expect(comingAnswer(thread(answer({ status: 'stopped' })), live)).toBeNull(); // ended: the live one is stale
+    expect(comingAnswer(null, null)).toBeNull();
   });
 });
 

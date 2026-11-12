@@ -35,6 +35,15 @@ function keepSession(tabId: string, conversationId: string | null): void {
 /** The tab closed (or its item is gone): the session it showed is not its any more. */
 export const forgetTutorTab = (tabId: string): void => keepSession(tabId, null);
 
+/** Where a session's draft is kept in its tab: under the session, or for a new empty one under its item (J48). */
+export const draftKey = (conversationId: string | null, itemId: string): string => conversationId ?? `new:${itemId}`;
+
+/** A question sent while another session's answer still came (tutor:ask's { busyWith }, J17): it is sent once that answer ends. */
+export interface WaitingQuestion {
+  text: string;
+  busyWith: { conversationId: string; messageId: string };
+}
+
 /**
  * What one reader tab's tutor panel keeps while the tab is open: in memory, but for the session it shows, which also
  * survives a reload of the window. 나중에 is not one of them: it is the run's (tutorRun.ts).
@@ -42,7 +51,7 @@ export const forgetTutorTab = (tabId: string): void => keepSession(tabId, null);
 export interface TutorTabStore {
   /** The session this tab's tutor shows; null is a new empty session. */
   conversationId: string | null;
-  /** Another session (null: a new empty one): the live answer of the one before goes with it. */
+  /** Another session (null: a new empty one): the live answer of the one before goes with it, and a question that waited is let go. */
   setConversation(id: string | null): void;
   /** 에이전트 고르기…: the chooser shows although an agent is chosen, until one is started or the tab closes. */
   choosing: boolean;
@@ -56,6 +65,16 @@ export interface TutorTabStore {
    */
   currentCite: CurrentCite | null;
   setCurrentCite(c: CurrentCite | null): void;
+  /**
+   * What the composer holds for each session of the tab, by draftKey (J48): kept while the tab is open, across tabs, modes and
+   * sessions, in memory only — a reload or a new run starts without them.
+   */
+  drafts: Record<string, string>;
+  /** An empty text removes the draft. */
+  setDraft(key: string, text: string): void;
+  /** The question that waits for another session's answer (J17); its text stays in the composer, read only, until then. */
+  waiting: WaitingQuestion | null;
+  setWaiting(w: WaitingQuestion | null): void;
 }
 
 export interface CurrentCite {
@@ -78,7 +97,7 @@ export function createTutorTabStore(tabId = ''): StoreApi<TutorTabStore> {
     setConversation: (conversationId) => {
       if (get().conversationId === conversationId) return;
       keepSession(tabId, conversationId);
-      set({ conversationId, live: null, currentCite: null });
+      set({ conversationId, live: null, currentCite: null, waiting: null });
     },
     choosing: false,
     setChoosing: (choosing) => set({ choosing }),
@@ -86,6 +105,15 @@ export function createTutorTabStore(tabId = ''): StoreApi<TutorTabStore> {
     setLive: (live) => set({ live }),
     currentCite: null,
     setCurrentCite: (currentCite) => set({ currentCite }),
+    drafts: {},
+    setDraft: (key, text) =>
+      set(({ drafts }) => {
+        if ((drafts[key] ?? '') === text) return {};
+        const { [key]: _gone, ...rest } = drafts;
+        return { drafts: text === '' ? rest : { ...rest, [key]: text } };
+      }),
+    waiting: null,
+    setWaiting: (waiting) => set({ waiting }),
   }));
 }
 

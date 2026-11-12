@@ -1,8 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type KeyboardEvent } from 'react';
 import { api, unwrap } from '../api';
 import { useItem } from '../data/queries';
 import { useReaderScope } from '../viewers/readerScope';
 import { AgentChooser } from './AgentChooser';
+import { Composer } from './Composer';
+import { composerKey } from './composerKeys';
 import { ConsentCard } from './ConsentCard';
 import { Conversation } from './Conversation';
 import { EmptySession } from './EmptySession';
@@ -11,6 +13,8 @@ import { useTutorTab } from './tutorStore';
 import { TutorOff } from './TutorOff';
 import { useTutorRun } from './tutorRun';
 import { useTutorPrefs } from './useTutorPrefs';
+import { stopAnswer } from './useSend';
+import { useAnswerComing } from './useSessionThread';
 
 /** What the tutor panel shows: the consent card, the off state (나중에), the agent chooser, or the tab's session (`ready`). */
 export type TutorPanelState = 'consent' | 'off' | 'chooser' | 'ready';
@@ -24,12 +28,28 @@ export function useTutorPanelState(): TutorPanelState {
   return prefs.agent === null || choosing ? 'chooser' : 'ready';
 }
 
-/** The tab's session: a new empty one (the item's title over what to do), or the conversation. */
+/**
+ * The tab's session: a new empty one (the item's title over what to do) or the conversation, and the composer under it. esc anywhere in
+ * it stops an answer that comes (not during a composition; a menu or a list that takes esc keeps it).
+ */
 function TabSession({ visible }: { visible: boolean }) {
   const scope = useReaderScope();
   const conversationId = useTutorTab((s) => s.conversationId);
   const title = useItem(scope.id).data?.title ?? '';
-  return conversationId === null ? <EmptySession title={title} /> : <Conversation key={conversationId} conversationId={conversationId} visible={visible} />;
+  const streaming = useAnswerComing(conversationId) !== null;
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.defaultPrevented) return;
+    const k = composerKey({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode }, { hasText: false, streaming, canSend: false });
+    if (k !== 'stop') return;
+    e.preventDefault();
+    stopAnswer(scope);
+  };
+  return (
+    <div className="tutor-session" onKeyDown={onKeyDown} data-testid="tutor-session">
+      {conversationId === null ? <EmptySession title={title} /> : <Conversation key={conversationId} conversationId={conversationId} visible={visible} />}
+      <Composer visible={visible} />
+    </div>
+  );
 }
 
 /** Where the focus goes when a press changes the panel's state: the control that takes the place of the one that was pressed. */

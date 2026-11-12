@@ -1,7 +1,9 @@
-// T1a Tasks 15–17: the tutor in the reader's right panel — the consent card, 나중에 and the off state, 동의 (spec 8.2, 8.6), then the agent
+// T1a Tasks 15–18: the tutor in the reader's right panel — the consent card, 나중에 and the off state, 동의 (spec 8.2, 8.6), then the agent
 // chooser: Claude Code's row in its five states, 다시 찾기, the fake agent and its band (spec 4.3, 8.7), then the session: the empty one and
 // the conversation — bubbles, tool chips, the answer's chips that go to their page, copy, the sent scope, 최신으로, 새 세션 (spec 7, 8.2, 8.3,
-// 8.5). Nothing runs before consent. The composer comes with the next task: these tests ask through window.learn.tutor.ask.
+// 8.5) — and the composer: ↩ and ⇧↩, 중지 and esc, the agent button and its menu, drafts, the item still opening, the question that
+// waits for another session's answer, F6 and ⌃⌘2 (spec 8.4, 8.7, 8.11). Nothing runs before consent. The conversation's own tests ask
+// through window.learn.tutor.ask, the composer's call.
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
@@ -10,8 +12,8 @@ import type { LearnPdfProbe } from '../../apps/desktop/src/renderer/src/viewers/
 import type { PdfAnchor } from '../../packages/domain/src/anchors';
 import type { TutorAskInput } from '../../packages/domain/src/tutor';
 import {
-  FIXTURES, backFromReader, expectTooltipText, hoverLikeUser, importPaths, ipcCalls, launch, mainWindow, openItem, readClipboard, runMenuCommand, runPalette, textExtraction, textIdle, tutorFailAgents,
-  tutorFakeScript, tutorProcesses, type Session,
+  FIXTURES, backFromReader, expectDisabledReason, expectTooltipText, hoverLikeUser, importPaths, ipcCalls, launch, mainWindow, openItem, readClipboard, readerTab, runMenuCommand, runPalette,
+  textExtraction, textIdle, tutorFailAgents, tutorFakeLog, tutorFakeScript, tutorProcesses, type Session,
 } from './helpers';
 import { READER_100, askViaApi, consentAndChoose, installFakeAgents, turnEnded } from './tutor-helpers';
 
@@ -815,6 +817,10 @@ test('a cite of a page the answer did not read: 확인 중 while it comes, 출�
     await expect(unread).toHaveAttribute('tabindex', '0');
     await expect(unread).toHaveAttribute('aria-disabled', 'true');
     await expect(unread.locator('.lucide-circle-help')).toHaveCount(1);
+    // The composer under the log leaves it shorter than the answer: its start is scrolled out. Brought back first, so the hover is not
+    // the one that scrolls it in (that scroll shows and hides the session's name row above the log, moving the chip under the pointer).
+    await page.getByTestId('tutor-log').evaluate((el) => void (el.scrollTop = 0));
+    await expect(page.getByTestId('tutor-sticky')).toBeHidden();
     await hoverOver(page, unread);
     await expectTooltipText(page, '확인되지 않은 인용 · 튜터가 43쪽을 가리켰지만 이번 답에서 그 쪽을 읽지 않았습니다', 'cite-chip');
     await page.mouse.move(5, 5);
@@ -957,6 +963,431 @@ test('while an answer comes the column keeps to its bottom; scrolled up it stays
     await log.evaluate((el) => void (el.scrollTop = 0));
     await expect(page.getByTestId('tutor-sticky')).toBeHidden();
     await expect(latest).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+// ---- The composer (Task 18) ----
+
+const composerInput = (page: Page) => page.getByTestId('tutor-input');
+/** The questions the fake agents of this run were asked (one prompt each). */
+const prompts = async (app: ElectronApplication): Promise<number> => (await tutorFakeLog(app)).filter((e) => e.t === 'prompt').length;
+/** A question typed into the composer and sent with ↩, as a person does. */
+async function sendFromComposer(page: Page, text: string): Promise<void> {
+  await composerInput(page).click();
+  await page.keyboard.insertText(text);
+  await expect(composerInput(page)).toHaveValue(text);
+  await page.keyboard.press('Enter');
+}
+/** The answers of the item's sessions, newest session first: their ids as sessions.get reads them. */
+async function answersOf(page: Page, itemId: string): Promise<Array<{ conversationId: string; tutorMessageId: string; status: string }>> {
+  return page.evaluate(async (id) => {
+    const list = await window.learn.sessions.list({ itemId: id });
+    if (!list.ok) throw new Error(`sessions.list: ${list.code}`);
+    const out: Array<{ conversationId: string; tutorMessageId: string; status: string }> = [];
+    for (const s of list.data) {
+      const t = await window.learn.sessions.get({ conversationId: s.id });
+      if (!t.ok) continue;
+      for (const m of t.data.messages) if (m.role === 'tutor') out.push({ conversationId: s.id, tutorMessageId: m.id, status: m.status });
+    }
+    return out;
+  }, itemId);
+}
+/** A popover that has finished coming in: its geometry is final. */
+const popoverSettled = (page: Page, selector: string) =>
+  expect.poll(() => page.locator(selector).evaluate((el) => el.getAnimations({ subtree: true }).length + (el.hasAttribute('data-entering') ? 1 : 0))).toBe(0);
+
+test('the composer: ↩ sends and ⇧↩ breaks the line; the question shows at once; while the answer comes the text is read only, 답하는 중… and 중지; esc in the panel stops it', async ({}, testInfo) => {
+  const { app, page } = await atSession(testInfo);
+  try {
+    await tutorFakeScript(app, 'slow');
+    const box = composerInput(page);
+    const send = page.getByTestId('tutor-send');
+    // At rest: the placeholder, 보내기 off with its reason while there is no text (focusable: its tooltip says why).
+    await expect(box).toHaveAttribute('placeholder', '질문을 입력하세요');
+    await expect(box).toBeEditable();
+    await expect(send).toHaveAccessibleName('보내기');
+    await expectDisabledReason(send, '질문을 입력하면 보낼 수 있습니다');
+    await hoverLikeUser(page, 'tutor-send');
+    await expectTooltipText(page, /^보내기\s*질문을 입력하면 보낼 수 있습니다$/, 'tutor-send');
+    await expect(page.getByTestId('tutor-agent')).toHaveText('가짜 에이전트');
+    await expectNoSeriousA11y(page, 'tutor composer at rest');
+    // ↩ with no text sends nothing; ⇧↩ breaks the line.
+    await box.click();
+    await page.keyboard.press('Enter');
+    await expect(box).toHaveValue('');
+    await page.keyboard.insertText('천천히 답해 주세요.');
+    await page.keyboard.press('Shift+Enter');
+    await page.keyboard.insertText('둘째 줄');
+    await expect(box).toHaveValue('천천히 답해 주세요.\n둘째 줄');
+    await expectDisabledReason(send, null);
+    await hoverLikeUser(page, 'tutor-send');
+    await expectTooltipText(page, /^보내기\s*(↩|Enter)$/, 'tutor-send');
+    expect(await prompts(app)).toBe(0);
+
+    await box.focus();
+    await page.keyboard.press('Enter');
+    // The question's bubble at once; the composer empty and read only while the answer comes, 중지 in 보내기's place.
+    await expect(page.getByTestId('tutor-question').locator('.bubble')).toBeVisible();
+    expect(await page.getByTestId('tutor-question').locator('.bubble p').innerText()).toBe('천천히 답해 주세요.\n둘째 줄');
+    await expect(box).toHaveValue('');
+    await expect(box).toHaveAttribute('placeholder', '답을 받는 중입니다');
+    await expect(box).toHaveAttribute('readonly', '');
+    await expect(page.getByTestId('tutor-answering')).toHaveText('답하는 중…');
+    const stop = page.getByTestId('tutor-stop');
+    await expect(stop).toHaveText('중지');
+    await expect(send).toHaveCount(0);
+    await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'streaming');
+    await expect.poll(() => prompts(app)).toBe(1);
+    await hoverLikeUser(page, 'tutor-stop');
+    await expectTooltipText(page, /^중지\s*(esc|Esc)$/, 'tutor-stop');
+    // Nothing can be typed meanwhile (the next question is written once the answer ended: spec 8.4).
+    await box.focus();
+    await page.keyboard.insertText('더');
+    await expect(box).toHaveValue('');
+    await expectNoSeriousA11y(page, 'tutor composer while an answer comes');
+    // esc from the conversation, not only from the text area: anywhere in the panel. (An open tooltip takes the first esc for itself, as
+    // every tooltip does: the pointer leaves 중지 first.)
+    await page.mouse.move(400, 400);
+    await expect(page.getByRole('tooltip')).toHaveCount(0);
+    await page.getByTestId('tutor-log').focus();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'stopped');
+    await expect(page.getByTestId('tutor-ended')).toHaveText('중지함');
+    await expect(page.getByTestId('tutor-said')).toHaveText('답을 중지했습니다');
+    await expect(page.getByTestId('tutor-answering')).toHaveCount(0);
+    await expect(send).toBeVisible();
+    await expect(box).not.toHaveAttribute('readonly');
+    await expect(box).toHaveAttribute('placeholder', '질문을 입력하세요');
+    expect(await prompts(app)).toBe(1);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the agent button and its menu: the fake checked, a Claude Code that needs its login listed off with its reason, then 에이전트 고르기…; it opens above the button when there is no room below', async ({}, testInfo) => {
+  const dir = testInfo.outputPath('npm');
+  const { app, page } = await launch(...dirs(testInfo), { env: { LEARN_E2E_SETTINGS: '', LEARN_AGENT_SEARCH_PATH: installFakeAgents(dir, { ...READY, script: 'login' }) } });
+  try {
+    await (await mainWindow(app)).evaluate((w) => w.setContentSize(1440, w.getContentSize()[1]!));
+    await openPaper(page);
+    await consentAndChoose(page, 'fake');
+    await expect(page.getByTestId('tutor-empty')).toBeVisible();
+    const button = page.getByTestId('tutor-agent');
+    // The fake: its name, its flask, the warning colour; its tooltip says what it is.
+    await expect(button).toHaveText('가짜 에이전트');
+    await expect(button.locator('.lucide-flask-conical')).toHaveCount(1);
+    await expect(button).toHaveClass(/\bwarn\b/);
+    await hoverLikeUser(page, 'tutor-agent');
+    await expectTooltipText(page, '가짜 에이전트 · 개발·데모 빌드에서만 보입니다', 'tutor-agent');
+
+    await button.click();
+    const menu = page.getByRole('menu');
+    await expect(menu).toBeVisible();
+    // One row for Claude Code, one for the fake, then 에이전트 고르기… after a separator (a positive control: three rows in all).
+    await expect(menu.getByRole('menuitemradio')).toHaveCount(2);
+    await expect(menu.getByRole('menuitem')).toHaveText(['에이전트 고르기…']);
+    await expect(menu.getByRole('separator')).toHaveCount(1);
+    const claude = menu.getByTestId('tutor-agent-row').and(page.locator('[data-agent="claude"]'));
+    const fake = menu.getByTestId('tutor-agent-row').and(page.locator('[data-agent="fake"]'));
+    await expect(claude.locator('.mi-label')).toHaveText('Claude Code — 로그인 필요');
+    await expect(claude).toHaveAccessibleName('Claude Code — 로그인 필요');
+    await expect(claude).toHaveAttribute('aria-disabled', 'true');
+    await expect(claude).toHaveAttribute('aria-checked', 'false');
+    await expect(claude).toHaveAccessibleDescription('Learn 전용 설정으로 로그인한 뒤 에이전트 고르기에서 다시 확인하세요');
+    await expect(claude.locator('.mi-row')).toHaveAttribute('title', 'Learn 전용 설정으로 로그인한 뒤 에이전트 고르기에서 다시 확인하세요');
+    await expect(fake.locator('.mi-label')).toHaveText('가짜 에이전트');
+    await expect(fake).toHaveAccessibleName('가짜 에이전트');
+    await expect(fake).toHaveAttribute('aria-checked', 'true');
+    await expect(fake.locator('.check .lucide-check')).toHaveCount(1);
+    await expect(fake.locator('.lucide-flask-conical')).toHaveCount(1);
+    await expect(fake.locator('.mi-row')).toHaveAttribute('title', '개발·데모 빌드에서만 보입니다');
+    await expect(menu.locator('.mi')).toHaveCount(3);
+    // The composer is at the window's bottom: the menu opens above the button, 4 px from it, at its left edge.
+    await popoverSettled(page, '.agent-menu');
+    const [b, m] = [(await button.boundingBox())!, (await page.locator('.agent-menu').boundingBox())!];
+    expect(Math.abs(m.y + m.height + 4 - b.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(m.x - b.x)).toBeLessThanOrEqual(1);
+    await expectNoSeriousA11y(page, 'tutor agent menu');
+    // The keyboard passes over the row that is off.
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
+    await expect(claude).not.toHaveAttribute('data-focused');
+
+    // 에이전트 고르기… is the registry's command: the chooser shows.
+    await menu.getByRole('menuitem', { name: '에이전트 고르기…' }).click();
+    await expect(page.getByTestId('tutor-chooser')).toBeVisible();
+    await expect(claudeRow(page).getByTestId('agent-flag')).toHaveText('로그인 필요');
+  } finally {
+    await app.close();
+  }
+});
+
+test('the agent not known as ready does not hold the send back: ↩ checks it again first (one check: a second ↩ meanwhile does nothing), then asks; the menu switches agents through main', async ({}, testInfo) => {
+  const dir = testInfo.outputPath('npm');
+  const install = (l: Layout) => {
+    fs.rmSync(dir, { recursive: true, force: true });
+    return installFakeAgents(dir, l);
+  };
+  const { app, page } = await launch(...dirs(testInfo), { env: { LEARN_E2E_SETTINGS: '', LEARN_AGENT_SEARCH_PATH: install(READY) } });
+  try {
+    await (await mainWindow(app)).evaluate((w) => w.setContentSize(1440, w.getContentSize()[1]!));
+    await openPaper(page);
+    await consentAndChoose(page, 'claude');
+    await expect(page.getByTestId('tutor-empty')).toBeVisible();
+    const button = page.getByTestId('tutor-agent');
+    await expect(button).toHaveText('Claude Code');
+    await expect(button).not.toHaveClass(/\bwarn\b/);
+    await hoverLikeUser(page, 'tutor-agent');
+    await expectTooltipText(page, '에이전트: Claude Code · 준비됨 — 누르면 에이전트를 바꿉니다', 'tutor-agent');
+    // The menu: Claude Code checked, the fake below it. Choosing the fake goes through main (tutor:chooseAgent), not prefs:set.
+    await button.click();
+    const menu = page.getByRole('menu');
+    await expect(menu.getByRole('menuitemradio', { name: 'Claude Code' })).toHaveAttribute('aria-checked', 'true');
+    await expect(menu.getByRole('menuitemradio', { name: 'Claude Code' })).not.toHaveAttribute('aria-disabled', 'true');
+    const before = await ipcCalls(app);
+    await menu.getByRole('menuitemradio', { name: '가짜 에이전트' }).click();
+    await expect(button).toHaveText('가짜 에이전트');
+    const after = await ipcCalls(app);
+    expect(after['tutor:chooseAgent']).toBe((before['tutor:chooseAgent'] ?? 0) + 1);
+    expect(after['prefs:set'] ?? 0).toBe(before['prefs:set'] ?? 0);
+    await expect(page.getByTestId('tutor-fake-band')).toBeVisible();
+    await button.click();
+    await page.getByRole('menu').getByRole('menuitemradio', { name: 'Claude Code' }).click();
+    await expect(button).toHaveText('Claude Code');
+    await expect(page.getByTestId('tutor-fake-band')).toHaveCount(0);
+
+    // The login lapses: a question fails on it, and the button says so (the window reads the agents again after that failure).
+    install({ ...READY, script: 'login' });
+    await sendFromComposer(page, '첫 질문입니다.');
+    await expect(button).toHaveText('Claude Code · 로그인 필요');
+    await expect(button).toHaveClass(/\bwarn\b/);
+    await expect(button.locator('.lucide-log-in')).toHaveCount(1);
+    // (A question that fails before any answer leaves no session: the tab is on a new empty session again.)
+    await expect(page.getByTestId('tutor-empty')).toBeVisible();
+    // Still sendable: 보내기 is on as soon as there is text.
+    await composerInput(page).click();
+    await page.keyboard.insertText('다시 묻습니다.');
+    await expectDisabledReason(page.getByTestId('tutor-send'), null);
+
+    // Logged in, in a terminal: ↩ checks Claude Code again (the window's one check), then sends; a second ↩ meanwhile does nothing.
+    install(READY);
+    const agentsBefore = (await ipcCalls(app))['tutor:agents'] ?? 0;
+    const asksBefore = (await ipcCalls(app))['tutor:ask'] ?? 0;
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('tutor-question').locator('.bubble')).toHaveText('다시 묻습니다.');
+    await expect(button).toHaveText('Claude Code');
+    await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', /^(streaming|complete)$/);
+    expect((await ipcCalls(app))['tutor:agents']).toBe(agentsBefore + 1);
+    expect((await ipcCalls(app))['tutor:ask']).toBe(asksBefore + 1);
+    await expect(page.getByTestId('tutor-question')).toHaveCount(1);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a draft stays with its tab and session while the app runs: across modes and tabs, each tab its own', async ({}, testInfo) => {
+  const { app, page, itemId } = await atSession(testInfo);
+  try {
+    const box = composerInput(page);
+    await box.click();
+    await page.keyboard.insertText('쓰다 만 질문');
+    // 정보 and back: the same draft.
+    await runMenuCommand(app, 'view.inspectorInfo');
+    await expect(page.getByTestId('tutor-panel')).toHaveCount(0);
+    await runMenuCommand(app, 'view.inspectorTutor');
+    await expect(box).toHaveValue('쓰다 만 질문');
+    // Another tab has its own; back here, this one's.
+    await backFromReader(page);
+    const [sample] = await importPaths(page, [path.join(FIXTURES, 'sample.pdf')]);
+    await openItem(page, 'sample');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
+    await expect(page.getByTestId('tutor-empty')).toBeVisible();
+    await expect(box).toHaveValue('');
+    await box.click();
+    await page.keyboard.insertText('다른 자료의 질문');
+    await readerTab(page, itemId).click();
+    await expect(page.getByTestId('tutor-empty').locator('.pe-title')).toHaveText('paper-100');
+    await expect(box).toHaveValue('쓰다 만 질문');
+    await readerTab(page, sample!.id).click();
+    await expect(page.getByTestId('tutor-empty').locator('.pe-title')).toHaveText('sample');
+    await expect(box).toHaveValue('다른 자료의 질문');
+    expect(await prompts(app)).toBe(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('while the item opens the composer is off: its text area and agent button, and 보내기 says why; once it is open it is on', async ({}, testInfo) => {
+  const { app, page } = await atSession(testInfo);
+  try {
+    // A real opening, recorded: every state the composer of the newly opened tab is drawn in before its PDF is ready.
+    await backFromReader(page);
+    await importPaths(page, [path.join(FIXTURES, 'sample.pdf')]);
+    await page.evaluate(() => {
+      const seen: string[] = [];
+      (window as unknown as { __composer: string[] }).__composer = seen;
+      const look = () => {
+        const box = document.querySelector<HTMLTextAreaElement>('[data-testid="tutor-input"]');
+        const title = document.querySelector('[data-testid="tutor-empty"] .pe-title')?.textContent;
+        if (!box || title !== 'sample') return;
+        const ready = (window as unknown as { __learnReader: { getState(): { pdf: { ready: boolean } | null } } }).__learnReader.getState().pdf?.ready === true;
+        const v = `${ready ? 'ready' : 'opening'}:${box.disabled ? 'off' : 'on'}:${box.placeholder}`;
+        if (!seen.includes(v)) seen.push(v);
+      };
+      new MutationObserver(look).observe(document.body, { subtree: true, childList: true, attributes: true });
+    });
+    await openItem(page, 'sample');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
+    await expect(composerInput(page)).toBeEnabled();
+    const seen = await page.evaluate(() => (window as unknown as { __composer: string[] }).__composer);
+    expect(seen, 'the opening state was drawn').toContain('opening:off:자료를 여는 중입니다');
+    expect(seen.filter((v) => v.startsWith('opening:on'))).toEqual([]);
+    expect(seen).toContain('ready:on:질문을 입력하세요');
+
+    // Held in the opening state (the reader's own flag), to read what it says.
+    await page.evaluate(() => (window as unknown as { __learnReader: { getState(): { setPdf(p: { ready: boolean }): void } } }).__learnReader.getState().setPdf({ ready: false }));
+    const box = composerInput(page);
+    await expect(box).toBeDisabled();
+    await expect(box).toHaveAttribute('placeholder', '자료를 여는 중입니다');
+    await expect(page.getByTestId('tutor-agent')).toBeDisabled();
+    await expectDisabledReason(page.getByTestId('tutor-send'), '자료를 여는 중입니다');
+    await hoverLikeUser(page, 'tutor-send');
+    await expectTooltipText(page, /^보내기\s*자료를 여는 중입니다$/, 'tutor-send');
+    // F6 into the panel lands past the text area while it is off: on the head's selected tab, as before there was a composer.
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    for (let i = 0; i < 4; i++) {
+      await page.keyboard.press('F6');
+      if (await page.evaluate(() => document.activeElement?.closest('[data-pane]')?.getAttribute('data-pane') === 'inspector')) break;
+    }
+    await expect(page.getByRole('tab', { name: '튜터' })).toBeFocused();
+    await page.evaluate(() => (window as unknown as { __learnReader: { getState(): { setPdf(p: { ready: boolean }): void } } }).__learnReader.getState().setPdf({ ready: true }));
+    await expect(box).toBeEnabled();
+    await expect(box).toHaveAttribute('placeholder', '질문을 입력하세요');
+    await expect(page.getByTestId('tutor-agent')).toBeEnabled();
+  } finally {
+    await app.close();
+  }
+});
+
+test('one agent process (J17): a question in a new session while another session\'s answer comes waits above the composer and is sent once that answer ends; 보내지 않기 makes it a draft again', async ({}, testInfo) => {
+  const { app, page, itemId } = await atSession(testInfo);
+  try {
+    await tutorFakeScript(app, 'slow');
+    await tutorProcesses(app, { resetMax: true });
+    await sendFromComposer(page, '천천히 답해 주세요.');
+    await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'streaming');
+    // The agent has the question (its rows were written before it started): from here it is answering.
+    await expect.poll(() => prompts(app)).toBe(1);
+    const [first] = await answersOf(page, itemId);
+    // The next agent start answers at once; the slow one keeps answering.
+    await tutorFakeScript(app, 'answer');
+    await page.getByTestId('tutor-new-session').click();
+    await expect(page.getByTestId('tutor-empty')).toBeVisible();
+    expect((await tutorProcesses(app)).count).toBe(1);
+    expect(await prompts(app)).toBe(1);
+
+    await sendFromComposer(page, '다음 질문입니다.');
+    const waitLine = page.getByTestId('tutor-waiting');
+    await expect(waitLine).toBeVisible();
+    await expect(waitLine.getByRole('status')).toHaveText('다른 세션의 답이 끝나면 보냅니다', { useInnerText: true });
+    await expect(waitLine.getByRole('button', { name: '보내지 않기' })).toBeVisible();
+    const box = composerInput(page);
+    await expect(box).toHaveValue('다음 질문입니다.');
+    await expect(box).toHaveAttribute('readonly', '');
+    await expectDisabledReason(page.getByTestId('tutor-send'), '다른 세션의 답이 끝나면 보냅니다');
+    await hoverLikeUser(page, 'tutor-send');
+    await expectTooltipText(page, /^보내기\s*다른.세션의 답이 끝나면 보냅니다$/, 'tutor-send');
+    // Above the composer.
+    const [w, c] = [(await waitLine.boundingBox())!, (await page.getByTestId('tutor-composer').boundingBox())!];
+    expect(w.y + w.height).toBeLessThanOrEqual(c.y);
+    await expectNoSeriousA11y(page, 'tutor waiting line');
+    expect(await prompts(app)).toBe(1);
+    await expect(page.getByTestId('tutor-empty')).toBeVisible(); // no session was made for it
+
+    // The other answer ends: the question goes, once.
+    await turnEnded(page, first!.conversationId, first!.tutorMessageId, { timeout: 30_000 });
+    await expect(page.getByTestId('tutor-question').locator('.bubble')).toHaveText('다음 질문입니다.');
+    await expect(waitLine).toHaveCount(0);
+    await expect(box).toHaveValue('');
+    await expect.poll(() => prompts(app)).toBe(2);
+    const second = (await answersOf(page, itemId)).find((a) => a.conversationId !== first!.conversationId)!;
+    await turnEnded(page, second.conversationId, second.tutorMessageId);
+    expect(await prompts(app)).toBe(2);
+    expect((await tutorProcesses(app)).max).toBe(1);
+  } finally {
+    await app.close();
+  }
+});
+
+test('보내지 않기: the question that waited is a draft to edit again, and nothing is sent when the other answer ends', async ({}, testInfo) => {
+  const { app, page, itemId } = await atSession(testInfo);
+  try {
+    await tutorFakeScript(app, 'slow');
+    await sendFromComposer(page, '천천히 답해 주세요.');
+    await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'streaming');
+    await expect.poll(() => prompts(app)).toBe(1);
+    const [first] = await answersOf(page, itemId);
+    await tutorFakeScript(app, 'answer');
+    await page.getByTestId('tutor-new-session').click();
+    await sendFromComposer(page, '다음 질문입니다.');
+    await expect(page.getByTestId('tutor-waiting')).toBeVisible();
+    await page.getByTestId('tutor-dont-send').click();
+    await expect(page.getByTestId('tutor-waiting')).toHaveCount(0);
+    const box = composerInput(page);
+    await expect(box).toBeFocused();
+    await expect(box).not.toHaveAttribute('readonly');
+    await page.keyboard.insertText(' 고쳐 씁니다.');
+    await expect(box).toHaveValue('다음 질문입니다. 고쳐 씁니다.');
+    await turnEnded(page, first!.conversationId, first!.tutorMessageId, { timeout: 30_000 });
+    await expect(page.getByTestId('tutor-empty')).toBeVisible();
+    expect(await prompts(app)).toBe(1);
+    await expect(box).toHaveValue('다음 질문입니다. 고쳐 씁니다.');
+    // The control: ↩ now sends it.
+    await box.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('tutor-question').locator('.bubble')).toHaveText('다음 질문입니다. 고쳐 씁니다.');
+    await expect.poll(() => prompts(app)).toBe(2);
+  } finally {
+    await app.close();
+  }
+});
+
+test('F6 into the tutor\'s panel and ⌃⌘2 land in the composer\'s text area, on an empty session and in a conversation', async ({}, testInfo) => {
+  const { app, page } = await atSession(testInfo);
+  try {
+    const box = composerInput(page);
+    const intoPanel = async () => {
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      for (let i = 0; i < 4; i++) {
+        await page.keyboard.press('F6');
+        if (await page.evaluate(() => document.activeElement?.closest('[data-pane]')?.getAttribute('data-pane') === 'inspector')) break;
+      }
+    };
+    await intoPanel();
+    await expect(box).toBeFocused();
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await runMenuCommand(app, 'view.inspectorTutor');
+    await expect(box).toBeFocused();
+    await sendFromComposer(page, '이 장은 무엇을 다루나요?');
+    await expect(page.getByTestId('tutor-question')).toBeVisible();
+    await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'complete');
+    await intoPanel();
+    await expect(box).toBeFocused();
+    await runMenuCommand(app, 'view.inspectorInfo');
+    await expect(page.getByTestId('tutor-panel')).toHaveCount(0);
+    await runMenuCommand(app, 'view.inspectorTutor');
+    await expect(box).toBeFocused();
+    // In the panel the Tab order goes 새 세션 → the conversation → … → the text area → the agent button → 보내기/중지.
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId('tutor-agent')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId('tutor-send')).toBeFocused();
+    await page.getByTestId('tutor-new-session').focus();
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId('tutor-log')).toBeFocused();
   } finally {
     await app.close();
   }

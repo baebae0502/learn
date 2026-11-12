@@ -34,13 +34,14 @@ function useAfter(on: boolean, ms: number): boolean {
 
 /**
  * One agent's row or the whole search, on main. The report that was being read is dropped first (an older answer must not land over a
- * newer one), a second press while one runs is ignored, and a failure keeps the list that is there and says so (`failed`).
+ * newer one), a second press while one runs is ignored (null), and a failure keeps the list that is there and says so (`failed`).
+ * Resolves when it has ended, whatever it found.
  */
-function run(input: TutorAgentsInput): void {
-  if (useAgentsRun.getState().busy) return;
+function run(input: TutorAgentsInput): Promise<void> | null {
+  if (useAgentsRun.getState().busy) return null;
   useAgentsRun.setState({ busy: true, failed: false });
   void queryClient.cancelQueries({ queryKey: keys.tutorAgents });
-  unwrap(api().tutor.agents(input))
+  return unwrap(api().tutor.agents(input))
     .then((report) => {
       queryClient.setQueryData(keys.tutorAgents, report);
       useAgentsRun.setState({ busy: false, failed: false });
@@ -50,6 +51,12 @@ function run(input: TutorAgentsInput): void {
       useAgentsRun.setState({ busy: false, failed: true });
     });
 }
+
+/**
+ * One agent checked again, as its row's 다시 확인 does — the same one check of the window, so the chooser and the agent button see it.
+ * The composer waits for it before a send when the cached state is not 준비됨 (R7). Null while a check or a search already runs.
+ */
+export const recheckAgent = (agent: AgentId): Promise<void> | null => run({ mode: 'recheck', agent });
 
 /**
  * Once per window (MainWindow): a turn that failed on the login or on the lockdown makes the report of this run stale. Main corrects
@@ -84,7 +91,7 @@ export function useAgents(enabled: boolean): { report: AgentsReport | null; busy
     busy,
     searching,
     failed: runFailed || (query.isError && query.data === undefined),
-    recheck: useCallback((agent: AgentId) => run({ mode: 'recheck', agent }), []),
-    research: useCallback(() => run({ mode: 'research' }), []),
+    recheck: useCallback((agent: AgentId) => void recheckAgent(agent), []),
+    research: useCallback(() => void run({ mode: 'research' }), []),
   };
 }

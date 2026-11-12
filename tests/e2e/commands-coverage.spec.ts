@@ -10,7 +10,7 @@ import { askViaApi, consentAndChoose, turnEnded } from './tutor-helpers';
 import {
   FIXTURES, assignTag, clickToCloseSheet, closeSheet, confirmCalls, createCollection, enabledMenuCommands, expectWindow, importPause, importPaths, isCloseNoise, importResume, importWaiting, imageState, launch, makeTags,
   libraryTab, menuItemEnabled, menuSnapshot, openDialogCalls, openItem, organizeSnapshot, readerTab, recordedPopups, rowByTitle, runMenuCommand, runPalette, saveDialogCalls, sheetReleased, shellCalls, specialRow, stubConfirm,
-  stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, stubSaveDialog, stubShell, tagChip, trashItems, treeRow, waitImportIdle,
+  stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, stubSaveDialog, stubShell, tagChip, trashItems, treeRow, tutorFakeScript, waitImportIdle,
   type MenuNode,
 } from './helpers';
 
@@ -119,10 +119,10 @@ const M7C_COMMANDS: readonly CommandId[] = ['reader.imageBackgroundLight', 'read
 
 /**
  * T1a's commands (the tutor, spec 11): each one is run here — the menu bar's in the reader pass below, 에이전트 고르기… (the palette's) after the
- * consent, 새 세션 (the palette's) after a question — and none is left to another test. Later tasks add theirs here — the ledger's three
- * assertions below read this list.
+ * consent, 새 세션 (the palette's) after a question, 답 중지 (the palette's) while an answer comes — and none is left to another test. Later
+ * tasks add theirs here — the ledger's three assertions below read this list.
  */
-const T1A_COMMANDS: readonly CommandId[] = ['view.inspectorInfo', 'view.inspectorTutor', 'tutor.chooseAgent', 'tutor.newSession'];
+const T1A_COMMANDS: readonly CommandId[] = ['view.inspectorInfo', 'view.inspectorTutor', 'tutor.chooseAgent', 'tutor.newSession', 'tutor.stop'];
 
 /**
  * Enabled in the library with one row selected, but running them here would trash the one sample the rest of the loop
@@ -786,6 +786,37 @@ test('every registry command runs without a page error (library and reader menus
       await expect(page.getByTestId('tutor-empty')).toBeVisible();
       ran.add('tutor.newSession');
       await turnEnded(page, asked.conversationId, asked.tutorMessageId);
+      await runMenuCommand(app, 'view.inspectorInfo');
+      await runMenuCommand(app, 'tab.close');
+      await expect(page.getByTestId('pdf-viewer')).toHaveCount(0);
+    }
+
+    // 답 중지 (T1a, the palette's; the panel's esc and 중지 are the panel's own keys, not the registry's): off with no answer coming; while
+    // the fake's slow answer comes the palette runs it and the answer ends stopped.
+    {
+      await tutorFakeScript(app, 'slow');
+      await openItem(page, 'sample');
+      await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
+      await runMenuCommand(app, 'view.inspectorTutor');
+      await expect(page.getByTestId('tutor-empty')).toBeVisible();
+      await runMenuCommand(app, 'app.palette');
+      await page.getByTestId('palette-input').fill('튜터');
+      await expect(page.locator('[data-testid="palette-item"][data-command-id="view.inspectorTutor"]')).toBeVisible();
+      await expect(page.locator('[data-testid="palette-item"][data-command-id="tutor.stop"]')).toHaveCount(0);
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('palette-input')).toHaveCount(0);
+      const pages = Number(await page.getByTestId('pdf-viewer').getAttribute('data-pages'));
+      const itemId = await page.evaluate(async () => {
+        const r = await window.learn.library.list();
+        return r.ok ? r.data.find((i) => i.title === 'sample')!.id : '';
+      });
+      const asked = await askViaApi(page, { itemId, conversationId: null, text: '천천히 답해 주세요.', selection: null, reader: { pageIndex: 0, pageCount: pages, outline: [], outlineComplete: true, outlineTotal: 0 } });
+      if ('busyWith' in asked) throw new Error('the question waited for another answer');
+      await expect(page.getByTestId('tutor-answering')).toBeVisible();
+      await runPalette(page, app, '답 중지', 'tutor.stop');
+      ran.add('tutor.stop');
+      expect((await turnEnded(page, asked.conversationId, asked.tutorMessageId)).status).toBe('stopped');
+      await expect(page.getByTestId('tutor-ended')).toHaveText('중지함');
       await runMenuCommand(app, 'view.inspectorInfo');
       await runMenuCommand(app, 'tab.close');
       await expect(page.getByTestId('pdf-viewer')).toHaveCount(0);

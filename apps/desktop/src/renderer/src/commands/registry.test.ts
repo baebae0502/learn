@@ -46,6 +46,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   setInspectorMode: vi.fn(),
   chooseAgent: vi.fn(),
   newSession: vi.fn(),
+  stopAnswer: vi.fn(),
   showShortcuts: vi.fn(),
   openPalette: vi.fn(),
   showInFolder: vi.fn(),
@@ -407,6 +408,22 @@ describe('renderer command registry', () => {
     expect(reportedContext(e)).toMatchObject({ tutorHasMessages: true });
     expect(reportedContext(env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor' }))).not.toHaveProperty('tutorHasMessages');
     expect(reportedContext(env({ view: 'viewer', tutorHasMessages: true }))).not.toHaveProperty('tutorHasMessages');
+  });
+  it('답 중지 runs only while the tab\'s session has an answer coming, and the context reports that only with a PDF open', () => {
+    const e = env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor', tutorHasMessages: true, tutorStreaming: true });
+    expect(runCommand('tutor.stop', e)).toBe(true);
+    expect(e.stopAnswer).toHaveBeenCalledTimes(1);
+    for (const off of [
+      env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor', tutorHasMessages: true }), // the answer ended
+      env({ view: 'viewer', inspectorMode: 'tutor', tutorStreaming: true }), // no PDF open
+      env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor', tutorStreaming: true, blocked: true }),
+    ]) {
+      expect(runCommand('tutor.stop', off)).toBe(false);
+      expect(off.stopAnswer).not.toHaveBeenCalled();
+    }
+    expect(reportedContext(e)).toMatchObject({ tutorStreaming: true });
+    expect(reportedContext(env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor' }))).not.toHaveProperty('tutorStreaming');
+    expect(reportedContext(env({ view: 'viewer', tutorStreaming: true }))).not.toHaveProperty('tutorStreaming');
   });
   it('⌘F finds in the reader and quick-searches in the library; ⌘G ⇧⌘G ⌘E and the sidebar lists run on the open PDF only', () => {
     const e = env({ view: 'viewer', pdfOpen: true });

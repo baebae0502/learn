@@ -26,9 +26,16 @@ function usablePane(name: (typeof PANES)[number]): HTMLElement | null {
   return usable ? el : null;
 }
 
-/** Where F6 lands in a pane: its first control that takes the focus now, else the pane itself. */
+/**
+ * A control a pane names as the place to land (`data-pane-landing`) goes first while it can take the focus: the tutor's text area,
+ * when the tutor shows a session (spec 8.11). It is passed over while it is off (the item still opening).
+ */
+const LANDING = '[data-pane-landing]:not(:disabled)';
+
+/** Where F6 lands in a pane: the control it names, else its first control that takes the focus now, else the pane itself. */
 function landIn(pane: HTMLElement): void {
-  for (const target of [...pane.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(landsOn)) {
+  const named = pane.querySelector<HTMLElement>(LANDING);
+  for (const target of [...(named ? [named] : []), ...[...pane.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(landsOn)]) {
     target.focus();
     // Landed once the focus is in the target (a grid hands its focus on to the stop row).
     if (target.contains(document.activeElement)) return;

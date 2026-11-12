@@ -141,6 +141,8 @@ export const commandContextInput = z
     tutorConsented: z.boolean().optional(),
     /** The tutor shows the active tab's session and it has a question: 새 세션 is on; absent otherwise. */
     tutorHasMessages: z.boolean().optional(),
+    /** The tutor shows the active tab's session and an answer of it is coming: 답 중지 is on; absent otherwise. */
+    tutorStreaming: z.boolean().optional(),
     textSize: z.union([z.literal(12), z.literal(13), z.literal(14), z.literal(15)]),
     libraryCount: contextCount,
     selectionCount: contextCount,

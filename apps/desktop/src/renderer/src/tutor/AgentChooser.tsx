@@ -16,8 +16,8 @@ import { useTutorPrefs } from './useTutorPrefs';
 
 const { agents } = t.tutor;
 
-/** A flag: an icon, a colour token and the words (the words carry the meaning; the icon and colour only help). */
-const FLAG: Record<AgentState, { icon: LucideIcon; tone: 'c-success' | 'c-warning' | 'c-secondary' }> = {
+/** A flag: an icon, a colour token and the words (the words carry the meaning; the icon and colour only help). The agent button shows it too. */
+export const FLAG: Record<AgentState, { icon: LucideIcon; tone: 'c-success' | 'c-warning' | 'c-secondary' }> = {
   ready: { icon: CircleCheck, tone: 'c-success' },
   login: { icon: LogIn, tone: 'c-warning' },
   missing: { icon: CircleDashed, tone: 'c-secondary' },

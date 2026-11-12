@@ -119,6 +119,18 @@ describe('command registry', () => {
     expect(menu.indexOf('view.toggleInspector')).toBe(menu.indexOf('view.toggleSidebar') + 1);
     expect(c.keywords).toEqual(expect.arrayContaining(['오른쪽 패널', '튜터']));
   });
+  it('답 중지 is the palette\'s (the panel\'s esc is not the registry\'s): no key, no menu item, on while the tab\'s session has an answer coming', () => {
+    const c = commandById('tutor.stop');
+    expect(c).toMatchObject({ label: '답 중지', contexts: ['viewer'] });
+    expect(c.accelerator).toBeUndefined();
+    expect(c.key).toBeUndefined();
+    expect(c.menu).toBeUndefined();
+    expect(inPalette(c)).toBe(true);
+    expect(isCommandAvailable('tutor.stop', { ...VIEWER, pdfOpen: true, inspectorMode: 'tutor', tutorStreaming: true })).toBe(true);
+    expect(isCommandAvailable('tutor.stop', { ...VIEWER, pdfOpen: true, inspectorMode: 'tutor' })).toBe(false);
+    expect(isCommandAvailable('tutor.stop', { ...VIEWER, pdfOpen: true, inspectorMode: 'tutor', tutorStreaming: true, blocked: true })).toBe(false);
+    expect(c.keywords).toEqual(expect.arrayContaining(['중지', '튜터']));
+  });
   it('⌃⌘1 and ⌃⌘2 pick the reader\'s right panel mode: one key each, a PDF open, 보기 between the toggle and the thumbnails', () => {
     const info = commandById('view.inspectorInfo');
     const tutor = commandById('view.inspectorTutor');
@@ -151,7 +163,7 @@ describe('command registry', () => {
       'file.restore', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.openInBackground', 'item.relink', 'item.restore', 'item.showInFolder', 'item.trash', 'library.find', 'library.findEverywhere', 'library.sortBy', 'nav.back', 'nav.historyBack', 'nav.historyForward',
       'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.goToPage', 'reader.imageBackgroundChecker', 'reader.imageBackgroundDark', 'reader.imageBackgroundLight', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.scrollHorizontal', 'reader.scrollPage', 'reader.scrollVertical', 'reader.showOutline', 'reader.showThumbnails', 'reader.spreadEven', 'reader.spreadNone', 'reader.spreadOdd', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
       'tab.close', 'tab.closeOthers', 'tab.goTo2', 'tab.goTo3', 'tab.goTo4', 'tab.goTo5', 'tab.goTo6', 'tab.goTo7', 'tab.goTo8', 'tab.last', 'tab.moveLeft', 'tab.moveRight', 'tab.next', 'tab.previous', 'tab.reopenClosed', 'tab.revealInLibrary',
-      'tag.clearColor', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'tag.delete', 'tag.rename', 'tag.setColor', 'tags.clearFilter', 'translation.translateSelection', 'trash.empty', 'tutor.chooseAgent', 'tutor.newSession',
+      'tag.clearColor', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'tag.delete', 'tag.rename', 'tag.setColor', 'tags.clearFilter', 'translation.translateSelection', 'trash.empty', 'tutor.chooseAgent', 'tutor.newSession', 'tutor.stop',
       'view.inspectorInfo', 'view.inspectorTutor', 'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
     ]);
     expect(commandById('file.importManaged')).toMatchObject({ label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' });

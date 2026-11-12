@@ -46,8 +46,8 @@ function Chip({ view }: { view: ChipView }) {
   );
 }
 
-/** Over a tutor bubble (spec 8.3, P-12): what Learn's tools did in this turn, the call still running last. */
-export function ToolChips({ tools: chips, running = null }: { tools: readonly ToolChip[]; running?: ToolChip | null }) {
+/** Over a tutor bubble (spec 8.3): what Learn's tools did in this turn, the call still running last. */
+export function ToolChipRow({ tools: chips, running = null }: { tools: readonly ToolChip[]; running?: ToolChip | null }) {
   const views = mergeToolChips(chips, running);
   if (views.length === 0) return null;
   return (

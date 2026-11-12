@@ -3,7 +3,7 @@ import { FOLLOW_SLACK, nearBottom, nextFollow } from './follow';
 
 const at = (fromBottom: number) => ({ scrollTop: 1000 - 300 - fromBottom, scrollHeight: 1000, clientHeight: 300 });
 
-describe('following the bottom while an answer comes (J51)', () => {
+describe('following the bottom while an answer comes', () => {
   it('counts 24 px from the bottom as at the bottom, 25 as not', () => {
     expect(FOLLOW_SLACK).toBe(24);
     expect(nearBottom(at(0))).toBe(true);

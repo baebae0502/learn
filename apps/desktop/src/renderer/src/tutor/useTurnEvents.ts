@@ -1,4 +1,4 @@
-import { verifiedPages, type SessionThread, type TutorTurnEvent } from '@learn/domain';
+import { verifiedPages, type SessionsChanged, type SessionThread, type TutorTurnEvent } from '@learn/domain';
 import { keys } from '../data/queries';
 import { queryClient } from '../data/query-client';
 import { useLearnEvent } from '../events';
@@ -6,8 +6,8 @@ import { readerScopes } from '../viewers/readerScope';
 import { startsLive, type LiveTurn } from './useSessionThread';
 
 /**
- * The live answer after one notice of it (P-16): text appended, a tool shown while it runs and kept once recorded — its pages then
- * count as verified so far (spec 7, J41). A notice of another answer starts that one. The end (done, failed) changes nothing here:
+ * The live answer after one notice of it: text appended, a tool shown while it runs and kept once recorded — its pages then
+ * count as verified so far (spec 7). A notice of another answer starts that one. The end (done, failed) changes nothing here:
  * the thread read again then takes over.
  */
 export function applyTurnEvent(live: LiveTurn | null, e: TutorTurnEvent): LiveTurn | null {
@@ -17,6 +17,15 @@ export function applyTurnEvent(live: LiveTurn | null, e: TutorTurnEvent): LiveTu
   if (e.running) return { ...base, running: e.chip };
   const tools = [...base.tools, e.chip];
   return { ...base, tools, running: null, verifiedSoFar: verifiedPages(tools) };
+}
+
+/**
+ * The session a question made, from main's notice: a `created` notice of one item and one session. A notice of several (the test
+ * hook that seeds sessions) names no question's session.
+ */
+export function createdSession(c: SessionsChanged): { itemId: string; conversationId: string } | null {
+  if (c.reason !== 'created' || c.itemIds.length !== 1 || c.conversationIds.length !== 1) return null;
+  return { itemId: c.itemIds[0]!, conversationId: c.conversationIds[0]! };
 }
 
 /** The tutor store of the open tab that shows this session, if one does. */
@@ -52,11 +61,9 @@ export function useTurnEvents(): void {
     setLive(applyTurnEvent(live, e));
   });
   useLearnEvent('sessions:changed', (c) => {
-    if (c.reason !== 'created') return;
-    c.itemIds.forEach((itemId, k) => {
-      const tutor = readerScopes.peek(itemId)?.tutor;
-      const id = c.conversationIds[k];
-      if (tutor !== undefined && id !== undefined && tutor.getState().conversationId === null) tutor.getState().setConversation(id);
-    });
+    const made = createdSession(c);
+    if (made === null) return;
+    const tutor = readerScopes.peek(made.itemId)?.tutor;
+    if (tutor !== undefined && tutor.getState().conversationId === null) tutor.getState().setConversation(made.conversationId);
   });
 }

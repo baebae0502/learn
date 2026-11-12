@@ -1,4 +1,4 @@
-/** How near the bottom the conversation counts as at the bottom (J51). */
+/** How near the bottom the conversation counts as at the bottom. */
 export const FOLLOW_SLACK = 24;
 
 /** The column's bottom is within 24 px of view. */

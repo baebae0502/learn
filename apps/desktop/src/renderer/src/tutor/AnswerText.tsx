@@ -1,14 +1,49 @@
 import { memo, useMemo, type ReactNode } from 'react';
 import { parseAnswer, splitStable, type AnswerBlock, type Inline } from './markdown';
 
-/** How a cite token is drawn: the chip for that 0-based page. */
-export type DrawCite = (pageIndex: number) => ReactNode;
+/** How a cite token is drawn: the chip for that 0-based page; `ordinal` counts the answer's cites from 0, in reading order. */
+export type DrawCite = (pageIndex: number, ordinal: number) => ReactNode;
+
+type CiteNode = Extract<Inline, { kind: 'cite' }>;
+/** The cites of some blocks with their ordinals in the whole answer. */
+type Ordinals = ReadonlyMap<CiteNode, number>;
+interface Draw {
+  cite: DrawCite;
+  ordinals: Ordinals;
+}
+
+/** Numbers the cites of `blocks` in reading order from `from`; `next` is the number after the last. */
+function numberCites(blocks: readonly AnswerBlock[], from: number): { ordinals: Ordinals; next: number } {
+  const ordinals = new Map<CiteNode, number>();
+  let n = from;
+  const inline = (nodes: readonly Inline[]) => {
+    for (const node of nodes) {
+      if (node.kind === 'cite') ordinals.set(node, n++);
+      else if (node.kind === 'strong' || node.kind === 'em') inline(node.children);
+    }
+  };
+  const walk = (bs: readonly AnswerBlock[]) => {
+    for (const b of bs) {
+      if (b.kind === 'p') inline(b.inline);
+      else if (b.kind === 'quote') walk(b.blocks);
+      else if (b.kind === 'list') {
+        for (const it of b.items) {
+          inline(it.inline);
+          if (it.sub !== null) walk([it.sub]);
+          walk(it.blocks ?? []);
+        }
+      }
+    }
+  };
+  walk(blocks);
+  return { ordinals, next: n };
+}
 
 /** A word longer than this is not bound to its chip: a line that cannot break would run out of the bubble. */
 const BIND_MAX = 24;
 
 /** A cite chip with the word before it and what is attached after it (punctuation, a particle): one piece that never breaks (.cite-tail). */
-type Piece = Inline | { kind: 'tail'; word: string; cites: number[]; after: string };
+type Piece = Inline | { kind: 'tail'; word: string; cites: CiteNode[]; after: string };
 
 function withTails(inline: readonly Inline[]): Piece[] {
   const out: Piece[] = [];
@@ -19,7 +54,7 @@ function withTails(inline: readonly Inline[]): Piece[] {
       const before = last?.kind === 'text' && /^\s+$/.test(last.text) ? out.at(-2) : last;
       if (before?.kind === 'tail' && before.after === '') {
         if (before !== last) out.pop();
-        before.cites.push(node.pageIndex);
+        before.cites.push(node);
         continue;
       }
       let word = '';
@@ -32,7 +67,7 @@ function withTails(inline: readonly Inline[]): Piece[] {
           else out[out.length - 1] = { kind: 'text', text: head };
         }
       }
-      out.push({ kind: 'tail', word, cites: [node.pageIndex], after: '' });
+      out.push({ kind: 'tail', word, cites: [node], after: '' });
       continue;
     }
     if (node.kind === 'text' && last?.kind === 'tail' && last.after === '') {
@@ -49,7 +84,8 @@ function withTails(inline: readonly Inline[]): Piece[] {
   return out;
 }
 
-function Inlines({ inline, cite, caret }: { inline: readonly Inline[]; cite: DrawCite; caret?: ReactNode }) {
+function Inlines({ inline, draw, caret }: { inline: readonly Inline[]; draw: Draw; caret?: ReactNode }) {
+  const chip = (c: CiteNode) => draw.cite(c.pageIndex, draw.ordinals.get(c) ?? 0);
   return (
     <>
       {withTails(inline).map((p, k) => {
@@ -63,23 +99,23 @@ function Inlines({ inline, cite, caret }: { inline: readonly Inline[]; cite: Dra
           case 'strong':
             return (
               <strong key={k}>
-                <Inlines inline={p.children} cite={cite} />
+                <Inlines inline={p.children} draw={draw} />
               </strong>
             );
           case 'em':
             return (
               <em key={k}>
-                <Inlines inline={p.children} cite={cite} />
+                <Inlines inline={p.children} draw={draw} />
               </em>
             );
           case 'cite':
-            return <span key={k}>{cite(p.pageIndex)}</span>;
+            return <span key={k}>{chip(p)}</span>;
           case 'tail':
             return (
               <span key={k} className="cite-tail">
                 {p.word}
                 {p.cites.map((c, j) => (
-                  <span key={j}>{cite(c)}</span>
+                  <span key={j}>{chip(c)}</span>
                 ))}
                 {p.after}
               </span>
@@ -92,12 +128,12 @@ function Inlines({ inline, cite, caret }: { inline: readonly Inline[]; cite: Dra
 }
 
 /** One block as React elements; `caret` goes at the end of its last line (the answer is being written there). */
-function Block({ block, cite, caret }: { block: AnswerBlock; cite: DrawCite; caret?: ReactNode }) {
+function Block({ block, draw, caret }: { block: AnswerBlock; draw: Draw; caret?: ReactNode }) {
   switch (block.kind) {
     case 'p':
       return (
         <p>
-          <Inlines inline={block.inline} cite={cite} caret={caret} />
+          <Inlines inline={block.inline} draw={draw} caret={caret} />
         </p>
       );
     case 'code':
@@ -110,55 +146,59 @@ function Block({ block, cite, caret }: { block: AnswerBlock; cite: DrawCite; car
     case 'quote':
       return (
         <blockquote>
-          <Blocks blocks={block.blocks} cite={cite} caret={caret} />
+          <Blocks blocks={block.blocks} draw={draw} caret={caret} />
         </blockquote>
       );
     case 'list': {
-      const Tag = block.ordered ? 'ol' : 'ul';
-      const lastItem = block.items.length - 1;
-      return (
-        <Tag>
-          {block.items.map((item, k) => (
-            <li key={k}>
-              <Inlines inline={item.inline} cite={cite} caret={k === lastItem && item.sub === null ? caret : undefined} />
-              {item.sub !== null && <Block block={item.sub} cite={cite} caret={k === lastItem ? caret : undefined} />}
-            </li>
-          ))}
-        </Tag>
-      );
+      const last = block.items.length - 1;
+      const items = block.items.map((item, k) => {
+        const more = item.blocks ?? [];
+        const end = k === last ? caret : undefined;
+        return (
+          <li key={k}>
+            <Inlines inline={item.inline} draw={draw} caret={item.sub === null && more.length === 0 ? end : undefined} />
+            {item.sub !== null && <Block block={item.sub} draw={draw} caret={more.length === 0 ? end : undefined} />}
+            {more.length > 0 && <Blocks blocks={more} draw={draw} caret={end} />}
+          </li>
+        );
+      });
+      return block.ordered ? <ol start={block.start}>{items}</ol> : <ul>{items}</ul>;
     }
   }
 }
 
-function Blocks({ blocks, cite, caret }: { blocks: readonly AnswerBlock[]; cite: DrawCite; caret?: ReactNode }) {
+function Blocks({ blocks, draw, caret }: { blocks: readonly AnswerBlock[]; draw: Draw; caret?: ReactNode }) {
   return (
     <>
       {blocks.map((b, k) => (
-        <Block key={k} block={b} cite={cite} caret={k === blocks.length - 1 ? caret : undefined} />
+        <Block key={k} block={b} draw={draw} caret={k === blocks.length - 1 ? caret : undefined} />
       ))}
     </>
   );
 }
 
 /** The finished blocks of a streaming answer: drawn again only when another block finished or a chip's state changed. */
-const StableBlocks = memo(function StableBlocks({ text, cite }: { text: string; cite: DrawCite }) {
-  const blocks = useMemo(() => parseAnswer(text), [text]);
-  return <Blocks blocks={blocks} cite={cite} />;
+const StableBlocks = memo(function StableBlocks({ blocks, ordinals, cite }: { blocks: readonly AnswerBlock[]; ordinals: Ordinals; cite: DrawCite }) {
+  return <Blocks blocks={blocks} draw={{ cite, ordinals }} />;
 });
 
 /**
- * The answer's text (J50): its small Markdown as React elements only — nothing the model wrote becomes markup, a link or a picture.
+ * The answer's text: its small Markdown as React elements only — nothing the model wrote becomes markup, a link or a picture.
  * While it streams, the finished blocks are memoised and only the last one is drawn again on each append, with the caret at its end.
- * `cite` draws a page's chip (CitationChip); keep it the same function while the chips' states are the same.
+ * `cite` draws a page's chip (CitationChip) by its page and its ordinal in the answer; keep it the same function while the chips'
+ * states are the same.
  */
 export function AnswerText({ text, streaming, cite }: { text: string; streaming: boolean; cite: DrawCite }) {
   const { stable, tail } = streaming ? splitStable(text) : { stable: text, tail: '' };
+  const stableBlocks = useMemo(() => parseAnswer(stable), [stable]);
+  const stableCites = useMemo(() => numberCites(stableBlocks, 0), [stableBlocks]);
   const tailBlocks = useMemo(() => parseAnswer(tail), [tail]);
+  const tailCites = useMemo(() => numberCites(tailBlocks, stableCites.next), [tailBlocks, stableCites.next]);
   const caret = streaming ? <span className="stream-caret" aria-hidden="true" /> : undefined;
   return (
     <>
-      {stable !== '' && <StableBlocks text={stable} cite={cite} />}
-      {streaming && (tailBlocks.length > 0 ? <Blocks blocks={tailBlocks} cite={cite} caret={caret} /> : caret)}
+      {stableBlocks.length > 0 && <StableBlocks blocks={stableBlocks} ordinals={stableCites.ordinals} cite={cite} />}
+      {streaming && (tailBlocks.length > 0 ? <Blocks blocks={tailBlocks} draw={{ cite, ordinals: tailCites.ordinals }} caret={caret} /> : caret)}
     </>
   );
 }

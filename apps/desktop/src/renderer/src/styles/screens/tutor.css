@@ -393,11 +393,9 @@
     color: var(--text-secondary);
     font: var(--type-footnote);
   }
-  /* The session's name once the head line has scrolled away: one row under the panel head, over the column's top. */
+  /* The session's name once the head line has scrolled away: a row under the panel head, above the log (it never covers the log). */
   .tutor-sticky {
-    position: absolute;
-    inset: 0 0 auto;
-    z-index: 2;
+    flex: none;
     display: flex;
     align-items: center;
     height: var(--row-height);
@@ -493,6 +491,20 @@
   .tutor-msg .body :is(ul, ol) {
     padding-left: var(--space-20);
   }
+  /* The reset takes lists' markers away; an answer's lists keep theirs (its numbers are what it says). */
+  .tutor-msg .body ol {
+    list-style: decimal;
+  }
+  .tutor-msg .body ul {
+    list-style: disc;
+  }
+  .tutor-msg .body li > ul {
+    list-style: circle;
+  }
+  /* What an item holds under its first lines: a little apart from them. */
+  .tutor-msg .body li > :is(p, pre, blockquote) {
+    margin-top: var(--space-4);
+  }
   .tutor-msg .body li + li,
   .tutor-msg .body li > :is(ul, ol) {
     margin-top: 2px; /* local: the mockup's list rhythm */
@@ -523,16 +535,15 @@
     width: 2px; /* local: the field caret */
     height: 15px; /* local: cap height + descender of 13 px text, as the field caret */
     margin-left: 2px; /* local: the field caret */
-    vertical-align: -2px;
-    border-radius: 1px;
+    vertical-align: -2px; /* local: the caret's foot at the descender, as the field caret */
+    border-radius: 1px; /* local: the field caret's rounding */
     background: var(--accent-ring);
   }
 
   /* A citation chip: a place in the item. In a bubble it sits on --bg-content, its hover and press one fill step up (design-spec 2.6). */
+  /* An inline block whose baseline is its label's, so a chip with a glyph keeps the paragraph's 20 px line pitch. */
   .cite {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px; /* local: glyph to label in an inline chip */
+    display: inline-block;
     height: 18px; /* local: inline chip that fits the 20 px paragraph line */
     padding: 0 var(--space-4);
     margin-left: var(--space-4);
@@ -541,14 +552,22 @@
     color: var(--accent-text);
     font: var(--type-footnote);
     font-weight: var(--weight-medium);
+    line-height: 18px; /* local: the label centred in the 18 px chip */
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
-    vertical-align: 1px;
+    vertical-align: 1px; /* local: the chip's label one pixel above the text's baseline, as the mockup draws it */
     cursor: default;
     outline: none;
   }
   .cite .icon {
+    display: inline-block; /* in the label's line (the reset makes an svg a block) */
+    margin-right: 2px; /* local: glyph to label in an inline chip */
+    vertical-align: -2px; /* local: the 12 px glyph centred on the label */
     color: inherit;
+  }
+  /* The chip the reader was sent to, while it shows that page: a ring, not a second accent fill (mockup .cite.is-current). */
+  .cite.is-current {
+    box-shadow: inset 0 0 0 1px var(--accent-ring);
   }
   .tutor-msg :is(.bubble, .body) .cite {
     background-color: var(--bg-content);
@@ -565,7 +584,7 @@
     outline: var(--focus-ring-width) solid var(--focus);
     outline-offset: calc(var(--focus-ring-width) * -1);
   }
-  /* Still checking (J41): no warning colour, nothing to press — the page's words wait for the answer's end. */
+  /* Still checking: no warning colour, nothing to press — the page's words wait for the answer's end. */
   .tutor-msg :is(.bubble, .body) .cite.is-checking {
     color: var(--text-secondary);
     font-weight: var(--weight-regular);
@@ -624,15 +643,16 @@
     outline-offset: var(--focus-ring-offset);
   }
 
-  /* The sent-scope line at the user bubble's right end, and its list across the column. */
+  /* The sent-scope line at the user bubble's right end, and its list under it, as wide as what it says (the column at most). */
   .tutor-scope-row {
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
     gap: var(--space-8);
-    align-self: stretch;
+    min-width: 0;
+    max-width: 100%;
   }
   .tutor-scope {
+    align-self: flex-end;
     display: inline-flex;
     align-items: center;
     gap: var(--space-6);
@@ -652,6 +672,9 @@
   }
   .tutor-scope .num {
     font-variant-numeric: tabular-nums;
+  }
+  .tutor-scope .dot {
+    color: var(--text-tertiary);
   }
   .tutor-scope[data-hovered] {
     background: var(--fill-hover);

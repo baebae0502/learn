@@ -4,7 +4,7 @@ import { parseAnswer, splitStable, type AnswerBlock, type Inline } from './markd
 const p = (...inline: Inline[]): AnswerBlock => ({ kind: 'p', inline });
 const text = (t: string): Inline => ({ kind: 'text', text: t });
 
-describe('the answer\'s small Markdown (J50)', () => {
+describe('the answer\'s small Markdown', () => {
   it('keeps to the subset: a heading is a bold paragraph, cite tokens are chips, code keeps its tokens as text', () => {
     expect(parseAnswer('# 제목\n어텐션은 **중요** _하다_ `x` [[p42]].\n\n```\n[[p1]] <b>\n```')).toEqual([
       p({ kind: 'strong', children: [text('제목')] }),
@@ -51,12 +51,39 @@ describe('the answer\'s small Markdown (J50)', () => {
     expect(parseAnswer('```ts\nconst a = 1;\n\nconst b = 2;\n```')).toEqual([{ kind: 'code', text: 'const a = 1;\n\nconst b = 2;' }]);
     expect(parseAnswer('앞\n```\n열린 코드')).toEqual([p(text('앞')), { kind: 'code', text: '열린 코드' }]);
   });
+  it('a numbered list interrupted by a paragraph goes on at its own number', () => {
+    const [first, para, second] = parseAnswer('1. 첫째\n\n중간 설명\n\n2. 둘째\n3. 셋째');
+    expect(first).toEqual({ kind: 'list', ordered: true, items: [{ inline: [text('첫째')], sub: null }] });
+    expect(para).toEqual(p(text('중간 설명')));
+    expect(second).toEqual({ kind: 'list', ordered: true, start: 2, items: [{ inline: [text('둘째')], sub: null }, { inline: [text('셋째')], sub: null }] });
+  });
+  it('lines indented under an item after a blank line stay in that item: a paragraph, a code block, a quote', () => {
+    expect(parseAnswer('1. 첫째\n\n   이어지는 설명\n\n2. 둘째')).toEqual([
+      { kind: 'list', ordered: true, items: [{ inline: [text('첫째')], sub: null, blocks: [p(text('이어지는 설명'))] }, { inline: [text('둘째')], sub: null }] },
+    ]);
+    expect(parseAnswer('1. 설치\n   ```\n   npm i\n   ```\n2. 실행\n   > 끝나면 닫습니다')).toEqual([
+      {
+        kind: 'list', ordered: true, items: [
+          { inline: [text('설치')], sub: null, blocks: [{ kind: 'code', text: 'npm i' }] },
+          { inline: [text('실행')], sub: null, blocks: [{ kind: 'quote', blocks: [p(text('끝나면 닫습니다'))] }] },
+        ],
+      },
+    ]);
+    // A line that is not indented after a blank line ends the item, and the list.
+    expect(parseAnswer('- 하나\n\n밖의 문단')).toEqual([{ kind: 'list', ordered: false, items: [{ inline: [text('하나')], sub: null }] }, p(text('밖의 문단'))]);
+  });
+  it('reads Windows line ends as line ends, in the split as in the parse', () => {
+    expect(splitStable('x\r\n\r\n- a\r\n\r\n- b')).toEqual({ stable: 'x\n\n', tail: '- a\n\n- b' });
+    expect(parseAnswer('- a\r\n\r\n- b')).toEqual(parseAnswer('- a\n\n- b'));
+  });
   it('splits a streaming answer before a list only where the list begins, never between its items', () => {
     expect(splitStable('머리\n\n1. 하나\n\n2. 둘')).toEqual({ stable: '머리\n\n', tail: '1. 하나\n\n2. 둘' });
     expect(splitStable('한 문단')).toEqual({ stable: '', tail: '한 문단' });
+    expect(splitStable('1. 하나\n\n   이어서\n\n2. 둘')).toEqual({ stable: '', tail: '1. 하나\n\n   이어서\n\n2. 둘' }); // an item's own paragraph
     // What is stable parses to the same blocks it has in the whole answer.
-    const whole = 'a\n\n- x\n- y\n\nb **c**\n\n```\nz\n```\n\nd';
-    const { stable, tail } = splitStable(whole);
-    expect([...parseAnswer(stable), ...parseAnswer(tail)]).toEqual(parseAnswer(whole));
+    for (const whole of ['a\n\n- x\n- y\n\nb **c**\n\n```\nz\n```\n\nd', '1. 하나\n\n중간\n\n2. 둘\n\n   이어서\n\n끝']) {
+      const { stable, tail } = splitStable(whole);
+      expect([...parseAnswer(stable), ...parseAnswer(tail)]).toEqual(parseAnswer(whole));
+    }
   });
 });

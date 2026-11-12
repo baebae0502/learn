@@ -11,7 +11,7 @@ export interface LiveTurn {
   text: string;
   tools: ToolChip[];
   running: ToolChip | null;
-  /** The pages read_pdf_pages returned in this turn so far: a cite of one is drawn as a chip at once, any other as checking (J41). */
+  /** The pages read_pdf_pages returned in this turn so far: a cite of one is drawn as a chip at once, any other as checking. */
   verifiedSoFar: Set<number>;
 }
 
@@ -19,17 +19,19 @@ export interface LiveTurn {
 export const JOINED_READ_MS = 2000;
 
 /**
- * The live answer while it is the truth about its message: the stored message is not there yet, or is still coming and holds no more
- * than the live one (its text, saved every 2 s, is a beginning of the live text; its tools a part of the live ones). Null once the
- * stored message ended (the thread read again at the end has its sources — P-16), and when the live one missed the beginning: a window
- * reloaded mid-answer draws the stored text, read again every 2 s, until the answer ends.
+ * The live answer while it is the truth about its message: the stored message is not there yet, or is still coming and agrees with
+ * the live one (one text begins the other; its tools a part of the live ones). Null once the stored message ended (the thread read
+ * again at the end has its sources), and when the live one missed the beginning: a window reloaded mid-answer draws the stored text,
+ * read again every 2 s, until the answer ends.
  */
 export function liveOver(thread: SessionThread | null, live: LiveTurn | null): LiveTurn | null {
   if (live === null || thread === null) return live;
   const stored = thread.messages.find((m) => m.id === live.tutorMessageId);
   if (stored === undefined) return live;
   if (stored.status !== 'streaming') return null;
-  return live.text.startsWith(stored.text) && live.tools.length >= stored.tools.length ? live : null;
+  // The stored text may also be a little ahead: main saves what it has not sent yet (one 33 ms batch at most).
+  const sameText = live.text.startsWith(stored.text) || stored.text.startsWith(live.text);
+  return sameText && live.tools.length >= stored.tools.length ? live : null;
 }
 
 /** Whether a notice of `messageId` may start a live answer: the stored thread has nothing of it yet (else this window joined late). */
@@ -43,7 +45,7 @@ const joinedLate = (thread: SessionThread | undefined, live: LiveTurn | null): b
   thread !== undefined && liveOver(thread, live) === null && thread.messages.some((m) => m.role === 'tutor' && m.status === 'streaming');
 
 /**
- * The tab's session as stored (sessions:get, `['sessions', 'get', id]`) and its answer still coming as the window hears it (P-16). The
+ * The tab's session as stored (sessions:get, `['sessions', 'get', id]`) and its answer still coming as the window hears it. The
  * stored thread is read again when an answer ends and when main says a session changed (data/queries.ts); while an answer this window
  * joined late is coming, every 2 s. A session that is gone (deleted, its item in the trash) leaves the tab on a new empty session.
  */

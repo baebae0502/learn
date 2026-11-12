@@ -3,7 +3,7 @@ import type { MessageView, SessionThread, ToolChip, TutorTurnEvent } from '@lear
 
 vi.mock('../api', async (original) => ({ ...(await original<typeof import('../api')>()), api: () => ({}) }));
 
-const { applyTurnEvent } = await import('./useTurnEvents');
+const { applyTurnEvent, createdSession } = await import('./useTurnEvents');
 const { liveOver } = await import('./useSessionThread');
 
 const C = '8a6e1c52-2f3b-4d0e-9a41-7b5c3e2d1f00';
@@ -13,7 +13,7 @@ const read = (from: number, to = from, outcome: ToolChip['outcome'] = 'ok'): Too
 type Body = TutorTurnEvent extends infer E ? (E extends TutorTurnEvent ? Omit<E, 'conversationId' | 'messageId'> : never) : never;
 const ev = (e: Body & { messageId?: string }): TutorTurnEvent => ({ conversationId: C, messageId: M, ...e }) as TutorTurnEvent;
 
-describe('the live turn: what the window heard of an answer still coming (P-16)', () => {
+describe('the live turn: what the window heard of an answer still coming', () => {
   it('appends the text, shows a tool while it runs and keeps it once recorded, its pages verified so far', () => {
     let live = applyTurnEvent(null, ev({ kind: 'tool', chip: read(41, 42), running: true }));
     expect(live).toMatchObject({ tutorMessageId: M, text: '', tools: [], running: read(41, 42) });
@@ -53,11 +53,22 @@ describe('which of the live and the stored answer is drawn', () => {
     expect(liveOver(thread(), live)).toBe(live);
     expect(liveOver(thread(answer()), live)).toBe(live);
     expect(liveOver(thread(answer({ text: '읽은 쪽', tools: [read(41, 42)] })), live)).toBe(live);
+    // main saves what it has not sent yet (the 33 ms batch): the stored text may be a little ahead of the live one.
+    expect(liveOver(thread(answer({ text: '읽은 쪽을 바탕으로 답합', tools: [read(41, 42)] })), live)).toBe(live);
   });
   it('the stored one once the answer ended, or when the live one missed its beginning (a window reloaded mid-answer)', () => {
     expect(liveOver(thread(answer({ status: 'complete', text: '읽은 쪽을 바탕으로' })), live)).toBeNull();
     expect(liveOver(thread(answer({ text: '앞서 받은 글 ' })), { ...live, text: '그 뒤의 글' })).toBeNull();
     expect(liveOver(thread(answer({ tools: [read(1), read(41, 42)] })), live)).toBeNull();
     expect(liveOver(thread(answer()), null)).toBeNull();
+  });
+});
+
+describe('the session a new question made, for the tab on a new empty session', () => {
+  it('is named only by a one-to-one created notice', () => {
+    expect(createdSession({ reason: 'created', itemIds: ['i'], conversationIds: [C] })).toEqual({ itemId: 'i', conversationId: C });
+    expect(createdSession({ reason: 'created', itemIds: ['i'], conversationIds: [C, M] })).toBeNull(); // seeded sessions, several at once
+    expect(createdSession({ reason: 'created', itemIds: ['i', 'j'], conversationIds: [C, M] })).toBeNull();
+    expect(createdSession({ reason: 'updated', itemIds: ['i'], conversationIds: [C] })).toBeNull();
   });
 });

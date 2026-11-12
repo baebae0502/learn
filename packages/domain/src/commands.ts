@@ -498,7 +498,7 @@ export const COMMANDS: readonly CommandSpec[] = [
     id: 'tutor.chooseAgent', label: '에이전트 고르기…', contexts: ['viewer'],
     keywords: ['에이전트', '튜터', '고르기', '선택', 'agent', 'tutor', 'claude'],
   },
-  // A new empty session in this tab's tutor (T1a, spec 8.2, 11): the palette and the panel head's button; no key (J60).
+  // A new empty session in this tab's tutor (T1a, spec 8.2, 11): the palette and the panel head's button; no key.
   {
     id: 'tutor.newSession', label: '새\u00a0세션', contexts: ['viewer'],
     keywords: ['새 세션', '세션', '튜터', '대화', '새로', 'new session', 'tutor', 'chat'],

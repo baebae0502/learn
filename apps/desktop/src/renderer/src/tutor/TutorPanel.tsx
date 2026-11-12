@@ -43,7 +43,7 @@ const SELECTOR: Record<Landing, string> = {
  * The right panel's tutor mode, under the head the inspector draws: before consent the card (or, after 나중에, the off state), and
  * after consent the agent chooser until an agent is chosen (or 에이전트 고르기… asks for it again), then the tab's session — empty, or
  * the conversation (spec 8.2). Nothing here starts an agent, asks main which agents exist, or tells it a session is on screen before
- * the consent main records (J9): the chooser is what asks, and it is mounted only after. The focus follows each state change, so the
+ * the consent main records: the chooser is what asks, and it is mounted only after. The focus follows each state change, so the
  * button that was pressed never leaves it on <body>; after 동의 it lands in the chooser.
  */
 export function TutorPanel({ visible }: { visible: boolean }) {

@@ -5,7 +5,7 @@ import type { LiveTurn } from './useSessionThread';
 
 /**
  * Where a tab's session is kept while the window lives, so a reload of the window (spec 12: "새로 고침") shows it again: this window's
- * sessionStorage, which a new window — a new run — does not have (J44: a new run starts on a new empty session).
+ * sessionStorage, which a new window — a new run — does not have (a new run starts on a new empty session).
  */
 const KEPT = 'learn.tutor.session.';
 const storage = (): Storage | null => {
@@ -36,7 +36,7 @@ function keepSession(tabId: string, conversationId: string | null): void {
 export const forgetTutorTab = (tabId: string): void => keepSession(tabId, null);
 
 /**
- * What one reader tab's tutor panel keeps while the tab is open (J44, J48): in memory, but for the session it shows, which also
+ * What one reader tab's tutor panel keeps while the tab is open: in memory, but for the session it shows, which also
  * survives a reload of the window. 나중에 is not one of them: it is the run's (tutorRun.ts).
  */
 export interface TutorTabStore {
@@ -47,9 +47,21 @@ export interface TutorTabStore {
   /** 에이전트 고르기…: the chooser shows although an agent is chosen, until one is started or the tab closes. */
   choosing: boolean;
   setChoosing(on: boolean): void;
-  /** The answer of this tab's session still coming, as the window hears it (tutor:turn); null once the stored thread has it (P-16). */
+  /** The answer of this tab's session still coming, as the window hears it (tutor:turn); null once the stored thread has it. */
   live: LiveTurn | null;
   setLive(live: LiveTurn | null): void;
+  /**
+   * The chip the reader was sent to by a press, ringed while the reader shows its page: `key` names the chip (its message and its
+   * place there), `shown` turns true once the reader is on the page, and the ring goes when the reader leaves it afterwards.
+   */
+  currentCite: CurrentCite | null;
+  setCurrentCite(c: CurrentCite | null): void;
+}
+
+export interface CurrentCite {
+  key: string;
+  pageIndex: number;
+  shown: boolean;
 }
 
 /** `tabId`: the tab's item id, under which its session is kept for a reload ('' keeps nothing). */
@@ -59,12 +71,14 @@ export function createTutorTabStore(tabId = ''): StoreApi<TutorTabStore> {
     setConversation: (conversationId) => {
       if (get().conversationId === conversationId) return;
       keepSession(tabId, conversationId);
-      set({ conversationId, live: null });
+      set({ conversationId, live: null, currentCite: null });
     },
     choosing: false,
     setChoosing: (choosing) => set({ choosing }),
     live: null,
     setLive: (live) => set({ live }),
+    currentCite: null,
+    setCurrentCite: (currentCite) => set({ currentCite }),
   }));
 }
 

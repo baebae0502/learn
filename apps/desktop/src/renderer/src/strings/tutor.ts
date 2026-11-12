@@ -78,7 +78,7 @@ export const tutor = {
   newSession: { label: '새\u00a0세션', empty: '지금 세션이 비어 있습니다' },
   /** The new empty session (spec 8.2, 13): its title is the item's; Task 20 adds the texts of a PDF without readable body text. */
   empty: { readable: '이\u00a0자료에 대해 물어보세요. 본문에서 구간을 선택하면 질문에 붙고, 답에는 근거가 된 쪽이 함께 표시됩니다.' },
-  /** The conversation column (spec 8.3): its name, 최신으로, and what the hidden status says once at a turn's end (J56). */
+  /** The conversation column (spec 8.3): its name, 최신으로, and what the hidden status says once at a turn's end. */
   conversation: { label: '대화', latest: '최신으로', received: '답을 받았습니다', stopped: '답을 중지했습니다' },
   /** Citation chips (spec 7, 8.3, 13; the approved "42쪽"). */
   cite: {
@@ -107,7 +107,7 @@ export const tutor = {
     unread: '쪽을 읽지 못함',
     unreadTip: '본문을 아직 읽을 수 없어 쪽을 돌려주지 못했습니다',
   },
-  /** The sent-scope line under a question and its list (spec 8.5, J45): what went out, what the agent was let read, the pages it read. */
+  /** The sent-scope line under a question and its list (spec 8.5): what went out, what the agent was let read, the pages it read. */
   scope: {
     selection: (n: number) => `선택\u00a0${n}`,
     material: '자료\u00a01',

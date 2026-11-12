@@ -4,7 +4,7 @@ import { mergeToolChips } from './toolChips';
 
 const c = (tool: ToolChip['tool'], outcome: ToolChip['outcome'], from: number | null = null, to: number | null = from, withSelection = false): ToolChip => ({ tool, outcome, pageFrom: from, pageTo: to, withSelection });
 
-describe('the tool chips over an answer (P-12)', () => {
+describe('the tool chips over an answer', () => {
   it('merges the pages read into runs and names get_context by the selection', () => {
     expect(mergeToolChips([c('get_context', 'ok', null, null, true), c('get_outline', 'ok'), c('read_pdf_pages', 'ok', 40), c('read_pdf_pages', 'duplicate', 41), c('read_pdf_pages', 'ok', 44, 45), c('read_pdf_pages', 'refused'), c('read_pdf_pages', 'pending', 46)]))
       .toEqual([{ kind: 'selection' }, { kind: 'outline' }, { kind: 'read', from: 40, to: 41 }, { kind: 'read', from: 44, to: 45 }, { kind: 'refused' }, { kind: 'unread' }]);

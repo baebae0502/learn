@@ -23,7 +23,7 @@ describe('the tutor store of one reader tab (J44, J48)', () => {
     expect(a.getState().conversationId).toBeNull();
   });
   it('holds nothing but the tab\'s own fields', () => {
-    expect(Object.keys(createTutorTabStore().getState()).sort()).toEqual(['choosing', 'conversationId', 'live', 'setChoosing', 'setConversation', 'setLive']);
+    expect(Object.keys(createTutorTabStore().getState()).sort()).toEqual(['choosing', 'conversationId', 'currentCite', 'live', 'setChoosing', 'setConversation', 'setCurrentCite', 'setLive']);
   });
   it('another session drops the live answer of the one before; the same one keeps it', () => {
     const a = createTutorTabStore();
@@ -32,8 +32,10 @@ describe('the tutor store of one reader tab (J44, J48)', () => {
     a.getState().setLive(live);
     a.getState().setConversation('3f0d9a0e-6b1e-4c1e-8f6a-1d2f9b7c5e11');
     expect(a.getState().live).toBe(live);
+    a.getState().setCurrentCite({ key: 'm:0', pageIndex: 41, shown: true });
     a.getState().setConversation(null);
     expect(a.getState().live).toBeNull();
+    expect(a.getState().currentCite).toBeNull(); // the chip it named is not on screen any more
   });
   it('keeps the session a tab shows for a reload of the window (this window\'s storage), and forgets it when the tab closes', () => {
     const kept = new Map<string, string>();

@@ -15,7 +15,7 @@ function pagesRead(answer: MessageView): string {
 }
 
 /**
- * The sent-scope line under a question (spec 8.5, ADR-0013 1, J45): what went out — the selection, 0 or 1 — and what the agent was let
+ * The sent-scope line under a question (spec 8.5, ADR-0013 1): what went out — the selection, 0 or 1 — and what the agent was let
  * read — this one item. No memory count until there is one to count. Its name is the words it shows (label in name); the approved
  * sentence that says what they count is its description. A press opens the list: what was sent (the question or the
  * reground request, the selection's page, the earlier turns sent again), the item, the pages the answer read once it ended, the agent.

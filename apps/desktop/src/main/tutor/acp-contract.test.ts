@@ -535,6 +535,22 @@ const CASES: Record<FakeScript, { name: string; run: () => Promise<void> }> = {
     },
   },
 
+  markdown: {
+    name: 'an answer in the tutor\'s small Markdown, citing the two pages it read; a token inside a code block is no citation',
+    async run() {
+      const r = await makeRig({ script: 'markdown' });
+      const asked = await r.ask('정리해 줘');
+      const end = (await r.ended(asked.tutorMessageId)) as Done;
+      expect(end).toMatchObject({ kind: 'done', status: 'complete', stopReason: 'end_turn' });
+      const text = r.message(asked.tutorMessageId).text;
+      expect(text).toContain('1. ');
+      expect(text).toContain('   ```\n   score = softmax(q · k) [[p1]] <b>\n   ```');
+      expect(end.sources.map((s) => s.pageIndex)).toEqual([2, 3]);
+      expect(r.streamed(asked.tutorMessageId)).toBe(text);
+      await r.finish();
+    },
+  },
+
   stream: {
     name: '6,000 characters at 60 pieces a second with 20 citations of the pages it read',
     async run() {

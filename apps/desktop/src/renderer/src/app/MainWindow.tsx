@@ -400,7 +400,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   // The right panel's mode: the reader's remembered one (튜터 until one is chosen), the library's 정보 alone.
   const inspectorMode = useInspectorMode();
   // The session the active tab's tutor shows, while it can be seen (not the card, the off state, the chooser, 정보 or a folded panel):
-  // the one place that tells main is here, with the active tab's value (P-5).
+  // the one place that tells main is here, with the active tab's value.
   const tutorState = useTutorPanelState();
   const tutorConversation = useTutorTab((s) => s.conversationId);
   const tutorShown = view.kind === 'reader' && showsInspector && !inspectorHidden && inspectorMode === 'tutor' && tutorState === 'ready';

@@ -18,7 +18,7 @@ function runs(spans: ReadonlyArray<readonly [number, number]>): Array<[number, n
 }
 
 /**
- * The chips of a turn's tool records (P-12), in the order each kind first came: get_context by whether the question carried a
+ * The chips of a turn's tool records, in the order each kind first came: get_context by whether the question carried a
  * selection, the outline, every page read joined into runs where the first read was, a refusal, a read that returned no pages. Each
  * kind once. `running` (a call not yet recorded) adds "N쪽 읽는 중" when it is a read; a context or outline call is too quick to show.
  */

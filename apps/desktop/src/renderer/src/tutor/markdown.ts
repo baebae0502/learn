@@ -1,5 +1,5 @@
 /**
- * The answer's small Markdown (spec 8.3, J50): paragraphs and their line breaks, bulleted and numbered lists two levels deep, bold,
+ * The answer's small Markdown (spec 8.3): paragraphs and their line breaks, bulleted and numbered lists two levels deep, bold,
  * italic, inline code, code blocks and quotes. A heading is a bold paragraph; tables, HTML, links and images stay the text they are,
  * so a model's output never makes something to follow or to load. `[[pN]]` outside code is a citation (spec 7). The result is data
  * that AnswerText draws as React elements only.
@@ -7,7 +7,9 @@
 export type Inline = { kind: 'text'; text: string } | { kind: 'strong' | 'em'; children: Inline[] } | { kind: 'code'; text: string } | { kind: 'cite'; pageIndex: number } | { kind: 'break' };
 export type AnswerBlock =
   | { kind: 'p'; inline: Inline[] }
-  | { kind: 'list'; ordered: boolean; items: Array<{ inline: Inline[]; sub: AnswerBlock | null }> } // two levels
+  // Two levels. `start`: a numbered list's first number when it is not 1 (a list a paragraph interrupted goes on at its number).
+  // `blocks`: what an item holds after its first lines — a paragraph, a code block, a quote indented under it.
+  | { kind: 'list'; ordered: boolean; start?: number; items: Array<{ inline: Inline[]; sub: AnswerBlock | null; blocks?: AnswerBlock[] }> }
   | { kind: 'code'; text: string }
   | { kind: 'quote'; blocks: AnswerBlock[] };
 
@@ -15,8 +17,9 @@ const BLANK = /^\s*$/;
 const FENCE = /^ {0,3}```/;
 const HEADING = /^ {0,3}#{1,6}[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$/;
 const QUOTE = /^ {0,3}> ?(.*)$/;
-/** A list item: its indent, its marker (the number of a numbered one) and its text. */
-const ITEM = /^( *)(?:[-*+]|(\d{1,9})[.)])[ \t]+(.*)$/;
+/** A list item: its indent, its marker (and the number of a numbered one), the spaces after it, and its text. */
+const ITEM = /^( *)([-*+]|(\d{1,9})[.)])([ \t]+)(.*)$/;
+const indentOf = (line: string): number => /^ */.exec(line)![0].length;
 const CITE_AT = /^\[\[p([1-9][0-9]{0,5})\]\]/;
 const WORD = /[\p{L}\p{N}]/u;
 
@@ -24,7 +27,7 @@ const WORD = /[\p{L}\p{N}]/u;
 const interrupts = (line: string): boolean => {
   if (FENCE.test(line) || HEADING.test(line) || QUOTE.test(line)) return true;
   const m = ITEM.exec(line);
-  return m !== null && (m[2] === undefined || m[2] === '1');
+  return m !== null && (m[3] === undefined || m[3] === '1');
 };
 
 /** Emphasis starting at `at` (`**`/`__` strong, `*`/`_` em), or null when it does not open there or never closes. */
@@ -96,56 +99,68 @@ function joinLines(lines: readonly string[]): Inline[] {
   return lines.flatMap((line, k) => (k === 0 ? parseInline(line.trim()) : [{ kind: 'break' } as Inline, ...parseInline(line.trim())]));
 }
 
-type Item = { lines: string[]; sub: { ordered: boolean; items: Array<{ lines: string[] }> } | null };
+type ListBlock = Extract<AnswerBlock, { kind: 'list' }>;
+type ListItem = ListBlock['items'][number];
 
-/** A list from line `start`: items at its first item's indent, sub-items deeper (a third level joins the second). Blank lines between items keep the list. */
+/** A list held inside an item, at the second level: a list inside one of its items joins it, after that item. */
+function secondLevel(list: ListBlock): ListBlock {
+  const items: ListItem[] = [];
+  for (const it of list.items) {
+    const lists = [it.sub, ...(it.blocks ?? [])].filter((b): b is ListBlock => b !== null && b.kind === 'list');
+    const rest = (it.blocks ?? []).filter((b) => b.kind !== 'list');
+    items.push({ inline: it.inline, sub: null, ...(rest.length > 0 ? { blocks: rest } : {}) });
+    for (const l of lists) items.push(...secondLevel(l).items);
+  }
+  return { ...list, items };
+}
+
+/** One item from its lines (its first line's text, then the lines under it with the item's indent taken off). */
+function itemOf(body: readonly string[]): ListItem {
+  let k = 1;
+  while (k < body.length && !BLANK.test(body[k]!) && !interrupts(body[k]!)) k += 1;
+  const blocks = parseLines(body.slice(k)).map((b) => (b.kind === 'list' ? secondLevel(b) : b));
+  const sub = blocks[0]?.kind === 'list' ? blocks.shift()! : null;
+  return { inline: joinLines(body.slice(0, k)), sub, ...(blocks.length > 0 ? { blocks } : {}) };
+}
+
+/**
+ * A list from line `start`. An item holds the lines indented under it — at its text's column, or two spaces in where that is
+ * deeper — blank lines between them included; a line that goes on right below its text without a blank line belongs to it too.
+ * A blank line followed by a line further left ends the item; the list goes on while the next item is of its kind.
+ */
 function parseList(lines: readonly string[], start: number): [AnswerBlock, number] {
   const first = ITEM.exec(lines[start]!)!;
   const base = first[1]!.length;
-  const ordered = first[2] !== undefined;
-  const items: Item[] = [];
+  const ordered = first[3] !== undefined;
+  const items: ListItem[] = [];
   let i = start;
   while (i < lines.length) {
-    const line = lines[i]!;
-    if (BLANK.test(line)) {
-      let j = i;
-      while (j < lines.length && BLANK.test(lines[j]!)) j += 1;
-      const m = j < lines.length ? ITEM.exec(lines[j]!) : null;
-      if (m === null || (m[1]!.length - base < 2 && (m[2] !== undefined) !== ordered)) break;
-      i = j;
-      continue;
-    }
-    const m = ITEM.exec(line);
-    if (m) {
-      const top = m[1]!.length - base < 2;
-      if (top) {
-        if ((m[2] !== undefined) !== ordered) break;
-        items.push({ lines: [m[3]!], sub: null });
-      } else {
-        const owner = items.at(-1) ?? (items.push({ lines: [], sub: null }), items.at(-1)!);
-        owner.sub ??= { ordered: m[2] !== undefined, items: [] };
-        owner.sub.items.push({ lines: [m[3]!] });
-      }
-      i += 1;
-      continue;
-    }
-    if (FENCE.test(line) || HEADING.test(line) || QUOTE.test(line)) break;
-    // A line that goes on from the item above it.
-    const owner = items.at(-1)!;
-    (owner.sub?.items.at(-1) ?? owner).lines.push(line);
+    const m = ITEM.exec(lines[i]!);
+    if (m === null || m[1]!.length - base >= 2 || (m[3] !== undefined) !== ordered) break;
+    const column = m[1]!.length + m[2]!.length + (m[4]!.length > 4 ? 1 : m[4]!.length);
+    const under = Math.min(column, base + 2);
+    const body = [m[5]!];
+    let blank = false;
     i += 1;
+    while (i < lines.length) {
+      const line = lines[i]!;
+      const indent = indentOf(line);
+      if (BLANK.test(line)) {
+        body.push('');
+        blank = true;
+      } else if (indent >= under) {
+        body.push(line.slice(Math.min(indent, column)));
+        blank = false;
+      } else if (!blank && !ITEM.test(line) && !FENCE.test(line) && !HEADING.test(line) && !QUOTE.test(line)) {
+        body.push(line); // a line that goes on from the item's text
+      } else break;
+      i += 1;
+    }
+    while (body.length > 1 && BLANK.test(body.at(-1)!)) body.pop();
+    items.push(itemOf(body));
   }
-  return [
-    {
-      kind: 'list',
-      ordered,
-      items: items.map((it) => ({
-        inline: joinLines(it.lines),
-        sub: it.sub === null ? null : { kind: 'list', ordered: it.sub.ordered, items: it.sub.items.map((s) => ({ inline: joinLines(s.lines), sub: null })) },
-      })),
-    },
-    i,
-  ];
+  const number = Number(first[3]);
+  return [{ kind: 'list', ordered, ...(ordered && number !== 1 ? { start: number } : {}), items }, i];
 }
 
 function parseLines(lines: readonly string[]): AnswerBlock[] {
@@ -197,10 +212,12 @@ export function parseAnswer(text: string): AnswerBlock[] {
 
 /**
  * The finished blocks (memoised while streaming) and the last one (drawn again on each append). The cut is at the start of the last
- * block that follows a blank line outside a code fence — never inside an open fence, and never between two items of one list — so the
- * two halves parse to the blocks the whole answer has.
+ * block that follows a blank line outside a code fence — never inside an open fence, and never inside a list (between two of its
+ * items, or before a line indented under one) — so the two halves parse to the blocks the whole answer has. Line ends are read as
+ * parseAnswer reads them.
  */
-export function splitStable(text: string): { stable: string; tail: string } {
+export function splitStable(answer: string): { stable: string; tail: string } {
+  const text = answer.replace(/\r\n?/g, '\n');
   let cut = 0;
   let offset = 0;
   let inFence = false;
@@ -218,12 +235,13 @@ export function splitStable(text: string): { stable: string; tail: string } {
       continue;
     }
     const item = ITEM.test(line);
-    if (blankBefore && !(item && inList)) cut = at;
+    const underItem: boolean = inList && (item || indentOf(line) >= 2);
+    if (blankBefore && !underItem) cut = at;
     if (FENCE.test(line)) {
       inFence = true;
-      inList = false;
+      inList = underItem;
     } else if (item) inList = true;
-    else if (blankBefore || HEADING.test(line) || QUOTE.test(line)) inList = false;
+    else if ((blankBefore && !underItem) || HEADING.test(line) || QUOTE.test(line)) inList = underItem;
     blankBefore = false;
   }
   return { stable: text.slice(0, cut), tail: text.slice(cut) };

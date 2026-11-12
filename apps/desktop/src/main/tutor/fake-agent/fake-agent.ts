@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
  * FakeLogEntry is appended to, LEARN_FAKE_AGENT_AS (claude or fake) only what the log calls it.
  */
 
-export const FAKE_SCRIPTS = ['answer', 'unverified', 'slow', 'stream', 'fail-before', 'fail-mid', 'hang', 'login', 'login-silent', 'permission', 'permission-noreject',
+export const FAKE_SCRIPTS = ['answer', 'unverified', 'markdown', 'slow', 'stream', 'fail-before', 'fail-mid', 'hang', 'login', 'login-silent', 'permission', 'permission-noreject',
   'permission-pending', 'inject', 'lockdown', 'lockdown-read', 'resume', 'load', 'no-load'] as const;
 export type FakeScript = (typeof FAKE_SCRIPTS)[number];
 export type FakeLogEntry =
@@ -144,6 +144,34 @@ function answerText(pages: readonly ReadPage[], extra: readonly string[], length
   const head = [SAY.lead, ...pages.map((p) => (p.first === null ? SAY.pageAgain(p.page, p.cite) : SAY.page(p.page, p.first, p.cite))), ...extra].join(' ');
   const room = length - head.length - SAY.close.length - 2;
   return `${head}\n\n${room > 0 ? fill(SAY.filler, room) : ''}${SAY.close}`;
+}
+
+/**
+ * An answer in the small Markdown the tutor draws: a heading, bold and inline code, a numbered list with a cite in each item and a
+ * paragraph and a code block under one of them (the code keeps a cite token and a tag as text), a quote, a bullet list two deep.
+ */
+function markdownText(pages: readonly ReadPage[]): string {
+  const a = pages[0]?.cite ?? '';
+  const b = pages[1]?.cite ?? a;
+  return [
+    '## 요점',
+    `이 쪽들은 **세 단계**로 정리됩니다 ${a}.`,
+    '',
+    `1. 첫 단계는 \`query\`와 \`key\`를 비교합니다 ${a}.`,
+    `2. 둘째 단계는 점수를 확률로 바꿉니다 ${b}.`,
+    '',
+    '   예를 들면 다음과 같습니다.',
+    '',
+    '   ```',
+    '   score = softmax(q · k) [[p1]] <b>',
+    '   ```',
+    `3. 마지막으로 값을 가중합합니다 ${b}.`,
+    '',
+    '> 순서가 바뀌어도 같은 결과가 나옵니다.',
+    '',
+    '- 정리',
+    '  - 세 단계는 한 번에 계산됩니다.',
+  ].join('\n');
 }
 
 /** Exactly `length` characters with `cites` citations of the pages read, in turn. */
@@ -396,6 +424,17 @@ function run(cfg: Config): void {
     return ended(t);
   }
 
+  /** get_context → the reader's page and the next → an answer in Markdown (markdownText), in 30 pieces. */
+  async function markdown(t: Turn): Promise<string> {
+    const ctx = contextOf(await tool(t, 'get_context', {}));
+    if (t.cancelled) return 'cancelled';
+    const from = clamp(ctx.readerPage, 1, ctx.pageCount);
+    const pages = pagesOf(await tool(t, 'read_pdf_pages', { from, to: Math.min(from + 1, ctx.pageCount) }));
+    if (t.cancelled) return 'cancelled';
+    await stream(t, markdownText(pages), 30, 20);
+    return ended(t);
+  }
+
   /** Five pages from the reader's, then 6,000 characters at 60 pieces a second with 20 citations. */
   async function streamFast(t: Turn): Promise<string> {
     const ctx = contextOf(await tool(t, 'get_context', {}));
@@ -461,6 +500,8 @@ function run(cfg: Config): void {
         return answer(t, false);
       case 'unverified':
         return answer(t, true);
+      case 'markdown':
+        return markdown(t);
       case 'slow':
         await stream(t, fill(SAY.slow, 6_000), 100, 100);
         return ended(t);

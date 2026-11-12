@@ -765,9 +765,10 @@ test('every registry command runs without a page error (library and reader menus
       await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
       await runMenuCommand(app, 'view.inspectorTutor');
       await expect(page.getByTestId('tutor-empty')).toBeVisible(); // consented and the fake chosen in the block above
-      // The palette lists only what can run: not 새 세션 yet.
+      // The palette lists only what can run: for "튜터" it lists 튜터 보기 (the positive control on the same path), not 새 세션 yet.
       await runMenuCommand(app, 'app.palette');
-      await page.getByTestId('palette-input').fill('새 세션');
+      await page.getByTestId('palette-input').fill('튜터');
+      await expect(page.locator('[data-testid="palette-item"][data-command-id="view.inspectorTutor"]')).toBeVisible();
       await expect(page.locator('[data-testid="palette-item"][data-command-id="tutor.newSession"]')).toHaveCount(0);
       await page.keyboard.press('Escape');
       await expect(page.getByTestId('palette-input')).toHaveCount(0);

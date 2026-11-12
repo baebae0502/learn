@@ -10,6 +10,7 @@ import { useReaderScope } from '../viewers/readerScope';
 import { TutorBubble, UserBubble, type CiteTarget } from './Bubble';
 import { nearBottom, nextFollow } from './follow';
 import { SessionHead, StickyName } from './SessionHead';
+import { useTutorTab } from './tutorStore';
 import { useSessionThread } from './useSessionThread';
 
 const { conversation: words } = t.tutor;
@@ -18,29 +19,43 @@ const { conversation: words } = t.tutor;
 const answerTo = (messages: readonly MessageView[], k: number): MessageView | null => (messages[k + 1]?.role === 'tutor' ? messages[k + 1]! : null);
 
 /**
- * The conversation column (spec 8.2, 8.3): the session's head line, then the turns, in a log that is not a live region (J56) — it is
+ * The conversation column (spec 8.2, 8.3): the session's head line, then the turns, in a log that is not a live region — it is
  * one Tab stop and scrolls with the arrows and PageUp/PageDown. While an answer comes the column keeps to its bottom, unless the user
- * scrolled up: then 최신으로 waits above the composer, and stays after the answer ended while there is unread text below (J51). Scrolled
- * past the head line, the session's name stays under the panel head. A hidden status says once that the answer came or was stopped.
- * `visible`: the panel can be seen — a folded one does not follow sizes.
+ * scrolled up: then 최신으로 waits above the composer, and stays after the answer ended while there is unread text below. Scrolled
+ * past the head line, the session's name is a row under the panel head, above the log. A hidden status says once that the answer came
+ * or was stopped. A pressed chip is the current one while the reader shows its page. `visible`: the panel can be seen — a folded one
+ * does not follow sizes.
  */
 export function Conversation({ conversationId, visible }: { conversationId: string; visible: boolean }) {
   const { thread, live } = useSessionThread(conversationId);
   const scope = useReaderScope();
   const revisionId = useItem(scope.id).data?.revisionId ?? null;
   const pageCount = useReader((s) => s.pdf?.pagesCount ?? 0);
+  const page = useReader((s) => s.pdf?.pageNumber ?? null);
+  const currentCite = useTutorTab((s) => s.currentCite);
+  const setCurrentCite = useTutorTab((s) => s.setCurrentCite);
   const target = useMemo<CiteTarget>(
     () => ({
       revisionId,
       pageCount,
-      go: (pageIndex) => {
+      go: (pageIndex, key) => {
+        setCurrentCite({ key, pageIndex, shown: false });
         const handle = scope.reader.getState().handle;
         handle?.jumpToPage(pageIndex + 1);
         handle?.flashPage(pageIndex);
       },
+      current: currentCite?.key ?? null,
     }),
-    [revisionId, pageCount, scope],
+    [revisionId, pageCount, scope, setCurrentCite, currentCite?.key],
   );
+  // The pressed chip keeps its ring while the reader shows its page: once the reader is there, leaving the page (a scroll, another
+  // jump, back or forward) ends it.
+  useEffect(() => {
+    if (currentCite === null || page === null) return;
+    if (page - 1 === currentCite.pageIndex) {
+      if (!currentCite.shown) setCurrentCite({ ...currentCite, shown: true });
+    } else if (currentCite.shown) setCurrentCite(null);
+  }, [page, currentCite, setCurrentCite]);
   const streaming = live !== null || (thread?.messages.some((m) => m.role === 'tutor' && m.status === 'streaming') ?? false);
 
   const logRef = useRef<HTMLDivElement>(null);
@@ -56,6 +71,8 @@ export function Conversation({ conversationId, visible }: { conversationId: stri
   visibleRef.current = visible;
   const [latest, setLatest] = useState(false);
   const [stuck, setStuck] = useState(false);
+  const stickyRef = useRef<HTMLDivElement>(null);
+  const stickyHeight = useRef(0);
 
   /** 최신으로 shows while the user is away from the bottom and an answer comes, or text came below that they have not seen. */
   const settle = useCallback(() => {
@@ -118,6 +135,19 @@ export function Conversation({ conversationId, visible }: { conversationId: stri
     settle();
   }, [visible, toBottom, settle]);
   useEffect(settle, [streaming, settle]);
+  // The name's row takes its height from the top of the log: the log scrolls by that much too, so the text in view stays where it was.
+  useLayoutEffect(() => {
+    const el = logRef.current;
+    if (!el) return;
+    if (stuck) {
+      stickyHeight.current = stickyRef.current?.offsetHeight ?? 0;
+      el.scrollTop += stickyHeight.current;
+    } else if (stickyHeight.current > 0) {
+      el.scrollTop -= stickyHeight.current;
+      stickyHeight.current = 0;
+    }
+    lastTop.current = el.scrollTop;
+  }, [stuck]);
 
   const toLatest = () => {
     const hadFocus = document.activeElement instanceof HTMLElement && document.activeElement.closest('.tutor-latest-row') !== null;
@@ -140,7 +170,7 @@ export function Conversation({ conversationId, visible }: { conversationId: stri
   const { messages, session, item } = thread;
   return (
     <div className="tutor-convo" data-testid="tutor-conversation" data-streaming={streaming ? '' : undefined}>
-      <StickyName title={session.title} shown={stuck} />
+      <StickyName title={session.title} shown={stuck} ref={stickyRef} />
       <div ref={logRef} className="tutor-log" role="log" aria-label={words.label} aria-live="off" tabIndex={0} onScroll={onScroll} data-testid="tutor-log">
         <div ref={contentRef} className="tutor-log-content">
           <SessionHead ref={headRef} session={session} />

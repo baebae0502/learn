@@ -6,12 +6,21 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { expectNoSeriousA11y } from './a11y';
+import type { LearnPdfProbe } from '../../apps/desktop/src/renderer/src/viewers/pdf/anchorProbe';
+import type { PdfAnchor } from '../../packages/domain/src/anchors';
 import type { TutorAskInput } from '../../packages/domain/src/tutor';
 import {
   FIXTURES, backFromReader, expectTooltipText, hoverLikeUser, importPaths, ipcCalls, launch, mainWindow, openItem, readClipboard, runMenuCommand, runPalette, textExtraction, textIdle, tutorFailAgents,
   tutorFakeScript, tutorProcesses, type Session,
 } from './helpers';
 import { READER_100, askViaApi, consentAndChoose, installFakeAgents, turnEnded } from './tutor-helpers';
+
+declare global {
+  interface Window {
+    /** The PDF reader's E2E probe (e2e=1 only): a selection's span anchor for a question's attached passage. */
+    __learnPdf?: LearnPdfProbe;
+  }
+}
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const UNSET = { env: { LEARN_E2E_SETTINGS: '' } };
@@ -687,7 +696,12 @@ test('a conversation: the empty session, then a question\'s tool chips and its a
     await chips.nth(1).click();
     await expect(field).toHaveValue('42');
     await expect(page.locator('.pdfViewer .page[data-page-number="42"]')).toHaveClass(/\bcite-page\b/);
+    // The pressed chip is the current one (a 1 px ring), the other is not.
+    await expect(chips.nth(1)).toHaveClass(/\bis-current\b/);
+    expect(await chips.nth(1).evaluate((el) => getComputedStyle(el).boxShadow)).toMatch(/inset/);
+    await expect(chips.nth(0)).not.toHaveClass(/\bis-current\b/);
     await expect(page.locator('.pdfViewer .page.cite-page')).toHaveCount(0, { timeout: 5000 }); // 1.5 s, then it goes
+    await expect(chips.nth(1)).toHaveClass(/\bis-current\b/); // the reader still shows its page
     const thread = await page.evaluate((id) => window.learn.sessions.get({ conversationId: id }), asked.conversationId);
     if (!thread.ok) throw new Error(`sessions.get: ${thread.code}`);
     const source = thread.data.messages.find((m) => m.id === asked.tutorMessageId)!.sources.find((c) => c.pageIndex === 41)!;
@@ -698,6 +712,16 @@ test('a conversation: the empty session, then a question\'s tool chips and its a
         return r.ok && r.data !== null && r.data.locator.kind === 'pdf' ? [r.data.revisionId, r.data.locator.pageIndex] : null;
       })
       .toEqual([source.revisionId, 41]);
+    await runMenuCommand(app, 'nav.historyBack');
+    await expect(field).toHaveValue('1');
+    await expect(answer.locator('.cite.is-current')).toHaveCount(0); // the reader left its page
+    // Another press: that chip is current; a scroll of the reader away from its page ends it.
+    await chips.nth(0).click();
+    await expect(field).toHaveValue('41');
+    await expect(chips.nth(0)).toHaveClass(/\bis-current\b/);
+    await page.getByTestId('pdf-scroll').evaluate((el) => void (el.scrollTop += 3 * el.clientHeight));
+    await expect(field).not.toHaveValue('41');
+    await expect(answer.locator('.cite.is-current')).toHaveCount(0);
     await runMenuCommand(app, 'nav.historyBack');
     await expect(field).toHaveValue('1');
 
@@ -720,6 +744,15 @@ test('a conversation: the empty session, then a question\'s tool chips and its a
     await expect(list.locator('dt')).toHaveText(['보낸 것', '읽게 열어 둔 것', '읽은 쪽', '에이전트']);
     await expect(list.locator('dd')).toHaveText(['질문', 'paper-100', '41–42쪽', '가짜 에이전트']);
     await expect(list.locator('dd').last().locator('.lucide-flask-conical')).toHaveCount(1);
+    // At the question's right end, as wide as what it says: its right edge is the column's, and it is narrower than the column.
+    const column = (await page.locator('.tutor-log-content').evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      return { left: r.left + parseFloat(cs.paddingLeft), right: r.right - parseFloat(cs.paddingRight) };
+    }));
+    const box = (await list.boundingBox())!;
+    expect(Math.abs(box.x + box.width - column.right)).toBeLessThanOrEqual(1);
+    expect(box.width).toBeLessThan(column.right - column.left - 40);
     await expectNoSeriousA11y(page, 'tutor conversation, the sent-scope list open');
 
     // A reload of the window shows the same session, its chips drawn from what was stored.
@@ -762,6 +795,10 @@ test('a cite of a page the answer did not read: 확인 중 while it comes, 출�
     const chips = answer.getByTestId('cite-chip');
     await expect(chips).toHaveText(['41쪽', '42쪽', '출처 없음', '출처 없음']);
     expect(await chips.evaluateAll((els) => els.map((e) => `${e.getAttribute('data-cite')}:${e.getAttribute('data-page')}`))).toEqual(['go:41', 'go:42', 'none:43', 'none:999']);
+    // A chip with its glyph keeps the paragraph's 20 px lines: every chip sits as far below another as whole lines.
+    const tops = await chips.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().top));
+    expect(tops.map((y) => Math.round(y - tops[0]!) % 20)).toEqual([0, 0, 0, 0]);
+    expect(new Set(tops.map((y) => Math.round(y))).size).toBeGreaterThan(1);
     const states = await seen();
     expect(states).toEqual(expect.arrayContaining(['streaming:go:41', 'streaming:checking:43', 'streaming:checking:999', 'complete:none:43', 'complete:none:999']));
     expect(states.filter((v) => v.startsWith('streaming:') && v.includes(':none:'))).toEqual([]); // no warning while it came (J41)
@@ -781,6 +818,71 @@ test('a cite of a page the answer did not read: 확인 중 while it comes, 출�
     await expect.poll(() => readClipboard(app)).toContain('(출처 없음)');
     expect(await readClipboard(app)).toContain('(41쪽)');
     await expectNoSeriousA11y(page, 'tutor answer with unverified cites');
+  } finally {
+    await app.close();
+  }
+});
+
+test('an answer in Markdown is drawn as its blocks: a numbered list with chips in its items and a code block under one, bold, inline code, a quote, a nested list; a tag stays text', async ({}, testInfo) => {
+  const { app, page, itemId } = await atSession(testInfo);
+  try {
+    await tutorFakeScript(app, 'markdown');
+    const asked = await ask(page, { itemId, conversationId: null, text: '정리해 주세요.', selection: null, reader: READER_41 });
+    await turnEnded(page, asked.conversationId, asked.tutorMessageId);
+    const body = page.getByTestId('tutor-answer-text');
+    await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'complete');
+    // The heading is a bold paragraph; the paragraph's bold stays bold.
+    await expect(body.locator(':scope > p').first().locator('strong')).toHaveText('요점');
+    await expect(body.locator(':scope > p').nth(1).locator('strong')).toHaveText('세 단계');
+    // One numbered list of three items: the paragraph and the code block under the second stay in it.
+    const ol = body.locator(':scope > ol');
+    await expect(ol).toHaveCount(1);
+    await expect(ol).not.toHaveAttribute('start');
+    expect(await ol.evaluate((el) => getComputedStyle(el).listStyleType)).toBe('decimal'); // its numbers show
+    expect(await body.locator(':scope > ul').evaluate((el) => getComputedStyle(el).listStyleType)).toBe('disc');
+    const items = ol.locator(':scope > li');
+    await expect(items).toHaveCount(3);
+    await expect(items.nth(0).locator('code')).toHaveText(['query', 'key']);
+    await expect(items.nth(0).getByTestId('cite-chip')).toHaveText('41쪽');
+    await expect(items.nth(1).getByTestId('cite-chip')).toHaveText('42쪽');
+    await expect(items.nth(1).locator('p')).toHaveText('예를 들면 다음과 같습니다.');
+    const code = items.nth(1).locator('pre');
+    await expect(code).toHaveText('score = softmax(q · k) [[p1]] <b>'); // a cite token and a tag in code stay text
+    await expect(code.getByTestId('cite-chip')).toHaveCount(0);
+    await expect(items.nth(2).getByTestId('cite-chip')).toHaveText('42쪽');
+    await expect(body.locator('blockquote')).toHaveText('순서가 바뀌어도 같은 결과가 나옵니다.');
+    await expect(body.locator(':scope > ul > li > ul > li')).toHaveText('세 단계는 한 번에 계산됩니다.');
+    await expect(body.locator('b')).toHaveCount(0);
+    // A chip in an item stays on its word's line.
+    await expect(items.nth(0).locator('.cite-tail')).toHaveText('비교합니다41쪽.', { useInnerText: true });
+    await expectNoSeriousA11y(page, 'tutor answer in Markdown');
+  } finally {
+    await app.close();
+  }
+});
+
+test('a question with an attached passage: the quote in the bubble with its page chip, 선택 1, the list\'s 선택한 구간, and 선택한 구간 확인 over the answer', async ({}, testInfo) => {
+  const { app, page, itemId } = await atSession(testInfo);
+  try {
+    await page.waitForFunction(() => window.__learnPdf !== undefined);
+    const passage = 'We propose a new simple network architecture.';
+    const text1 = await page.evaluate(() => window.__learnPdf!.pageText(0));
+    const at = text1.indexOf(passage);
+    expect(at, 'page 1 holds the passage').toBeGreaterThanOrEqual(0);
+    const anchor = await page.evaluate(async ([s, e]) => {
+      await window.__learnPdf!.selectText(0, s!, e!);
+      return window.__learnPdf!.anchorOfSelection();
+    }, [at, at + passage.length] as const);
+    const asked = await ask(page, { itemId, conversationId: null, text: '이 문장은 무슨 뜻인가요?', selection: { anchor: anchor as PdfAnchor & { precision: 'span' }, text: passage }, reader: READER_100 });
+    await turnEnded(page, asked.conversationId, asked.tutorMessageId);
+    const question = page.getByTestId('tutor-question');
+    await expect(question.locator('.tutor-quote .q')).toHaveText(passage);
+    await expect(question.locator('.tutor-quote').getByTestId('cite-chip')).toHaveText('1쪽');
+    await expect(question.getByTestId('sent-scope')).toHaveAccessibleName(/^선택\s1\s·\s자료\s1$/);
+    await question.getByTestId('sent-scope').click();
+    await expect(question.getByTestId('sent-scope-list').locator('dd').first()).toHaveText('질문선택한 구간 · 1쪽');
+    await expect(page.getByTestId('tutor-answer').getByTestId('tool-chip').first()).toHaveText('선택한 구간 확인');
+    await expectNoSeriousA11y(page, 'tutor question with an attached passage');
   } finally {
     await app.close();
   }
@@ -812,6 +914,9 @@ test('while an answer comes the column keeps to its bottom; scrolled up it stays
     await log.evaluate((el) => void (el.scrollTop = 120));
     await expect(page.getByTestId('tutor-sticky')).toBeVisible();
     await expect(page.getByTestId('tutor-sticky')).toHaveText('천천히 답해 주세요.');
+    // A row above the log, not over it: the log (and its scroll bar) starts below it.
+    const sticky = (await page.getByTestId('tutor-sticky').boundingBox())!;
+    expect((await log.boundingBox())!.y).toBeGreaterThanOrEqual(sticky.y + sticky.height - 0.5);
     await expectNoSeriousA11y(page, 'tutor conversation scrolled up while the answer comes');
     // 최신으로: to the bottom, following again.
     await latest.click();

@@ -148,7 +148,8 @@ function answerText(pages: readonly ReadPage[], extra: readonly string[], length
 
 /**
  * An answer in the small Markdown the tutor draws: a heading, bold and inline code, a numbered list with a cite in each item and a
- * paragraph and a code block under one of them (the code keeps a cite token and a tag as text), a quote, a bullet list two deep.
+ * paragraph and a code block under one of them (the code keeps a cite token and a tag as text), a quote, the list going on at 4 after
+ * it, a bullet list two deep.
  */
 function markdownText(pages: readonly ReadPage[]): string {
   const a = pages[0]?.cite ?? '';
@@ -168,6 +169,8 @@ function markdownText(pages: readonly ReadPage[]): string {
     `3. 마지막으로 값을 가중합합니다 ${b}.`,
     '',
     '> 순서가 바뀌어도 같은 결과가 나옵니다.',
+    '',
+    `4. 덧붙여, 같은 계산을 여러 번 나란히 합니다 ${b}.`,
     '',
     '- 정리',
     '  - 세 단계는 한 번에 계산됩니다.',

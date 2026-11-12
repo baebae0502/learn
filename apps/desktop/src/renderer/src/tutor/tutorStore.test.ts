@@ -2,11 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../api', async (original) => ({ ...(await original<typeof import('../api')>()), api: () => ({ translation: { cancel: async () => ({ ok: true, data: undefined }) } }) }));
 
-const { createTutorTabStore, forgetTutorTab } = await import('./tutorStore');
+const { createTutorTabStore, forgetTutorTab, ringedChip } = await import('./tutorStore');
 const { useTutorRun } = await import('./tutorRun');
 const { createReaderScope } = await import('../viewers/readerScope');
 
-describe('the tutor store of one reader tab (J44, J48)', () => {
+describe('the tutor store of one reader tab', () => {
   it('starts on a new empty session', () => {
     expect(createTutorTabStore().getState()).toMatchObject({ conversationId: null });
   });
@@ -32,7 +32,7 @@ describe('the tutor store of one reader tab (J44, J48)', () => {
     a.getState().setLive(live);
     a.getState().setConversation('3f0d9a0e-6b1e-4c1e-8f6a-1d2f9b7c5e11');
     expect(a.getState().live).toBe(live);
-    a.getState().setCurrentCite({ key: 'm:0', pageIndex: 41, shown: true });
+    a.getState().setCurrentCite({ key: 'm:0', pageIndex: 41, revisionId: 'r1', shown: true });
     a.getState().setConversation(null);
     expect(a.getState().live).toBeNull();
     expect(a.getState().currentCite).toBeNull(); // the chip it named is not on screen any more
@@ -73,7 +73,18 @@ describe('the tutor store of one reader tab (J44, J48)', () => {
   });
 });
 
-describe('나중에 is the run\'s (R21, spec 8.2)', () => {
+describe('the chip the reader was sent to', () => {
+  it('is ringed while the tab shows the revision it sent the reader to, and not in another revision', () => {
+    const current = { key: 'm:1', pageIndex: 41, revisionId: 'r1', shown: true };
+    expect(ringedChip(current, 'r1')).toBe('m:1');
+    expect(ringedChip(current, 'r2')).toBeNull();
+    expect(ringedChip(current, null)).toBeNull(); // the tab's document not known yet
+    expect(ringedChip({ ...current, revisionId: null }, 'r1')).toBeNull();
+    expect(ringedChip(null, 'r1')).toBeNull();
+  });
+});
+
+describe('나중에 is the run\'s (spec 8.2)', () => {
   it('is one value for every tab, off at the start, and holds nothing else', () => {
     expect(useTutorRun.getState().later).toBe(false);
     const x = createReaderScope('x');

@@ -61,7 +61,14 @@ export interface TutorTabStore {
 export interface CurrentCite {
   key: string;
   pageIndex: number;
+  /** The revision of the document the chip sent the reader to: the ring is drawn only while the tab shows that revision. */
+  revisionId: string | null;
   shown: boolean;
+}
+
+/** The chip to ring: the current one, while the tab's document is the revision it sent the reader to. */
+export function ringedChip(current: CurrentCite | null, revisionId: string | null): string | null {
+  return current !== null && revisionId !== null && current.revisionId === revisionId ? current.key : null;
 }
 
 /** `tabId`: the tab's item id, under which its session is kept for a reload ('' keeps nothing). */

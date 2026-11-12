@@ -481,7 +481,8 @@
   .tutor-msg.tutor.is-streaming .body {
     width: 100%;
   }
-  .tutor-msg .body :is(p, ul, ol, blockquote, pre) {
+  /* No specificity of its own, so the 8 px between blocks below wins over it. */
+  .tutor-msg .body :where(p, ul, ol, blockquote, pre) {
     margin: 0;
   }
   .tutor-msg .body > * + *,

@@ -15,18 +15,18 @@ const { answer: words } = t.tutor;
 
 /**
  * What a chip needs from the reader of this tab: the document's revision, its page count, the jump to a page (0-based) that makes the
- * pressed chip (`key`) the current one, and which chip that is.
+ * pressed chip (`key`, sending the reader into `revisionId`) the current one, and which chip is ringed as current.
  */
 export interface CiteTarget {
   revisionId: string | null;
   pageCount: number;
-  go(pageIndex: number, key: string): void;
+  go(pageIndex: number, key: string, revisionId: string | null): void;
   current: string | null;
 }
 
 /** A stored source's chip: it goes where its anchor's revision is the document open here, else it says that revision is gone. */
 const sourceState = (s: SourceChip, target: CiteTarget, key: string): CiteState =>
-  s.anchorId !== null && s.pageIndex !== null && s.revisionId === target.revisionId ? { kind: 'go', onPress: () => target.go(s.pageIndex!, key) } : { kind: 'lost' };
+  s.anchorId !== null && s.pageIndex !== null && s.revisionId === target.revisionId ? { kind: 'go', onPress: () => target.go(s.pageIndex!, key, s.revisionId) } : { kind: 'lost' };
 
 /** The one line of how an answer ended, under it (spec 13 "답 아래"); a failure is its own notice. */
 function endLine(m: MessageView): string | null {
@@ -91,7 +91,7 @@ export function TutorBubble({ message, live, mixed, target }: { message: Message
     (p: number, ordinal: number) => {
       const key = `${message.id}:${ordinal}`;
       const current = target.current === key;
-      if (streaming) return <CitationChip pageIndex={p} state={verified.has(p) ? { kind: 'go', onPress: () => target.go(p, key) } : { kind: 'checking' }} current={current} />;
+      if (streaming) return <CitationChip pageIndex={p} state={verified.has(p) ? { kind: 'go', onPress: () => target.go(p, key, target.revisionId) } : { kind: 'checking' }} current={current} />;
       const source = sources.find((s) => s.pageIndex === p);
       return <CitationChip pageIndex={p} state={source ? sourceState(source, target, key) : { kind: 'none', outside: target.pageCount > 0 && p >= target.pageCount }} current={current} />;
     },

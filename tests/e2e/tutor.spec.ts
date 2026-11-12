@@ -795,10 +795,18 @@ test('a cite of a page the answer did not read: 확인 중 while it comes, 출�
     const chips = answer.getByTestId('cite-chip');
     await expect(chips).toHaveText(['41쪽', '42쪽', '출처 없음', '출처 없음']);
     expect(await chips.evaluateAll((els) => els.map((e) => `${e.getAttribute('data-cite')}:${e.getAttribute('data-page')}`))).toEqual(['go:41', 'go:42', 'none:43', 'none:999']);
-    // A chip with its glyph keeps the paragraph's 20 px lines: every chip sits as far below another as whole lines.
-    const tops = await chips.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().top));
-    expect(tops.map((y) => Math.round(y - tops[0]!) % 20)).toEqual([0, 0, 0, 0]);
-    expect(new Set(tops.map((y) => Math.round(y))).size).toBeGreaterThan(1);
+    // A chip with its glyph keeps the paragraph's 20 px lines: from one chip's line to the next chip's, whole lines of 20 ± 1 px each.
+    const tops = (await chips.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().top))).sort((a, b) => a - b);
+    let steps = 0;
+    for (let k = 1; k < tops.length; k += 1) {
+      const d = tops[k]! - tops[k - 1]!;
+      if (d < 1) continue; // the same line
+      const lines = Math.round(d / 20);
+      expect(lines, `chip ${k} is on a later line`).toBeGreaterThanOrEqual(1);
+      expect(Math.abs(d - lines * 20), `chip ${k}: ${d} px over ${lines} line(s)`).toBeLessThanOrEqual(lines);
+      steps += 1;
+    }
+    expect(steps).toBeGreaterThan(0);
     const states = await seen();
     expect(states).toEqual(expect.arrayContaining(['streaming:go:41', 'streaming:checking:43', 'streaming:checking:999', 'complete:none:43', 'complete:none:999']));
     expect(states.filter((v) => v.startsWith('streaming:') && v.includes(':none:'))).toEqual([]); // no warning while it came (J41)
@@ -834,10 +842,18 @@ test('an answer in Markdown is drawn as its blocks: a numbered list with chips i
     // The heading is a bold paragraph; the paragraph's bold stays bold.
     await expect(body.locator(':scope > p').first().locator('strong')).toHaveText('요점');
     await expect(body.locator(':scope > p').nth(1).locator('strong')).toHaveText('세 단계');
-    // One numbered list of three items: the paragraph and the code block under the second stay in it.
-    const ol = body.locator(':scope > ol');
-    await expect(ol).toHaveCount(1);
+    // A numbered list of three items: the paragraph and the code block under the second stay in it. After the quote the list goes on
+    // at its own number.
+    const lists = body.locator(':scope > ol');
+    await expect(lists).toHaveCount(2);
+    const ol = lists.first();
     await expect(ol).not.toHaveAttribute('start');
+    await expect(lists.nth(1)).toHaveAttribute('start', '4');
+    await expect(lists.nth(1).locator(':scope > li')).toHaveCount(1);
+    await expect(lists.nth(1).getByTestId('cite-chip')).toHaveText('42쪽');
+    // 8 px between blocks: from the paragraph's last line to the list's first.
+    const para = body.locator(':scope > p').nth(1);
+    expect(Math.abs((await ol.evaluate((el) => el.getBoundingClientRect().top)) - (await para.evaluate((el) => el.getBoundingClientRect().bottom)) - 8)).toBeLessThanOrEqual(1);
     expect(await ol.evaluate((el) => getComputedStyle(el).listStyleType)).toBe('decimal'); // its numbers show
     expect(await body.locator(':scope > ul').evaluate((el) => getComputedStyle(el).listStyleType)).toBe('disc');
     const items = ol.locator(':scope > li');

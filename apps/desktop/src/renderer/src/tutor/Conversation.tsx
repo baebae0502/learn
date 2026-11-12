@@ -10,7 +10,7 @@ import { useReaderScope } from '../viewers/readerScope';
 import { TutorBubble, UserBubble, type CiteTarget } from './Bubble';
 import { nearBottom, nextFollow } from './follow';
 import { SessionHead, StickyName } from './SessionHead';
-import { useTutorTab } from './tutorStore';
+import { ringedChip, useTutorTab } from './tutorStore';
 import { useSessionThread } from './useSessionThread';
 
 const { conversation: words } = t.tutor;
@@ -34,19 +34,20 @@ export function Conversation({ conversationId, visible }: { conversationId: stri
   const page = useReader((s) => s.pdf?.pageNumber ?? null);
   const currentCite = useTutorTab((s) => s.currentCite);
   const setCurrentCite = useTutorTab((s) => s.setCurrentCite);
+  const ringed = ringedChip(currentCite, revisionId);
   const target = useMemo<CiteTarget>(
     () => ({
       revisionId,
       pageCount,
-      go: (pageIndex, key) => {
-        setCurrentCite({ key, pageIndex, shown: false });
+      go: (pageIndex, key, revision) => {
+        setCurrentCite({ key, pageIndex, revisionId: revision, shown: false });
         const handle = scope.reader.getState().handle;
         handle?.jumpToPage(pageIndex + 1);
         handle?.flashPage(pageIndex);
       },
-      current: currentCite?.key ?? null,
+      current: ringed,
     }),
-    [revisionId, pageCount, scope, setCurrentCite, currentCite?.key],
+    [revisionId, pageCount, scope, setCurrentCite, ringed],
   );
   // The pressed chip keeps its ring while the reader shows its page: once the reader is there, leaving the page (a scroll, another
   // jump, back or forward) ends it.

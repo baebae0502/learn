@@ -10,7 +10,7 @@ import { askViaApi, consentAndChoose, turnEnded } from './tutor-helpers';
 import {
   FIXTURES, assignTag, clickToCloseSheet, closeSheet, confirmCalls, createCollection, enabledMenuCommands, expectWindow, importPause, importPaths, isCloseNoise, importResume, importWaiting, imageState, launch, makeTags,
   libraryTab, menuItemEnabled, menuSnapshot, openDialogCalls, openItem, organizeSnapshot, readerTab, recordedPopups, rowByTitle, runMenuCommand, runPalette, saveDialogCalls, sheetReleased, shellCalls, specialRow, stubConfirm,
-  stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, stubSaveDialog, stubShell, tagChip, textExtraction, textIdle, trashItems, treeRow, waitImportIdle,
+  stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, stubSaveDialog, stubShell, tagChip, trashItems, treeRow, waitImportIdle,
   type MenuNode,
 } from './helpers';
 
@@ -761,8 +761,6 @@ test('every registry command runs without a page error (library and reader menus
     // 새 세션 (T1a, the palette's and the tutor head's): off on a new empty session; once a question made a session (askViaApi, the
     // composer's call), the palette runs it and the tutor shows a new empty session.
     {
-      await textExtraction(app, 'now');
-      await textIdle(app);
       await openItem(page, 'sample');
       await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
       await runMenuCommand(app, 'view.inspectorTutor');
@@ -780,11 +778,13 @@ test('every registry command runs without a page error (library and reader menus
       });
       const asked = await askViaApi(page, { itemId, conversationId: null, text: '이 자료는 무엇을 다루나요?', selection: null, reader: { pageIndex: 0, pageCount: pages, outline: [], outlineComplete: true, outlineTotal: 0 } });
       if ('busyWith' in asked) throw new Error('the question waited for another answer');
+      // The session its question made is on screen: 새 세션 runs while the answer still comes (its pages wait for the body text, which this
+      // test does not extract — a main-side hook that reads the database here can land inside a running query).
       await expect(page.getByTestId('tutor-question')).toBeVisible();
-      await turnEnded(page, asked.conversationId, asked.tutorMessageId);
       await runPalette(page, app, '새 세션', 'tutor.newSession');
       await expect(page.getByTestId('tutor-empty')).toBeVisible();
       ran.add('tutor.newSession');
+      await turnEnded(page, asked.conversationId, asked.tutorMessageId);
       await runMenuCommand(app, 'view.inspectorInfo');
       await runMenuCommand(app, 'tab.close');
       await expect(page.getByTestId('pdf-viewer')).toHaveCount(0);

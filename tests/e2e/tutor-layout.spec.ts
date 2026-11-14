@@ -4,7 +4,7 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { expectNoSeriousA11y } from './a11y';
 import { FIXTURES, dragAlong, importPaths, ipcCalls, launch, mainWindow, menuSnapshot, openItem, readerToolbarMin, runMenuCommand, textExtraction, textIdle, type MenuNode } from './helpers';
-import { READER_100, askViaApi, consentAndChoose, turnEnded } from './tutor-helpers';
+import { READER_100, askViaApi, consentAndChoose, turnEnded, windowReach } from './tutor-helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const SAMPLE = path.join(FIXTURES, 'sample.pdf');
@@ -354,6 +354,7 @@ test('200 % zoom: the tutor folds, then the sidebar, and nothing scrolls sideway
   try {
     // The widest the screen gives (1440 on Linux; the 1024 px macOS runner fits the window to 1024): 200 % halves what it got.
     await contentWidth(app, 1440);
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(Math.min(1440, (await windowReach(app)).width));
     const w0 = await page.evaluate(() => innerWidth);
     const [paper] = await importPaths(page, [PAPER]);
     await textExtraction(app, 'now');

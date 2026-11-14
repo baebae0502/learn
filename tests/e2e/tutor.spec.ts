@@ -16,7 +16,7 @@ import {
   menuSnapshot, openItem, readClipboard, readerTab, recordedPopups, rowByTitle, runMenuAccelerator, runMenuCommand, runPalette, seedSessions, setPdfZoom, specialRow, stubContextMenu,
   stubFolderPicker, stubFolderPicks, textExtraction, textIdle, trashItems, tutorFailAgents, tutorFakeLog, tutorFakeScript, tutorProcesses, type MenuNode, type Session,
 } from './helpers';
-import { READER_100, askViaApi, consentAndChoose, installFakeAgents, nextFakeScript, turnEnded } from './tutor-helpers';
+import { READER_100, askViaApi, consentAndChoose, installFakeAgents, nextFakeScript, turnEnded, windowReach } from './tutor-helpers';
 
 declare global {
   interface Window {
@@ -1425,10 +1425,13 @@ test('the foot never overflows: while an answer comes, the agent button\'s longe
     await expect(button).toHaveText('Claude Code · 지원하지 않는 버전');
     await expect(page.getByTestId('tutor-answering')).toBeVisible();
     const stop = page.getByTestId('tutor-stop');
-    for (const [width, tutor] of [[1000, 320], [1440, 380]] as const) {
+    // Where 380 fits beside the sidebar and a 440 reader, 380 then 320: the column narrows while the answer comes. A screen too narrow
+    // for that (the 1024 px macOS runner) takes 320 first, beside the sidebar, then 380 with the sidebar folded.
+    const wide = (await windowReach(app)).width >= 240 + 380 + 440;
+    const steps: (readonly [number, 320 | 380])[] = wide ? [[1440, 380], [1000, 320]] : [[1000, 320], [1440, 380]];
+    for (const [width, tutor] of steps) {
       await window.evaluate((w, x) => w.setContentSize(x, w.getContentSize()[1]!), width);
-      // A screen too narrow for the sidebar, 380 and a 440 reader (the 1024 px macOS runner) folds the sidebar for the 380 step.
-      if (tutor === 380 && (await page.evaluate(() => innerWidth)) < 240 + 380 + 440) {
+      if (tutor === 380 && !wide) {
         await runMenuCommand(app, 'view.toggleSidebar');
         await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
       }
@@ -2679,10 +2682,7 @@ test('the library sidebar with the tutor\'s sessions scrolls as one region — �
     const scroller = page.locator('[data-pane="sidebar"]');
     const tags = page.getByTestId('tag-selector');
     // At the heights the window can have: the macOS runner's display stops it at 656 (as LEARN_E2E_MAC_WINDOW=1 does), under both.
-    const tallest = await (await mainWindow(app)).evaluate((w) => {
-      const [, max] = w.getMaximumSize();
-      return max === 0 ? Number.MAX_SAFE_INTEGER : max! - (w.getSize()[1]! - w.getContentSize()[1]!);
-    });
+    const tallest = (await windowReach(app)).height;
     for (const height of new Set([900, 700].map((h) => Math.min(h, tallest)))) {
       await (await mainWindow(app)).evaluate((w, h) => w.setContentSize(1440, h), height);
       await expect.poll(() => page.evaluate(() => innerHeight)).toBe(height);

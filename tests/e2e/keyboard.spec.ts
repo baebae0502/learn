@@ -11,6 +11,7 @@ import {
   specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, tagChip, trashItems, translationFake, treeRow, waitImportIdle,
   selectInPage, textExtraction, textIdle, imageState, quiet,
 } from './helpers';
+import { consentAndChoose } from './tutor-helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MP4 = path.join(FIXTURES, 'sample-h264-aac.mp4');
@@ -1463,6 +1464,94 @@ test('M7c keyboard only: ⌘F → ⇧Tab to 검색 범위 → ↓ ↓ ↩ picks 
     await expect.poll(async () => (await imageState(page))?.rotation).toBe(90);
     await expect(stage).toBeFocused();
     await expectNoSeriousA11y(page, 'm7c-journey: the photo turned');
+  } finally {
+    await app.close();
+  }
+});
+
+// T1a (AC18, spec 8.11, 16.2): asking the tutor, going to a cited page and back, and naming the session, by keyboard alone. The consent and
+// the fake agent are given through window.learn.tutor first (the card and the chooser have their own keyboard tests in tutor.spec); ⌃⌘2,
+// ⌥⌘5 and ⌘[ are menu accelerators (runMenuAccelerator), every other step is a real key press, and nothing is clicked.
+test('T1a keyboard only: ⌃⌘2 → the composer → a question ↩ → ⇧Tab to its cite chip → ↩ shows that page → ⌘[ back → ⌥⌘5 → F6 to the session row → ↩ names it → esc, with axe at every new stop', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  const field = page.getByTestId('pdf-page-field');
+  const composer = page.getByTestId('tutor-input');
+  try {
+    await importPaths(page, [path.join(FIXTURES, 'paper-100.pdf')]);
+    await textExtraction(app, 'now');
+    await textIdle(app);
+    await consentAndChoose(page, 'fake');
+    // The table's one row, ↩: the reader on 정보 (the right panel's mode as the other specs seed it).
+    await f6To(page, 'content');
+    await page.keyboard.press('Home');
+    await expect(rowByTitle(page, 'paper-100')).toHaveAttribute('aria-selected', 'true');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', '100');
+    await expect(page.getByTestId('inspector')).toHaveAttribute('data-mode', 'info');
+
+    // 1. ⌃⌘2: the tutor, and the focus in its composer.
+    await runMenuAccelerator(app, 'view.inspectorTutor');
+    await expect(page.getByTestId('inspector')).toHaveAttribute('data-mode', 'tutor');
+    await expect(page.getByTestId('tutor-empty')).toBeVisible();
+    await expect(composer).toBeFocused();
+    await expectNoSeriousA11y(page, 't1a-journey: ⌃⌘2 into the composer');
+
+    // 2. A question and ↩: it goes, the answer comes with its cite chips (the reader is on page 1: pages 1 and 2 read and cited).
+    await page.keyboard.type('이 쪽은 무엇을 다루나요?');
+    await page.keyboard.press('Enter');
+    const answer = page.getByTestId('tutor-answer');
+    await expect(answer).toHaveAttribute('data-status', 'complete');
+    await expect(answer.getByTestId('cite-chip')).toHaveText(['1쪽', '2쪽']);
+    await expect(composer).toBeFocused();
+    await expectNoSeriousA11y(page, 't1a-journey: the answer with its cite chips');
+
+    // 3. ⇧Tab back from the composer, past 답 복사, to the 2쪽 chip.
+    const onChip = () => page.evaluate(() => {
+      const el = document.activeElement as HTMLElement | null;
+      return el?.matches('[data-testid="cite-chip"]') ? el.textContent : null;
+    });
+    for (let i = 0; i < 6 && (await onChip()) !== '2쪽'; i++) await page.keyboard.press('Shift+Tab');
+    expect(await onChip()).toBe('2쪽');
+    await expectNoSeriousA11y(page, 't1a-journey: the cite chip with the focus');
+
+    // 4. ↩ on it: the reader shows page 2 and the chip is the current one; ⌘[ comes back to page 1.
+    await expect(field).toHaveValue('1');
+    await page.keyboard.press('Enter');
+    await expect(field).toHaveValue('2');
+    await expect(answer.getByTestId('cite-chip').nth(1)).toHaveClass(/\bis-current\b/);
+    await expectNoSeriousA11y(page, 't1a-journey: the cited page shown');
+    await runMenuAccelerator(app, 'nav.historyBack');
+    await expect(field).toHaveValue('1');
+
+    // 5. ⌥⌘5: the reader's 세션 pane with the one session, the tab's; F6 takes the focus to its row.
+    await runMenuAccelerator(app, 'reader.showSessions');
+    const row = page.getByTestId('reader-sessions').getByTestId('session-row');
+    await expect(row).toHaveCount(1);
+    await expect(row).toHaveAttribute('aria-selected', 'true');
+    await expectNoSeriousA11y(page, 't1a-journey: the 세션 pane from ⌥⌘5');
+    await f6To(page, 'sidebar');
+    for (let i = 0; i < 4 && (await focusedTestId(page)) !== 'session-row'; i++) await page.keyboard.press('Tab');
+    await expect(row).toBeFocused();
+    // Its time (and that the fake answered it) is its description, and its tooltip comes to the resting keyboard cursor.
+    await expect(row).toHaveAccessibleDescription(/^오늘\s(오전|오후)\s\d{1,2}:\d{2}\s·\s가짜\s에이전트$/);
+    await expect(page.getByTestId('session-tip')).toBeVisible();
+    await expectNoSeriousA11y(page, 't1a-journey: the session row with the focus');
+
+    // 6. ↩ names it in place: the field with the name, all of it selected.
+    await page.keyboard.press('Enter');
+    const name = page.getByTestId('session-name-input');
+    await expect(name).toBeFocused();
+    await expect(name).toHaveValue('이 쪽은 무엇을 다루나요?');
+    await expectNoSeriousA11y(page, 't1a-journey: the session named in place');
+
+    // 7. esc leaves it as it was: the row keeps its name and its place, and the focus.
+    await page.keyboard.press('Escape');
+    await expect(name).toHaveCount(0);
+    await expect(row).toHaveText('이 쪽은 무엇을 다루나요?');
+    await expect(row).toBeFocused();
+    await expect(row).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('tutor-answer')).toHaveCount(1);
+    await expectNoSeriousA11y(page, 't1a-journey: the name left as it was');
   } finally {
     await app.close();
   }

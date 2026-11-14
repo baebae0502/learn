@@ -2610,7 +2610,12 @@ test('the library sidebar with the tutor\'s sessions scrolls as one region â€” ë
     await expect(section.getByTestId('session-row')).toHaveCount(15);
     const scroller = page.locator('[data-pane="sidebar"]');
     const tags = page.getByTestId('tag-selector');
-    for (const height of [900, 700]) {
+    // At the heights the window can have: the macOS runner's display stops it at 656 (as LEARN_E2E_MAC_WINDOW=1 does), under both.
+    const tallest = await (await mainWindow(app)).evaluate((w) => {
+      const [, max] = w.getMaximumSize();
+      return max === 0 ? Number.MAX_SAFE_INTEGER : max! - (w.getSize()[1]! - w.getContentSize()[1]!);
+    });
+    for (const height of new Set([900, 700].map((h) => Math.min(h, tallest)))) {
       await (await mainWindow(app)).evaluate((w, h) => w.setContentSize(1440, h), height);
       await expect.poll(() => page.evaluate(() => innerHeight)).toBe(height);
       // One scroll region: the sidebar's own; neither the tree nor the section scrolls inside it.

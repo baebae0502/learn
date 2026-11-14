@@ -51,16 +51,15 @@ export function useAttachSelection(visible: boolean): void {
   }, [visible, scope, revisionId]);
 }
 
-/** The passage's words on one line: its line ends and runs of white space are one space each. */
-const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim();
-
 /**
  * The passage attached to the next question, over the composer's text area (spec 8.4; approved mockup .attach): "42쪽 · <글>" on one
  * line, cut with an ellipsis; its tooltip says it goes with the question — and, on a second line, when only the first page's text or
  * only the first 4,000 characters go. × (구간 떼기) takes it off; it is the chip's one Tab stop, and its tooltip carries the same second
- * line, so the keyboard sees it too. Both tooltips stand 6 above the chip, centred on it.
+ * line, so the keyboard sees it too. Both tooltips stand 6 above the chip: its own centred on it, ×'s ending at its right edge, over ×.
+ * `held`: the question it goes with waits for another answer or is on its way — the chip is part of it, read only like its text, and ×
+ * is off until the composer is the reader's again.
  */
-export function AttachedChip({ attached, onRemove }: { attached: AttachableSelection; onRemove(): void }) {
+export function AttachedChip({ attached, held = false, onRemove }: { attached: AttachableSelection; held?: boolean; onRemove(): void }) {
   const n = attached.pageIndex + 1;
   const tip = words.tip(n);
   const notes = [attached.multipage ? words.multipage : null, attached.long ? words.long : null].filter((x) => x !== null).join(' ');
@@ -68,18 +67,26 @@ export function AttachedChip({ attached, onRemove }: { attached: AttachableSelec
   const described = useId();
   const chip = useRef<HTMLDivElement>(null);
   return (
-    <div ref={chip} className="tutor-attach" data-testid="tutor-attached" data-page={n} data-multipage={attached.multipage ? '' : undefined} data-long={attached.long ? '' : undefined}>
+    <div
+      ref={chip}
+      className={held ? 'tutor-attach is-held' : 'tutor-attach'}
+      data-testid="tutor-attached"
+      data-page={n}
+      data-multipage={attached.multipage ? '' : undefined}
+      data-long={attached.long ? '' : undefined}
+      data-held={held ? '' : undefined}
+    >
       <Tooltip label={tip} note={note} placement="top" anchorRef={chip}>
         <Focusable>
           {/* Not a Tab stop (the × is the chip's): focusable only for its tooltip; a press keeps the focus where it was. */}
           <span className="attach-label" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} data-testid="tutor-attached-label">
             <Icon icon={TextQuote} size="sm" />
-            <span className="ellipsis">{words.chip(n, oneLine(attached.text))}</span>
+            <span className="ellipsis">{words.chip(n, attached.text)}</span>
           </span>
         </Focusable>
       </Tooltip>
-      <Tooltip label={words.remove} note={note} placement="top" anchorRef={chip}>
-        <AriaButton className="x" aria-label={words.remove} aria-describedby={described} onPress={onRemove} data-testid="tutor-attached-remove">
+      <Tooltip label={words.remove} note={note} placement="top end" anchorRef={chip} isDisabled={held}>
+        <AriaButton className="x" aria-label={words.remove} aria-describedby={described} isDisabled={held} onPress={onRemove} data-testid="tutor-attached-remove">
           <Icon icon={X} size="xs" />
         </AriaButton>
       </Tooltip>

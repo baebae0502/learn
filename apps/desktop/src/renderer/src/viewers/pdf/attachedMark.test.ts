@@ -26,12 +26,43 @@ describe('the runs of attached lines a bar stands beside (spec 8.4, mockup .atta
     expect(markRuns(page, 0, 4)).toEqual([{ from: 0, to: 1 }, { from: 2, to: 2 }, { from: 3, to: 4 }]);
   });
 
+  /** `n` lines of one column, `step` pt apart, 10 pt high, from baseline 700 down. */
+  const spaced = (n: number, step: number, start = 56) => Array.from({ length: n }, (_, i) => line(start, start + 235, 700 - i * step));
+
+  it('follows the text\'s own line spacing: single, 160 % and double spaced columns are one run each', () => {
+    for (const step of [12, 17, 19, 24]) expect(markRuns(spaced(6, step), 0, 5), `${step} pt apart`).toEqual([{ from: 0, to: 5 }]);
+  });
+
+  it('splits a column where a figure (or a gap well past the column\'s own spacing) stands between its lines', () => {
+    // Three lines, a figure 120 pt high, three more.
+    const figure = [...spaced(3, 13), ...spaced(3, 13).map((l) => ({ ...l, base: l.base - 26 - 120 }))];
+    expect(markRuns(figure, 0, 5)).toEqual([{ from: 0, to: 2 }, { from: 3, to: 5 }]);
+    // A paragraph's extra 11 pt in single spaced text (a step of 24 among steps of 13): the mockup's bar is one per paragraph.
+    const paragraphs = [...spaced(3, 13), ...spaced(3, 13).map((l) => ({ ...l, base: l.base - 39 + 1 - 12 }))];
+    expect(markRuns(paragraphs, 0, 5)).toEqual([{ from: 0, to: 2 }, { from: 3, to: 5 }]);
+    // Double spaced text keeps its runs whole: a step of 24 is its own spacing.
+    expect(markRuns(spaced(4, 24), 0, 3)).toEqual([{ from: 0, to: 3 }]);
+  });
+
+  it('stands the bar a third of a narrow gutter from its own column (never under 3 pt), 12 pt in an open margin', () => {
+    // A 13 pt gutter: column 1's lines end at 291, column 2's begin at 304.
+    const quads = [glyphs(304, 539, 700), glyphs(304, 539, 687)];
+    const narrow = marginOf(columns, 3, 4, quads, 0).bars[0]!;
+    expect(narrow.at).toBe(304);
+    expect(narrow.gap).toBeCloseTo(13 / 3 + 1.5);
+    // Column 1 in the page's open margin.
+    expect(marginOf(columns, 0, 1, [glyphs(56, 291, 700), glyphs(56, 291, 687)], 0, 0).bars[0]!.gap).toBe(12);
+    // Text 9 pt from the page's edge: a third of 9 is 3; 6 pt from it, still 3.
+    expect(marginOf([line(9, 200, 700)], 0, 0, [glyphs(9, 200, 700)], 0, 0).bars[0]!.gap).toBeCloseTo(3 + 1.5);
+    expect(marginOf([line(6, 200, 700)], 0, 0, [glyphs(6, 200, 700)], 0, 0).bars[0]!.gap).toBeCloseTo(3 + 1.5);
+  });
+
   it('gives each run its own bar, where its lines begin, spanning its washed lines only', () => {
     // From the middle of column 1's second line to the middle of column 2's second line.
     const quads = [glyphs(150, 291, 687), glyphs(56, 291, 674), glyphs(304, 539, 700), glyphs(304, 420, 687)];
     const { bars } = marginOf(columns, 1, 4, quads, 0);
-    expect(bars).toEqual([
-      { at: 56, top: 695, bottom: 672 },
+    expect(bars).toMatchObject([
+      { at: 56, top: 695, bottom: 672, gap: 12 },
       { at: 304, top: 708, bottom: 685 },
     ]);
   });
@@ -39,10 +70,10 @@ describe('the runs of attached lines a bar stands beside (spec 8.4, mockup .atta
   it('stands beside the column\'s edge for a first line set in, selected alone; never beside a column it does not join', () => {
     // A paragraph's last line, the next paragraph's first line set in by 10 pt, its second line.
     const page = [line(56, 291, 700), line(66, 291, 687), line(56, 291, 674)];
-    expect(marginOf(page, 1, 1, [glyphs(66, 291, 687)], 0).bars).toEqual([{ at: 56, top: 695, bottom: 685 }]);
+    expect(marginOf(page, 1, 1, [glyphs(66, 291, 687)], 0).bars).toMatchObject([{ at: 56, top: 695, bottom: 685 }]);
     // Column 2's first line: the line read before it is column 1's last, at the page's foot — not its neighbour.
     const two = [line(56, 291, 100), line(304, 539, 700), line(304, 539, 687)];
-    expect(marginOf(two, 1, 1, [glyphs(304, 539, 700)], 0).bars).toEqual([{ at: 304, top: 708, bottom: 698 }]);
+    expect(marginOf(two, 1, 1, [glyphs(304, 539, 700)], 0).bars).toMatchObject([{ at: 304, top: 708, bottom: 698 }]);
   });
 
   it('works in the text\'s own frame on a page set on its side (/Rotate): its lines run up the page', () => {
@@ -52,7 +83,7 @@ describe('the runs of attached lines a bar stands beside (spec 8.4, mockup .atta
     expect([u, v]).toEqual([50, -100]);
     const lines = [line(50, 300, -100), line(50, 300, -113)];
     const quads = [box(92, 102, 50, 300), box(105, 115, 50, 300)];
-    expect(marginOf(lines, 0, 1, quads, turn).bars).toEqual([{ at: 50, top: -92, bottom: -115 }]);
+    expect(marginOf(lines, 0, 1, quads, turn).bars).toMatchObject([{ at: 50, top: -92, bottom: -115 }]);
   });
 });
 
@@ -68,7 +99,7 @@ describe('the page mark drawn as shares of the page', () => {
   });
 
   it('stands each bar 12 pt left of where its run begins, 1.5 pt wide, as tall as the run', () => {
-    const { bars } = attachedGeometry([box(100, 300, 700, 712)], { turn: 0, bars: [{ at: 56, top: 712, bottom: 687 }, { at: 304, top: 712, bottom: 700 }] }, upright);
+    const { bars } = attachedGeometry([box(100, 300, 700, 712)], { turn: 0, bars: [{ at: 56, gap: 12, top: 712, bottom: 687 }, { at: 304, gap: 12, top: 712, bottom: 700 }] }, upright);
     expect(bars).toHaveLength(2);
     expect(bars[0]!.left).toBeCloseTo(44 / 600);
     expect(bars[0]!.width).toBeCloseTo(1.5 / 600);
@@ -78,7 +109,7 @@ describe('the page mark drawn as shares of the page', () => {
   });
 
   it('turns with the page: a quarter turn lays the bar along the top of the lines', () => {
-    const { wash, bars } = attachedGeometry([box(100, 300, 700, 712)], { turn: 0, bars: [{ at: 100, top: 712, bottom: 700 }] }, turned);
+    const { wash, bars } = attachedGeometry([box(100, 300, 700, 712)], { turn: 0, bars: [{ at: 100, gap: 12, top: 712, bottom: 700 }] }, turned);
     expect(wash[0]!.left).toBeCloseTo(700 / 800);
     expect(wash[0]!.top).toBeCloseTo(100 / 600);
     expect(bars[0]!.left).toBeCloseTo(700 / 800);
@@ -99,6 +130,6 @@ describe('the page mark drawn as shares of the page', () => {
   });
 
   it('keeps a bar on the page when the text starts at its edge', () => {
-    expect(attachedGeometry([box(4, 300, 700, 712)], { turn: 0, bars: [{ at: 4, top: 712, bottom: 700 }] }, upright).bars[0]!.left).toBe(0);
+    expect(attachedGeometry([box(4, 300, 700, 712)], { turn: 0, bars: [{ at: 4, gap: 12, top: 712, bottom: 700 }] }, upright).bars[0]!.left).toBe(0);
   });
 });

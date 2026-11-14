@@ -128,7 +128,7 @@ export function Composer({ visible }: { visible: boolean }) {
         </div>
       )}
       <div className={cx('tutor-composer', opening && 'is-disabled', held && 'is-readonly')} data-testid="tutor-composer">
-        {attached !== null && <AttachedChip attached={attached} onRemove={detach} />}
+        {attached !== null && <AttachedChip attached={attached} held={held || onTheWay} onRemove={detach} />}
         <textarea
           ref={input}
           className="tutor-input"

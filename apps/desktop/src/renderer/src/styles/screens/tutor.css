@@ -831,6 +831,14 @@
     outline: var(--focus-ring-width) solid var(--focus);
     outline-offset: var(--focus-ring-offset);
   }
+  /* Held with the question that waits or is on its way: read only like its text (secondary), × off as a disabled icon is (40 %). */
+  .tutor-attach.is-held {
+    color: var(--text-secondary);
+  }
+  .tutor-attach.is-held .x {
+    background: transparent;
+    opacity: 0.4;
+  }
   /* Two lines at rest, growing with its text to eight, then scrolling. */
   .tutor-input {
     display: block;

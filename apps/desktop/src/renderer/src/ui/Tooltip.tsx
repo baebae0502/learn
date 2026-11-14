@@ -46,8 +46,11 @@ export function Tooltip({
   reason?: string | undefined;
   /** A second line under the name (the tooltip then stacks). */
   note?: string | undefined;
-  /** Above the target, for one at the window's bottom whose tooltip would cover what follows it (the composer's chip). */
-  placement?: 'bottom' | 'top';
+  /**
+   * Above the target, for one at the window's bottom whose tooltip would cover what follows it (the composer's chip); `top end` ends it
+   * at the anchor's right edge (a control at the end of a chip anchored on the chip).
+   */
+  placement?: 'bottom' | 'top' | 'top end';
   /** The box the tooltip stands off from and centres on, when it is not the trigger itself (a part of a chip: the chip). */
   anchorRef?: RefObject<Element | null>;
   /** Keep the trigger wrapper (so the child never remounts) but show nothing. */

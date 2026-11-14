@@ -1625,11 +1625,15 @@ async function expectMarkOn(page: Page, n: number, passage: string, what: string
   }
 }
 
-/** The tooltip that shows stands 6 px above the chip, centred on it (design-spec 6; the mockup anchors it on the whole chip). */
-async function expectTooltipOverChip(page: Page): Promise<void> {
+/**
+ * The tooltip that shows stands 6 px above the chip (design-spec 6; the mockup anchors it on the whole chip): the chip's own centred on
+ * it, ×'s ending at its right edge, over the × it names.
+ */
+async function expectTooltipOverChip(page: Page, align: 'centre' | 'end' = 'centre'): Promise<void> {
   const [tip, chip] = [(await page.getByRole('tooltip').boundingBox())!, (await attachedChip(page).boundingBox())!];
   expect(Math.abs(chip.y - (tip.y + tip.height) - 6), 'the tooltip is 6 above the chip').toBeLessThanOrEqual(1);
-  expect(Math.abs(chip.x + chip.width / 2 - (tip.x + tip.width / 2)), 'the tooltip is centred on the chip').toBeLessThanOrEqual(1);
+  if (align === 'centre') expect(Math.abs(chip.x + chip.width / 2 - (tip.x + tip.width / 2)), 'the tooltip is centred on the chip').toBeLessThanOrEqual(1);
+  else expect(Math.abs(chip.x + chip.width - (tip.x + tip.width)), 'the tooltip ends at the chip\'s right edge, over ×').toBeLessThanOrEqual(2);
 }
 
 test('a selection in the reader attaches itself to the next question: one chip of its page, its tooltip and ×, marked on the page through a zoom and a turn; it stays when the page\'s selection goes, × takes it off, and the question carries it', async ({}, testInfo) => {
@@ -1664,7 +1668,7 @@ test('a selection in the reader attaches itself to the next question: one chip o
     await expect(remove).toHaveAccessibleDescription('질문에 붙은 구간 · 1쪽 — 질문과 함께 보냅니다');
     await hoverOver(page, remove);
     await expectTooltipText(page, '구간 떼기', 'tutor-attached-remove');
-    await expectTooltipOverChip(page);
+    await expectTooltipOverChip(page, 'end');
     await expectNoSeriousA11y(page, 'tutor composer with an attached passage');
 
     // The page's selection goes (the reader lets go of it once 300 ms pass, as of a keyboard selection): the chip and its mark stay.
@@ -1674,8 +1678,18 @@ test('a selection in the reader attaches itself to the next question: one chip o
     await expect(chip).toBeVisible();
     await expect(pageMark(page, 1).locator('.attached')).toHaveCount(1);
 
-    // A zoom and a quarter turn draw the page again: the mark is drawn again for it.
+    // A zoom and a quarter turn draw the page again: the mark is drawn again for it — already as the page's redraw begins (pdf.js
+    // empties the page of all but its canvas and text before it draws), not only once the page is drawn.
+    await page.evaluate(() => {
+      const w = window as unknown as { __marked: boolean[]; __learnReader: { getState(): { handle: { eventBus(): { on(name: string, fn: (e: { pageNumber: number }) => void): void } } } } };
+      w.__marked = [];
+      w.__learnReader.getState().handle.eventBus().on('pagerender', (e) => {
+        if (e.pageNumber === 1) w.__marked.push(document.querySelector('.page[data-page-number="1"] > [data-testid="pdf-attached"]') !== null);
+      });
+    });
     await setPdfZoom(page, 2);
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __marked: boolean[] }).__marked.length), { message: 'page 1 was drawn again' }).toBeGreaterThan(0);
+    expect(await page.evaluate(() => (window as unknown as { __marked: boolean[] }).__marked), 'the mark is on the page as its redraw begins').not.toContain(false);
     await expect.poll(() => page.getByTestId('pdf-viewer').getAttribute('data-scale').then(Number)).toBeCloseTo(2, 5);
     await expectMarkOn(page, 1, passage, '200 %');
     await runMenuCommand(app, 'reader.rotateCw');
@@ -1751,7 +1765,9 @@ test('a selection across two pages attaches the first page\'s text only, and one
     const sent = thread.data.messages.find((m) => m.role === 'user')!.attached!;
     expect(sent.pageIndex).toBe(0);
     expect(sent.quote!.startsWith('We propose a new simple network architecture.')).toBe(true);
-    expect(text1.trimEnd().endsWith(sent.quote!.trimEnd().slice(-40)), 'it runs to the end of page 1').toBe(true);
+    // The words as they go: white space folded to single spaces, a line ending with a hyphen joined to the next.
+    const fold = (t: string) => t.replace(/(\S-)[ \t]*\n\s*(?=\S)/g, '$1').replace(/\s+/g, ' ').trim();
+    expect(fold(text1).endsWith(sent.quote!.slice(-40)), 'it runs to the end of page 1').toBe(true);
     expect(sent.quote).not.toContain(text2.slice(0, 24));
 
     // All of page 2, longer than 4,000 characters: the first 4,000 go, and the tooltip says that.
@@ -1760,6 +1776,9 @@ test('a selection across two pages attaches the first page\'s text only, and one
     await expect(chip).toHaveAttribute('data-long', '');
     await expect(chip).toHaveAttribute('data-page', '2');
     await expect(chip).not.toHaveAttribute('data-multipage');
+    // Page 2 opens with "transduc-" at a line's end: the chip reads "transduc-tion", as the quote and the agent will.
+    expect(text2).toContain('transduc-\ntion');
+    await expect(chip.getByTestId('tutor-attached-label')).toContainText('The dominant sequence transduc-tion models');
     await hoverOver(page, chip.getByTestId('tutor-attached-label'));
     await expect(page.getByRole('tooltip').locator('.tooltip-note')).toHaveText('앞 4,000자만 보냅니다.');
     await expect(chip.getByTestId('tutor-attached-remove')).toHaveAccessibleDescription('질문에 붙은 구간 · 2쪽 — 질문과 함께 보냅니다 앞 4,000자만 보냅니다.');
@@ -1772,7 +1791,7 @@ test('a selection across two pages attaches the first page\'s text only, and one
     await page.keyboard.press('Shift+Tab');
     await expect(chip.getByTestId('tutor-attached-remove')).toBeFocused();
     await expectTooltipText(page, '구간 떼기앞 4,000자만 보냅니다.', 'tutor-attached-remove');
-    await expectTooltipOverChip(page);
+    await expectTooltipOverChip(page, 'end');
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await sendFromComposer(page, '이 쪽을 요약해 주세요.');
     await expect(page.getByTestId('tutor-question')).toHaveCount(2);
@@ -1781,7 +1800,52 @@ test('a selection across two pages attaches the first page\'s text only, and one
     if (!again.ok) throw new Error(`sessions.get: ${again.code}`);
     const long = again.data.messages.filter((m) => m.role === 'user').at(-1)!.attached!;
     expect(long.pageIndex).toBe(1);
-    expect(long.quote).toBe(text2.slice(0, 4000).normalize('NFC'));
+    expect(long.quote).toBe(fold(text2).slice(0, 4000).normalize('NFC'));
+    expect(long.quote).toContain('transduc-tion');
+  } finally {
+    await app.close();
+  }
+});
+
+test('the chip is held with the question that waits for another session\'s answer: read only like its text, × off; 보내지 않기 gives it back, and the question carries it', async ({}, testInfo) => {
+  const { app, page, itemId } = await atSession(testInfo);
+  try {
+    await page.waitForFunction(() => window.__learnPdf !== undefined);
+    await tutorFakeScript(app, 'slow');
+    await sendFromComposer(page, '천천히 답해 주세요.');
+    await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'streaming');
+    await expect.poll(() => prompts(app)).toBe(1);
+    const [first] = await answersOf(page, itemId);
+    await tutorFakeScript(app, 'answer');
+    await page.getByTestId('tutor-new-session').click();
+    await expect(page.getByTestId('tutor-empty')).toBeVisible();
+    const passage = 'We propose a new simple network architecture.';
+    const at = (await page.evaluate(() => window.__learnPdf!.pageText(0))).indexOf(passage);
+    await selectInPage(page, 0, at, at + passage.length);
+    const chip = attachedChip(page);
+    const remove = chip.getByTestId('tutor-attached-remove');
+    await expect(chip).toBeVisible();
+    await expect(remove).toBeEnabled();
+    await sendFromComposer(page, '다음 질문입니다.');
+    await expect(page.getByTestId('tutor-waiting')).toBeVisible();
+    // Held with the question: the text area's read only look, × off — a press takes nothing off.
+    await expect(chip).toHaveAttribute('data-held', '');
+    await expect(remove).toBeDisabled();
+    await remove.click({ force: true });
+    await expect(chip).toBeVisible();
+    expect(await chip.evaluate((el) => getComputedStyle(el).color)).toBe(await composerInput(page).evaluate((el) => getComputedStyle(el).color));
+    await expectNoSeriousA11y(page, 'tutor composer holding its chip with the waiting question');
+    // 보내지 않기: the question is a draft again, and the chip is the reader's again.
+    await page.getByTestId('tutor-dont-send').click();
+    await expect(chip).not.toHaveAttribute('data-held');
+    await expect(remove).toBeEnabled();
+    await expect(page.getByTestId('tutor-waiting')).toHaveCount(0);
+    // Once the other answer has ended, ↩ sends the question with its chip.
+    await turnEnded(page, first!.conversationId, first!.tutorMessageId, { timeout: 30_000 });
+    await composerInput(page).focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('tutor-question').locator('.tutor-quote .q')).toHaveText(passage);
+    await expect(chip).toHaveCount(0);
   } finally {
     await app.close();
   }

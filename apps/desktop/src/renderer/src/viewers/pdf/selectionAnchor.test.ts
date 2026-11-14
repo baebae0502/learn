@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clipAttached, pageLines } from './selectionAnchor';
+import { clipAttached, foldAttached, pageLines } from './selectionAnchor';
 
 describe('the passage a question carries (spec 8.4)', () => {
   it('keeps the first 4,000 characters of a longer one and says it was cut', () => {
@@ -11,6 +11,26 @@ describe('the passage a question carries (spec 8.4)', () => {
   });
   it('never ends inside a surrogate pair', () => {
     expect(clipAttached(`${'a'.repeat(3999)}😀b`)).toEqual({ text: 'a'.repeat(3999), long: true });
+  });
+});
+
+describe('the passage\'s words as they go: its line ends folded once, for the chip, the stored quote and the agent alike', () => {
+  it('folds each run of white space to one space, and joins a line that ends with a hyphen to the next with none', () => {
+    expect(foldAttached('The dominant sequence transduc-\ntion models are based\non complex recurrent\n').text).toBe('The dominant sequence transduc-tion models are based on complex recurrent');
+    // A compound broken at its hyphen keeps the hyphen; a dash with a space before it is no hyphen.
+    expect(foldAttached('a multi-head self-\nattention mechanism').text).toBe('a multi-head self-attention mechanism');
+    expect(foldAttached('one -\ntwo').text).toBe('one - two');
+  });
+  it('says where in the page text each folded character ends, so a cut passage\'s mark ends where its words do', () => {
+    const { text, ends } = foldAttached(' ab-\ncd  e');
+    expect(text).toBe('ab-cd e');
+    expect(ends).toEqual([2, 3, 4, 6, 7, 9, 10]);
+  });
+  it('counts the 4,000 characters on the folded words', () => {
+    const raw = `${'word '.repeat(799)}tail-\nend`;
+    const folded = foldAttached(raw).text;
+    expect(folded.length).toBe(4003);
+    expect(clipAttached(folded)).toEqual({ text: folded.slice(0, 4000), long: true });
   });
 });
 

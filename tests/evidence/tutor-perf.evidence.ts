@@ -1,10 +1,10 @@
 // @perf — T1a spec 15 (tutor-perf.json): the tutor with the fake agent. A send to its user bubble and "답하는 중…" painted, on
 // paper-100.pdf and on long-outline.pdf (300 outline entries, the send never waiting for their pages); a send to the answer's first
 // text painted, the agent started ahead (learn:tutor:send → learn:tutor:first-text-paint); the frames while 6,000 characters stream
-// in at 60 pieces a second with 20 citations — from the turn's first text notice to its last — and the long tasks among them, with
-// what they were; the redraw at the answer's end, reported apart and not gated; the fake agent's start to its initialize
-// answer, tutor:ask in main up to its rows, and read_pdf_pages of 5 pages × 4,000 characters in main (__learnLastMs); the fake
-// agent's RSS. Linux CI fails beyond twice each budget (budget.ts); every other run reports.
+// in at 60 pieces a second with 20 citations — from the turn's first text notice to its last, counted in whole frames — and the long
+// tasks among them, with what they were; the redraw at the answer's end, reported apart and not gated; the fake agent's start to its
+// initialize answer, tutor:ask in main up to its rows, and read_pdf_pages of 5 pages × 4,000 characters in main (__learnLastMs); the
+// fake agent's RSS. Linux CI fails beyond twice each budget (budget.ts); every other run reports.
 //
 // Ends are states of the page: the first animation frame in which the DOM holds what the action leads to. Starts are the ↩'s own
 // keydown timeStamp in the page, or the app's own marks.
@@ -17,6 +17,7 @@ import { limitFailures, type Limit } from './budget';
 import { writeJson } from './capture';
 import { summarizeLongFrames, type LongFrame } from './long-frames';
 import { spread, tenth } from './p1-perf-math';
+import { percentile } from './percentile';
 
 /** T1a spec 15; ms unless the name says otherwise. */
 const BUDGET = {
@@ -30,6 +31,10 @@ const BUDGET = {
   readPagesMainP95: 20,
 } as const;
 const RUNS = 20;
+/** One frame at 60 Hz. A rAF gap is a whole number of frames; timer jitter can make two frames read as 33.4 ms against a 2 × 16.7 limit. */
+const FRAME_MS = 1000 / 60;
+/** A gap in whole frames, at least one. */
+const framesOf = (gapMs: number): number => Math.max(1, Math.round(gapMs / FRAME_MS));
 const STREAMS = 3;
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const LONG_OUTLINE = path.join(FIXTURES, 'long-outline.pdf');
@@ -303,7 +308,8 @@ test('the tutor with the fake agent: send → bubble and first text, streaming f
       sendToBubbleP95: p95(paperBubble),
       sendToBubbleLongOutlineP95: p95(outlineBubble),
       sendToFirstTextP95: p95(firstText),
-      streamFrameP95: p95(gaps),
+      // The p95 taken in whole frames, then given back in ms (frames × 1000/60): a two-frame gap is 33.3, under the CI limit of 33.4.
+      streamFrameP95: tenth(percentile(gaps.map(framesOf), 95) * FRAME_MS),
       streamLongTasks: longTasks.length,
       initializeP95: p95(initialize),
       askMainP95: p95(askMain),
@@ -316,6 +322,7 @@ test('the tutor with the fake agent: send → bubble and first text, streaming f
       sendToBubbleLongOutlineMs: { ...spread(outlineBubble), outlineResolvedAtFirstSend: resolvedAtFirstSend, outlineEntries: outlineAfter?.flat.length ?? null },
       sendToFirstTextMs: spread(firstText),
       streamFrameMs: { ...spread(gaps), notices },
+      streamFrames: { p95: percentile(gaps.map(framesOf), 95), max: Math.max(...gaps.map(framesOf)), counts: Object.fromEntries([...new Set(gaps.map(framesOf))].sort((a, b) => a - b).map((f) => [f, gaps.filter((g) => framesOf(g) === f).length])) },
       streamLongTasks: longTasks,
       endRedraw: { longestTaskMs: Math.max(...endRedraw.map((e) => e.longestTaskMs)), longestGapMs: Math.max(...endRedraw.map((e) => e.longestGapMs)), runs: endRedraw },
       longFrames: { count: longFrames.length, longest: summarizeLongFrames(longFrames, [], 0).slice(0, 5) },

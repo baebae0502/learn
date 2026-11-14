@@ -12,7 +12,8 @@ import { marginOf, toFrame, type MarkMargin, type TextLine, type Turn } from './
 export interface PageView {
   div: HTMLElement;
   viewport: { scale: number; rotation: number; width: number; height: number; convertToPdfPoint(x: number, y: number): number[]; convertToViewportPoint(x: number, y: number): number[] };
-  pdfPage: { rotate: number; getTextContent(o: { includeMarkedContent: boolean; disableNormalization: boolean }): Promise<{ items: Array<{ str?: string; hasEOL?: boolean }> }> };
+  /** `view`: the page's box in page space (x0, y0, x1, y1). */
+  pdfPage: { rotate: number; view?: number[]; getTextContent(o: { includeMarkedContent: boolean; disableNormalization: boolean }): Promise<{ items: Array<{ str?: string; hasEOL?: boolean }> }> };
   textLayer: { div: HTMLElement } | null;
   renderingState: number;
 }
@@ -172,6 +173,38 @@ export function spanAnchor(m: PageModel, range: Range, o: { start: number; end: 
   };
 }
 
+const SPACE = /\s/u;
+
+/**
+ * The passage's words as they go, folded once here for the chip, the stored quote and the agent alike: white space at its ends dropped,
+ * each run of it inside one space — and none where a line ends with a hyphen after a word ("transduc-tion"; the hyphen stays, as a
+ * compound broken there keeps its own). `ends[i]`: where in `raw` folded character i ends (a space: its run's end).
+ */
+export function foldAttached(raw: string): { text: string; ends: number[] } {
+  let text = '';
+  const ends: number[] = [];
+  let i = 0;
+  while (i < raw.length && SPACE.test(raw[i]!)) i++;
+  while (i < raw.length) {
+    if (!SPACE.test(raw[i]!)) {
+      text += raw[i];
+      ends.push(i + 1);
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < raw.length && SPACE.test(raw[j]!)) j++;
+    if (j >= raw.length) break;
+    const hyphenatedLineEnd = raw.slice(i, j).includes('\n') && text.endsWith('-') && text.length >= 2 && !SPACE.test(text[text.length - 2]!);
+    if (!hyphenatedLineEnd) {
+      text += ' ';
+      ends.push(j);
+    }
+    i = j;
+  }
+  return { text, ends };
+}
+
 /** At most 4,000 characters of the selection's first page (spec 8.4), never ending inside a surrogate pair; `long` when it was cut. */
 export function clipAttached(text: string): { text: string; long: boolean } {
   const max = TUTOR_LIMITS.selectionChars;
@@ -221,15 +254,20 @@ export interface AttachableSelection {
   margin: MarkMargin | null;
 }
 
-/** The bars of the page text `start`..`stop` (item indices `first`..`last`): one per run of its lines, in the frame its text runs in. */
-function marginFor(items: readonly ItemGeom[], first: number, last: number, quads: readonly Quad[]): MarkMargin | null {
+/**
+ * The bars of the page text of items `first`..`last`: one per run of its lines, in the frame its text runs in; `pageBox` (page space)
+ * says where the page's edge is, for text close to it.
+ */
+function marginFor(items: readonly ItemGeom[], first: number, last: number, quads: readonly Quad[], pageBox: readonly number[] | undefined): MarkMargin | null {
   const turn = items[first]?.at?.turn;
   if (turn === undefined) return null;
   const { lines, lineOfItem } = pageLines(items, turn);
   const from = lineOfItem[first] ?? -1;
   const to = Math.max(...lineOfItem.slice(first, last + 1));
   if (from < 0 || to < from) return null;
-  const margin = marginOf(lines, from, to, quads, turn);
+  const [x0 = 0, y0 = 0, x1 = 0, y1 = 0] = pageBox ?? [];
+  const pageStart = pageBox ? Math.min(...[[x0, y0], [x1, y0], [x0, y1], [x1, y1]].map(([x, y]) => toFrame(turn, x!, y!)[0])) : -Infinity;
+  const margin = marginOf(lines, from, to, quads, turn, pageStart);
   return margin.bars.length > 0 ? margin : null;
 }
 
@@ -257,12 +295,13 @@ export async function attachableSelection(o: { doc: PDFDocumentProxy; viewer: PD
   const start = offsetOf(m, range.startContainer, range.startOffset, 'start');
   const end = offsetOf(m, range.endContainer, range.endOffset, 'end');
   if (start === null || end === null || end <= start) return null;
-  const whole = m.page.text.slice(start, end);
-  if (whole.trim() === '') return null;
-  const kept = clipAttached(whole);
-  const stop = start + kept.text.length;
+  // The words as they go (folded), cut at 4,000 of them; the anchor ends where the last kept word does in the page text.
+  const folded = foldAttached(m.page.text.slice(start, end));
+  if (folded.text === '') return null;
+  const kept = clipAttached(folded.text);
+  const stop = kept.long ? start + folded.ends[kept.text.length - 1]! : end;
   const anchor = spanAnchor(m, kept.long ? rangeOf(m, start, stop) : range, { start, end: stop, revisionId: o.revisionId, pageIndex });
   if (anchor === null) return null;
-  const margin = marginFor(text.items, place(m, start, 'start').item, place(m, stop, 'end').item, anchor.quads);
+  const margin = marginFor(text.items, place(m, start, 'start').item, place(m, stop, 'end').item, anchor.quads, view.pdfPage.view);
   return { anchor, text: kept.text, pageIndex, multipage, long: kept.long, margin };
 }

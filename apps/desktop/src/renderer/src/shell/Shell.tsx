@@ -9,7 +9,10 @@ import { useKeepFocusOnInspectorFold } from './useInspector';
 import { keepFocusAcross, useKeepFocusAcrossFold } from './useSidebar';
 import { useViewportWidth } from './useViewportWidth';
 
-/** The content and item panels' boxes clip: what scrolls is inside them (the table body, the panel body). */
+/**
+ * The panels' boxes clip: what scrolls is inside them (the sidebar's lists, the table body, the panel body). A folded panel is 0 px wide
+ * while its inert content keeps its own width: unclipped, it would be a region that scrolls sideways with nothing to focus in it.
+ */
 const CLIP = { overflow: 'hidden' } as const;
 
 /**
@@ -121,6 +124,7 @@ export function Shell(props: { sidebar: ReactNode; sidebarFoot?: ReactNode; laun
           id="sidebar"
           panelRef={panelRef}
           className="sidebar"
+          style={CLIP}
           defaultSize={initialSize}
           minSize={SIDEBAR.min}
           maxSize={SIDEBAR.max}

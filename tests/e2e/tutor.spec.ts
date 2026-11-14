@@ -289,6 +289,7 @@ test('Claude Code\'s row in its five states: what to run in a terminal, copied a
     expect(nb(await claudeRow(page).getByTestId('agent-description').innerText())).toBe('Claude Code 2.1.318 이상과 연결 도구 0.103.0 이상이 필요합니다. 업데이트한 뒤 다시 확인하세요.');
     await expect(claudeRow(page).getByTestId('agent-copy')).toHaveCount(0);
     await expect(claudeRow(page).getByTestId('agent-recheck')).toBeVisible();
+    await expectNoSeriousA11y(page, 'tutor chooser, an old version');
 
     // 로그인 필요: the Learn-only login command (a terminal's, with Learn's own settings folder).
     s.reinstall({ ...READY, script: 'login' });
@@ -310,6 +311,7 @@ test('Claude Code\'s row in its five states: what to run in a terminal, copied a
     await expect.poll(() => readClipboard(app)).toBe(INSTALL_CMD);
     await expect(claudeRow(page).getByTestId('agent-recheck')).toHaveCount(0);
     expect(await page.getByTestId('agent-start').getAttribute('aria-disabled')).toBe('true');
+    await expectNoSeriousA11y(page, 'tutor chooser, not installed');
     expect((await tutorProcesses(app)).count).toBe(0);
   } finally {
     await app.close();
@@ -1127,6 +1129,7 @@ test('the composer: ↩ sends and ⇧↩ breaks the line; the question shows at 
     await expect(box).not.toHaveAttribute('readonly');
     await expect(box).toHaveAttribute('placeholder', '질문을 입력하세요');
     expect(await prompts(app)).toBe(1);
+    await expectNoSeriousA11y(page, 'tutor answer stopped');
 
     // Space on 보내기 sends, and the focus stays on the button that is now 중지; Space on it stops, and the focus is on 보내기 again.
     await box.click();
@@ -1546,6 +1549,127 @@ test('보내지 않기: the question that waited is a draft to edit again, and n
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('tutor-question').locator('.bubble')).toHaveText('다음 질문입니다. 고쳐 씁니다.');
     await expect.poll(() => prompts(app)).toBe(2);
+  } finally {
+    await app.close();
+  }
+});
+
+/**
+ * The tutor's targets that are too small (spec 8.11, design-spec 8.3 "히트 영역 28 이상(22 작은 버튼은 주변 4 이상 띄움)"): every control
+ * in the right panel, the 세션 pane and an open menu is pressed over 28 × 28 or more, or is a small one — 22 or more each way — with
+ * 4 px clear of every other control. A segmented control, a menu and a list are one target each whose segments or rows sit side by side
+ * (design-spec 6: a web menu's rows are 24 high), each segment 28 or more wide. A cite chip is a link inside a sentence, its 18 px keeping
+ * the paragraph's 20 px line (design-spec 2.6): WCAG 2.5.8's inline case, left out unless `inline` (the positive control: those chips
+ * are what this finds then). A visually hidden control (a popover's dismiss button for screen readers) is no target.
+ */
+async function smallTargets(page: Page, opts: { inline?: boolean } = {}): Promise<string[]> {
+  await page.mouse.move(0, 0); // no hover tooltip over a control
+  return page.evaluate((inline) => {
+    const SEL = 'button, [role="button"], [role="tab"], [role="link"], [role="option"], [role="row"], [role="treeitem"], [role="menuitem"], [role="menuitemradio"], [role="img"][tabindex="0"], label:has(input[type="radio"])';
+    const roots = [...document.querySelectorAll('[data-testid="inspector-panel"], [data-testid="reader-nav"], [data-testid="reader-sessions"], .menu-popover')];
+    const clipped = (el: Element) => {
+      for (let a: Element | null = el; a !== null; a = a.parentElement) if (getComputedStyle(a).clipPath !== 'none') return true;
+      return false;
+    };
+    const shown = (el: Element) => el.getClientRects().length > 0 && el.closest('[inert], .visually-hidden') === null && !clipped(el);
+    const targets = [...new Set(roots.flatMap((r) => [...r.querySelectorAll<HTMLElement>(SEL)]))].filter(shown).filter((el) => inline || !el.matches('.cite'));
+    const group = (el: Element) => (el.matches('[role="menuitem"], [role="menuitemradio"], [role="option"], [role="row"], [role="treeitem"]') ? el.closest('[role="menu"], [role="listbox"], [role="grid"], [role="tree"], [role="treegrid"]') : null) ?? el.closest('.segmented') ?? el;
+    const name = (el: Element) => `${el.getAttribute('data-testid') ?? el.getAttribute('role') ?? el.tagName.toLowerCase()} "${(el.getAttribute('aria-label') ?? el.textContent ?? '').trim().slice(0, 24)}"`;
+    const pressed = (el: Element, x: number, y: number) => {
+      const at = document.elementFromPoint(x, y);
+      return at !== null && el.contains(at);
+    };
+    const out: string[] = [];
+    for (const el of targets) {
+      const r = el.getBoundingClientRect();
+      const [cx, cy] = [r.left + r.width / 2, r.top + r.height / 2];
+      if ([[cx - 13.5, cy], [cx + 13.5, cy], [cx, cy - 13.5], [cx, cy + 13.5]].every(([x, y]) => pressed(el, x!, y!))) continue;
+      const size = `${Math.round(r.width)}×${Math.round(r.height)}`;
+      if (Math.min(r.width, r.height) < 21.5 || (el.closest('.segmented') !== null && r.width < 27.5)) {
+        out.push(`${name(el)} ${size}`);
+        continue;
+      }
+      const own = group(el).getBoundingClientRect();
+      for (const o of targets) {
+        const g = group(o);
+        if (g === group(el) || g.contains(el) || el.contains(g)) continue;
+        const b = g.getBoundingClientRect();
+        const dx = Math.max(0, b.left - own.right, own.left - b.right);
+        const dy = Math.max(0, b.top - own.bottom, own.top - b.bottom);
+        if (dx < 3.5 && dy < 3.5) out.push(`${name(el)} ${size} within 4 px of ${name(o)}`);
+      }
+    }
+    return out;
+  }, opts.inline === true);
+}
+
+test('every control of the tutor is a 28 px target or a small one with 4 px clear around it: the chooser, an empty session, a conversation with its notice, a passage and the sent list, the agent menu, a failure, 최신으로, the 세션 pane', async ({}, testInfo) => {
+  const s = await atChooser(testInfo, { cli: '2.1.318', adapter: null });
+  const { app, page } = s;
+  try {
+    await textExtraction(app, 'now');
+    await textIdle(app);
+    // The chooser: Claude Code's row with its command, 명령 복사 and 다시 확인; the fake's row; 다시 찾기 and 시작.
+    await expect(claudeRow(page).getByTestId('agent-copy')).toBeVisible();
+    await expect(claudeRow(page).getByTestId('agent-recheck')).toBeVisible();
+    expect(await smallTargets(page), 'the chooser').toEqual([]);
+    // 시작 puts the focus in the composer, which starts the fake: its first script is set before.
+    await tutorFakeScript(app, 'unverified');
+    await page.getByTestId('agent-dev-group').getByTestId('agent-row').click();
+    await page.getByTestId('agent-start').click();
+    await expect(page.getByTestId('tutor-empty')).toBeVisible();
+    expect(await smallTargets(page), 'an empty session').toEqual([]);
+    // Another script closes the fake that ended its turn; out of the composer nothing starts it again until the next question's click.
+    const script = async (name: Parameters<typeof tutorFakeScript>[1]) => {
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await tutorFakeScript(app, name);
+      await expect.poll(async () => (await tutorProcesses(app)).count).toBe(0);
+    };
+
+    // A conversation: tool chips, cites (one not verified, with its notice and 원문 근거로 다시 묻기), 답 복사, the sent-scope line and
+    // its list; a passage attached in the composer, its ×; the agent button and 보내기.
+    await sendFromComposer(page, '이 장은 무엇을 다루나요?');
+    await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'complete');
+    await expect(page.getByTestId('tutor-reground')).toBeVisible();
+    await page.waitForFunction(() => window.__learnPdf !== undefined);
+    await selectInPage(page, 0, 0, 30);
+    await expect(attachedChip(page)).toBeVisible();
+    await page.getByTestId('tutor-question').getByTestId('sent-scope').click();
+    await expect(page.getByTestId('sent-scope-list')).toBeVisible();
+    expect(await smallTargets(page, { inline: true }), 'the positive control: an inline cite chip is under 22').toEqual(expect.arrayContaining([expect.stringMatching(/^cite-chip "\d+쪽" \d+×18$/)]));
+    expect(await smallTargets(page), 'a conversation').toEqual([]);
+
+    // The agent menu open over the composer.
+    await page.getByTestId('tutor-agent').click();
+    await expect(page.getByTestId('tutor-agent-menu')).toBeVisible();
+    expect(await smallTargets(page), 'the agent menu').toEqual([]);
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('tutor-agent-menu')).toHaveCount(0);
+
+    // A failure during the answer: its notice and 다시 보내기.
+    await page.getByTestId('tutor-attached-remove').click();
+    await script('fail-mid');
+    await sendFromComposer(page, '도중에 끊길 질문입니다.');
+    await expect(page.getByTestId('tutor-answer').last()).toHaveAttribute('data-status', 'failed');
+    await expect(page.getByTestId('tutor-resend')).toBeVisible();
+    expect(await smallTargets(page), 'a failure').toEqual([]);
+
+    // 최신으로 over a column scrolled up while an answer comes; 중지 in the composer.
+    await script('slow');
+    await sendFromComposer(page, '천천히 답해 주세요.');
+    await expect(page.getByTestId('tutor-stop')).toBeVisible();
+    const log = page.getByTestId('tutor-log');
+    await expect.poll(() => log.evaluate((el) => el.scrollHeight - el.clientHeight), { timeout: 15_000 }).toBeGreaterThan(300);
+    await log.evaluate((el) => void (el.scrollTop = 0));
+    await expect(page.getByTestId('tutor-latest')).toBeVisible();
+    expect(await smallTargets(page), '최신으로 while an answer comes').toEqual([]);
+    await page.getByTestId('tutor-stop').click();
+    await expect(page.getByTestId('tutor-answer').last()).toHaveAttribute('data-status', 'stopped');
+
+    // The 세션 pane: its segment and the rows.
+    await runMenuAccelerator(app, 'reader.showSessions');
+    await expect(readerRows(page)).toHaveCount(1);
+    expect(await smallTargets(page), 'the 세션 pane').toEqual([]);
   } finally {
     await app.close();
   }

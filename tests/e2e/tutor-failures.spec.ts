@@ -1,7 +1,7 @@
 // T1a Task 20: what a failed turn shows (AC14, spec 8.8, 13) — before any answer the question and its chip go back to the composer and
 // nothing is sent again by itself; during one the part that came stays with 다시 보내기; offline, the agent not answering, its login that
-// lapsed, the agent killed, Learn killed mid-answer; a resend main refused or whose turn failed before its answer. The fake agent
-// only, as itself or inside a Claude-shaped install.
+// lapsed, a tool Learn turned off, the agent killed, Learn killed mid-answer; a resend main refused or whose turn failed before its
+// answer. The fake agent only, as itself or inside a Claude-shaped install. Each state on screen has its axe stop (Task 22).
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -180,6 +180,7 @@ test('offline: nothing is sent and the question stays; back online nothing goes 
     await expectFocusAtEnd(page);
     expect(await sessionCount(page, itemId)).toBe(0);
     expect(await prompts(app)).toBe(0);
+    await expectNoSeriousA11y(page, 'tutor offline before sending');
 
     await tutorNetwork(app, 'online');
     await expect(failure).toBeVisible();
@@ -206,6 +207,7 @@ test('an agent that never answers: past its first-update limit the turn ends, th
     await expect(failure).toHaveAttribute('data-code', 'AGENT_TIMEOUT');
     await expect(composerInput(page)).toHaveValue('대답이 없을 질문입니다.');
     await expect(page.getByTestId('tutor-empty')).toBeVisible();
+    await expectNoSeriousA11y(page, 'tutor agent that does not answer');
   } finally {
     await app.close();
   }
@@ -233,10 +235,32 @@ test('a login that lapsed says so only when the agent answers: the notice with t
     await expectTooltipText(page, '복사했습니다', 'tutor-failure-copy');
     await expect(composerInput(page)).toHaveValue('로그인이 풀린 뒤의 질문입니다.');
     await expect(button).toHaveText('Claude Code · 로그인 필요');
+    await expectNoSeriousA11y(page, 'tutor login needed before sending');
     await runPalette(page, app, '에이전트', 'tutor.chooseAgent');
     const row = page.getByTestId('agent-row').and(page.locator('[data-agent="claude"]'));
     await expect(row.getByTestId('agent-flag')).toHaveText('로그인 필요');
     expect(nb(await row.getByTestId('agent-copy-text').innerText()).replace(/\n/g, '')).toBe(command);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a tool Learn turned off: the turn stops with nothing kept, and its notice sends to 에이전트 고르기… (no 다시 보내기); the agent is reported as an old version', async ({}, testInfo) => {
+  const { app, page } = await atSession(testInfo);
+  try {
+    await tutorFakeScript(app, 'lockdown');
+    await sendFromComposer(page, '목록을 보여 주세요.');
+    const answer = page.getByTestId('tutor-answer');
+    await expect(answer).toHaveAttribute('data-status', 'failed');
+    const failure = answer.getByTestId('tutor-failure');
+    await expect(failure).toHaveAttribute('data-code', 'AGENT_LOCKDOWN');
+    await expect(failure.getByTestId('tutor-failure-title')).toHaveText('꺼 둔 도구를 쓰려 해 답을 멈췄습니다');
+    expect(nb(await failure.locator('.nt-text').innerText())).toBe('가짜 에이전트가 Learn이 꺼 둔 도구를 쓰려 했습니다. 에이전트를 업데이트한 뒤 다시 확인하세요.');
+    await expect(failure.getByRole('button', { name: '에이전트 고르기…' })).toBeVisible();
+    await expect(failure.getByTestId('tutor-resend')).toHaveCount(0);
+    await expect(answer.getByTestId('tutor-answer-text')).toHaveCount(0);
+    expect(await page.evaluate(() => window.learn.tutor.agents({ mode: 'cached' }))).toMatchObject({ ok: true, data: { fake: { state: 'old', note: 'lockdown' } } });
+    await expectNoSeriousA11y(page, 'tutor turn stopped for a tool Learn turned off');
   } finally {
     await app.close();
   }
@@ -295,6 +319,7 @@ test('Learn killed mid-answer: on the next start the answer reads as cut off, wi
     // While the PDF still opens 다시 보내기 is off, as 보내기 is; once it is open, it goes.
     await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
     await expect(failure.getByTestId('tutor-resend')).not.toHaveAttribute('aria-disabled', 'true');
+    await expectNoSeriousA11y(page, 'tutor answer cut off by Learn\'s end');
     await failure.getByTestId('tutor-resend').click();
     await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'complete');
     expect((await thread(page, itemId)).messages.map(([, role, status]) => `${role}:${status}`)).toEqual(['user:complete', 'tutor:complete']);

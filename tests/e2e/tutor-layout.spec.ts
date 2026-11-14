@@ -2,7 +2,9 @@
 // narrow windows (the tutor narrows to 320 before it folds, the pane shown last wins) and the toolbar's smallest width.
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { FIXTURES, dragAlong, importPaths, ipcCalls, launch, mainWindow, menuSnapshot, openItem, readerToolbarMin, runMenuCommand, type MenuNode } from './helpers';
+import { expectNoSeriousA11y } from './a11y';
+import { FIXTURES, dragAlong, importPaths, ipcCalls, launch, mainWindow, menuSnapshot, openItem, readerToolbarMin, runMenuCommand, textExtraction, textIdle, type MenuNode } from './helpers';
+import { READER_100, askViaApi, consentAndChoose, turnEnded } from './tutor-helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const SAMPLE = path.join(FIXTURES, 'sample.pdf');
@@ -12,6 +14,24 @@ const UNSET = { env: { LEARN_E2E_SETTINGS: '' } };
 
 const dirs = (testInfo: { outputPath(...p: string[]): string }) => [testInfo.outputPath('library'), testInfo.outputPath('userdata')] as const;
 const contentWidth = async (app: ElectronApplication, width: number) => (await mainWindow(app)).evaluate((w, width) => w.setContentSize(width, w.getContentSize()[1]!), width);
+const zoom = async (app: ElectronApplication, f: number) => (await mainWindow(app)).evaluate((w, f) => w.webContents.setZoomFactor(f), f);
+/**
+ * Nothing on screen scrolls sideways: the page, and every box shown in the window that could (a code block in an answer scrolls by
+ * design, and a text area wraps).
+ */
+const sidewaysScrollers = (page: Page) =>
+  page.evaluate(() => {
+    const out: string[] = [];
+    if (document.documentElement.scrollWidth > innerWidth) out.push(`the page ${document.documentElement.scrollWidth} > ${innerWidth}`);
+    for (const el of document.querySelectorAll<HTMLElement>('[data-testid="shell"] *')) {
+      if (el.closest('[inert], pre') !== null || el instanceof HTMLTextAreaElement || el.clientWidth === 0) continue;
+      const cs = getComputedStyle(el);
+      if ((cs.overflowX === 'auto' || cs.overflowX === 'scroll') && el.scrollWidth > el.clientWidth + 1) {
+        out.push(`${el.getAttribute('data-testid') ?? el.className} ${el.scrollWidth} > ${el.clientWidth}`);
+      }
+    }
+    return out;
+  });
 const shell = (page: Page, attr: 'data-sidebar' | 'data-inspector') => page.getByTestId('shell').getAttribute(attr);
 const slotWidth = async (page: Page) => Math.round((await page.getByTestId('inspector-panel').boundingBox())?.width ?? 0);
 const readerWidth = async (page: Page) => Math.round((await page.getByTestId('content').boundingBox())?.width ?? 0);
@@ -205,9 +225,11 @@ test('in a narrow window the tutor narrows to 320 before it folds, then the side
     await expect.poll(() => slotWidth(page)).toBe(320);
     await expect.poll(() => readerWidth(page)).toBe(440);
     expect(await shell(page, 'data-sidebar')).toBe('shown');
+    await expectNoSeriousA11y(page, 'tutor narrowed to 320 in a 1000 window');
     await size(999);
     await expect.poll(() => shell(page, 'data-inspector')).toBe('hidden');
     expect(await shell(page, 'data-sidebar')).toBe('shown');
+    await expectNoSeriousA11y(page, 'tutor folded in a 999 window');
 
     await size(960); // the smallest window: the slot is folded and the reader has 720
     await expect.poll(() => shell(page, 'data-inspector')).toBe('hidden');
@@ -218,6 +240,7 @@ test('in a narrow window the tutor narrows to 320 before it folds, then the side
     await expect.poll(() => shell(page, 'data-sidebar')).toBe('hidden');
     await expect.poll(() => slotWidth(page)).toBe(380);
     await expect.poll(() => readerWidth(page)).toBe(580);
+    await expectNoSeriousA11y(page, 'tutor shown on demand in a 960 window, the sidebar folded');
     // The sidebar brought back later folds the tutor: the pane shown last wins.
     await runMenuCommand(app, 'view.toggleSidebar');
     await expect.poll(() => shell(page, 'data-sidebar')).toBe('shown');
@@ -300,6 +323,54 @@ test('a tutor shown on demand pushes the sidebar away only beside a PDF: a video
     await page.locator('[data-testid="tab"]:has-text("paper-100")').click();
     await expect.poll(() => shell(page, 'data-inspector')).toBe('shown');
     await expect.poll(() => shell(page, 'data-sidebar')).toBe('hidden');
+  } finally {
+    await app.close();
+  }
+});
+
+test('200 % zoom: the tutor folds, then the sidebar, and nothing scrolls sideways; shown on demand it fits; 100 % gives them back, nothing stored', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo), UNSET);
+  try {
+    await contentWidth(app, 1440);
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(1440);
+    const [paper] = await importPaths(page, [PAPER]);
+    await textExtraction(app, 'now');
+    await textIdle(app);
+    await openItem(page, 'paper-100');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
+    await consentAndChoose(page, 'fake');
+    const asked = await askViaApi(page, { itemId: paper!.id, conversationId: null, text: '이 장은 무엇을 다루나요?', selection: null, reader: { ...READER_100, pageIndex: 40 } });
+    if ('busyWith' in asked) throw new Error('the question waited for another answer');
+    await turnEnded(page, asked.conversationId, asked.tutorMessageId);
+    await expect(page.getByTestId('tutor-answer').getByTestId('cite-chip')).toHaveText(['41쪽', '42쪽']);
+    expect(await shell(page, 'data-inspector')).toBe('shown'); // the positive control for the folds below
+    expect(await shell(page, 'data-sidebar')).toBe('shown');
+
+    await zoom(app, 2);
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(720);
+    await expect.poll(() => shell(page, 'data-inspector')).toBe('hidden');
+    await expect.poll(() => shell(page, 'data-sidebar')).toBe('hidden');
+    expect(await sidewaysScrollers(page)).toEqual([]);
+    await expectNoSeriousA11y(page, 'the reader at 200 %, the tutor and the sidebar folded');
+
+    // ⌥⌘I: the tutor shown on demand at 200 % is whole and its conversation scrolls only up and down.
+    await runMenuCommand(app, 'view.toggleInspector');
+    await expect.poll(() => shell(page, 'data-inspector')).toBe('shown');
+    await expect(page.getByTestId('tutor-answer').getByTestId('cite-chip')).toHaveText(['41쪽', '42쪽']);
+    expect(await shell(page, 'data-sidebar')).toBe('hidden');
+    expect(await sidewaysScrollers(page)).toEqual([]);
+    await expectNoSeriousA11y(page, 'the tutor shown on demand at 200 %');
+
+    await runMenuCommand(app, 'view.toggleInspector');
+    await expect.poll(() => shell(page, 'data-inspector')).toBe('hidden');
+    await zoom(app, 1);
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(1440);
+    await expect.poll(() => shell(page, 'data-inspector')).toBe('shown');
+    await expect.poll(() => shell(page, 'data-sidebar')).toBe('shown');
+    expect(await slotWidth(page)).toBe(380);
+    const panes = (await storedPanes(page)) ?? {};
+    expect(panes['sidebarCollapsed'] ?? 0).toBe(0);
+    expect(panes['inspectorCollapsed'] ?? 0).toBe(0);
   } finally {
     await app.close();
   }

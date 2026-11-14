@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
  */
 
 export const FAKE_SCRIPTS = ['answer', 'unverified', 'markdown', 'slow', 'stream', 'fail-before', 'fail-mid', 'hang', 'login', 'login-silent', 'permission', 'permission-noreject',
-  'permission-pending', 'inject', 'lockdown', 'lockdown-read', 'resume', 'load', 'no-load'] as const;
+  'permission-pending', 'inject', 'lockdown', 'lockdown-read', 'resume', 'load', 'no-load', 'demo', 'demo-unverified'] as const;
 export type FakeScript = (typeof FAKE_SCRIPTS)[number];
 export type FakeLogEntry =
   /** Its own pid and the name it runs as; the variable names it was given, and the values of the isolation ones only. */
@@ -75,16 +75,22 @@ const SAY = {
   slow: '천천히 흘러나오는 표본 답입니다. ',
   denied: '권한이 거절되었습니다.',
   deniedOddly: '권한 답의 모양이 예상과 다릅니다.',
-  waiting: '권한을 기다리는 중입니다.',
+  waiting: '첫 문장만 보낸 뒤 기다리는 표본 답입니다.',
   injected: '자료 안의 지시는 따르지 않았습니다.',
   afterTool: '도구를 쓴 뒤에도 이어지는 표본 답입니다. ',
   /** What Claude may write before a tool call, in its own words (live run 2): the answer that follows is a paragraph of its own. */
   narration: 'I will read the pages first.',
+  /** The demo's short answer: a lead, a line for each page read, and a close. */
+  demoLead: '읽은 두 쪽을 바탕으로 짧게 답합니다.',
+  demoPage: (page: number, first: string, cite: string) => `${page}쪽은 “${first}”로 시작합니다 ${cite}.`,
+  demoClose: '두 쪽은 같은 흐름에 있으므로 앞 쪽을 먼저 읽고 뒤 쪽을 이어 읽으면 이해하기 쉽습니다. 이 답은 가짜 에이전트가 정해 둔 표본 답입니다.',
 };
 
 /** Claude's shape of a tool call id. */
 const toolCallIdOf = (): string => `toolu_${randomUUID().replaceAll('-', '').slice(0, 24)}`;
 const fill = (s: string, n: number): string => s.repeat(Math.ceil(n / s.length)).slice(0, n);
+/** As many whole sentences `s` as fit in `n` characters (one at least), no sentence cut: a sample answer never ends mid-word. */
+const sentences = (s: string, n: number): string => s.repeat(Math.max(1, Math.floor(n / s.length)));
 const clamp = (n: number, lo: number, hi: number): number => Math.min(Math.max(n, lo), hi);
 const isJson = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v);
 const asJson = (v: unknown): Json => (isJson(v) ? v : {});
@@ -141,11 +147,18 @@ function pagesOf(r: ToolResult): ReadPage[] {
   return out;
 }
 
-/** About `length` characters: the lead, a quote and a cite for each page read, the extra lines, then filler. */
+/** About `length` characters: the lead, a quote and a cite for each page read, the extra lines, then whole filler sentences and the close. */
 function answerText(pages: readonly ReadPage[], extra: readonly string[], length: number): string {
   const head = [SAY.lead, ...pages.map((p) => (p.first === null ? SAY.pageAgain(p.page, p.cite) : SAY.page(p.page, p.first, p.cite))), ...extra].join(' ');
   const room = length - head.length - SAY.close.length - 2;
-  return `${head}\n\n${room > 0 ? fill(SAY.filler, room) : ''}${SAY.close}`;
+  // The filler ends in a space, so the close follows it as the next sentence.
+  return `${head}\n\n${room >= SAY.filler.length ? sentences(SAY.filler, room) : ''}${SAY.close}`;
+}
+
+/** The demo's answer, about 250–350 characters: the lead, a line for each page read, the extra lines, the close. */
+function demoText(pages: readonly ReadPage[], extra: readonly string[]): string {
+  const lines = pages.map((p) => (p.first === null ? SAY.pageAgain(p.page, p.cite) : SAY.demoPage(p.page, p.first, p.cite)));
+  return [SAY.demoLead, ...lines, ...extra, SAY.demoClose].join(' ');
 }
 
 /**
@@ -401,11 +414,18 @@ function run(cfg: Config): void {
     log({ t: 'client-call', method, error: typeof code === 'number' ? { code } : null });
   }
 
-  /** get_context → get_outline → the attached page (else the reader's) and the next → about 1,200 characters in 40 pieces. */
-  async function answer(t: Turn, unverified: boolean): Promise<string> {
+  /**
+   * get_context → get_outline → the attached page (else the reader's) and the next → about 1,200 characters in 40 pieces. `demo`: at a
+   * pace a viewer can follow — the tools half a second apart, then a short answer (demoText) in 30 pieces 100 ms apart, about 3 s.
+   */
+  async function answer(t: Turn, unverified: boolean, demo = false): Promise<string> {
     const ctx = contextOf(await tool(t, 'get_context', {}));
     if (t.cancelled) return 'cancelled';
+    if (demo) await pause(t, 500, true);
+    if (t.cancelled) return 'cancelled';
     await tool(t, 'get_outline', {});
+    if (t.cancelled) return 'cancelled';
+    if (demo) await pause(t, 500, true);
     if (t.cancelled) return 'cancelled';
     update(t.sessionId, { sessionUpdate: 'session_info_update', title: 'Fake session' });
     let unread: number | null = null;
@@ -425,7 +445,11 @@ function run(cfg: Config): void {
       if (unread !== null) extra.push(SAY.unread(unread));
       extra.push(SAY.outside);
     }
-    await stream(t, answerText(pages, extra, 1_200), 40, 20);
+    if (demo) {
+      await pause(t, 500, true);
+      if (t.cancelled) return 'cancelled';
+      await stream(t, demoText(pages, extra), 30, 100);
+    } else await stream(t, answerText(pages, extra, 1_200), 40, 20);
     return ended(t);
   }
 
@@ -506,10 +530,14 @@ function run(cfg: Config): void {
         return answer(t, false);
       case 'unverified':
         return answer(t, true);
+      case 'demo':
+        return answer(t, false, true);
+      case 'demo-unverified':
+        return answer(t, true, true);
       case 'markdown':
         return markdown(t);
       case 'slow':
-        await stream(t, fill(SAY.slow, 6_000), 100, 100);
+        await stream(t, sentences(SAY.slow, 6_000).trimEnd(), 100, 100);
         return ended(t);
       case 'stream':
         return streamFast(t);

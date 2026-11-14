@@ -484,6 +484,8 @@ const CASES: Record<FakeScript, { name: string; run: () => Promise<void> }> = {
       expect(answer.status).toBe('complete');
       expect(answer.text.length).toBeGreaterThanOrEqual(1_100);
       expect(answer.text.length).toBeLessThanOrEqual(1_300);
+      // Whole sample sentences, the close the next one: nothing reads as text cut and glued.
+      expect(answer.text.endsWith('이 문장은 화면을 채우는 표본 답입니다. 이상으로 답을 마칩니다.')).toBe(true);
       expect(answer.text).toContain('[[p5]]');
       expect(answer.text).toContain('[[p6]]');
       // It quotes the first sentence of each page it read.
@@ -506,6 +508,58 @@ const CASES: Record<FakeScript, { name: string; run: () => Promise<void> }> = {
       expect(end).toMatchObject({ kind: 'done', status: 'complete' });
       expect(r.reads(asked.tutorMessageId).filter((x) => x.tool === 'read_pdf_pages')).toEqual([{ tool: 'read_pdf_pages', outcome: 'ok', from: 5, to: 6, code: null }]);
       const text = r.message(asked.tutorMessageId).text;
+      expect(text).toContain('[[p5]]');
+      expect(text).toContain('[[p999]]');
+      expect(end.sources.map((s) => s.pageIndex)).toEqual([5, 6]);
+      const check = checkCitations(text, r.repo.toolReads(asked.tutorMessageId), PAGES);
+      expect(check.unverified).toEqual([{ pageIndex: 4, outside: false }, { pageIndex: 998, outside: true }]);
+      await r.finish();
+    },
+  },
+
+  demo: {
+    name: 'the demo\'s pace: the tools half a second apart, then a short answer citing the two pages it read, streamed over about 3 s',
+    async run() {
+      const r = await makeRig({ script: 'demo' });
+      const asked = await r.ask('어텐션이 뭐야?', { selection: 4 });
+      // When each of the three tools' reads was recorded, then when the first text came and when the answer ended.
+      const started: number[] = [];
+      await until('three tool reads', () => {
+        const n = r.reads(asked.tutorMessageId).length;
+        while (started.length < n) started.push(Date.now());
+        return n >= 3;
+      }, 10_000);
+      await r.firstText(asked.tutorMessageId);
+      const firstText = Date.now();
+      const end = (await r.ended(asked.tutorMessageId)) as Done;
+      const ended = Date.now();
+      expect(end).toMatchObject({ kind: 'done', status: 'complete', stopReason: 'end_turn' });
+      expect(started[1]! - started[0]!).toBeGreaterThanOrEqual(400);
+      expect(started[2]! - started[1]!).toBeGreaterThanOrEqual(400);
+      expect(ended - firstText).toBeGreaterThanOrEqual(2_500);
+      expect(r.reads(asked.tutorMessageId).map((x) => x.tool)).toEqual(['get_context', 'get_outline', 'read_pdf_pages']);
+      expect(end.sources.map((s) => s.pageIndex)).toEqual([4, 5]);
+      const text = r.message(asked.tutorMessageId).text;
+      expect(text.length).toBeGreaterThanOrEqual(150);
+      expect(text.length).toBeLessThanOrEqual(400);
+      expect(text).toContain('[[p5]]');
+      expect(text).toContain('[[p6]]');
+      expect(text.endsWith('이 답은 가짜 에이전트가 정해 둔 표본 답입니다.')).toBe(true);
+      expect(r.streamed(asked.tutorMessageId)).toBe(text);
+      await r.finish();
+    },
+  },
+
+  'demo-unverified': {
+    name: 'the demo\'s pace and length, citing the attached page it never read and [[p999]]: neither is a source',
+    async run() {
+      const r = await makeRig({ script: 'demo-unverified' });
+      const asked = await r.ask('이 구간을 설명해 줘', { selection: 4 });
+      const end = (await r.ended(asked.tutorMessageId)) as Done;
+      expect(end).toMatchObject({ kind: 'done', status: 'complete' });
+      expect(r.reads(asked.tutorMessageId).filter((x) => x.tool === 'read_pdf_pages')).toEqual([{ tool: 'read_pdf_pages', outcome: 'ok', from: 5, to: 6, code: null }]);
+      const text = r.message(asked.tutorMessageId).text;
+      expect(text.length).toBeLessThanOrEqual(450);
       expect(text).toContain('[[p5]]');
       expect(text).toContain('[[p999]]');
       expect(end.sources.map((s) => s.pageIndex)).toEqual([5, 6]);

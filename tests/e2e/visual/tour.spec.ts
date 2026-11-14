@@ -2711,7 +2711,7 @@ test('T1a tutor: an empty session, a passage attached, an answer coming, the ans
     // 중지: an answer that waits after its first sentence, stopped — what came stays, 중지함 under it (tutor--8-stopped).
     await nextScript(s, 'permission-pending');
     await sendQuestion(page, '천천히 답해 주세요.');
-    await expect(answer.last().getByTestId('tutor-answer-text')).toHaveText('권한을 기다리는 중입니다.');
+    await expect(answer.last().getByTestId('tutor-answer-text')).toHaveText('첫 문장만 보낸 뒤 기다리는 표본 답입니다.');
     await page.keyboard.press('Escape');
     await expect(answer.last()).toHaveAttribute('data-status', 'stopped');
     await expect(answer.last().getByTestId('tutor-ended')).toHaveText('중지함');

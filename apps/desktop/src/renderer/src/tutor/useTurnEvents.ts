@@ -38,31 +38,39 @@ function tabShowing(conversationId: string) {
 }
 
 /**
+ * One notice of an answer, for the tab that shows its session (useTurnEvents). An answer that ended has its thread read again. One that
+ * failed before any answer is remembered as dropped, and its live turn goes: its rows may be gone, and no stored copy would end it.
+ */
+export function hearTurn(e: TutorTurnEvent): void {
+  if (e.kind === 'done' || e.kind === 'failed') {
+    const tab = e.kind === 'failed' && e.phase === 'before' ? tabShowing(e.conversationId) : null;
+    if (tab !== null) {
+      tab.getState().noteDropped(e.messageId);
+      if (tab.getState().live?.tutorMessageId === e.messageId) tab.getState().setLive(null);
+    }
+    void queryClient.invalidateQueries({ queryKey: keys.sessionThread(e.conversationId) });
+    return;
+  }
+  const tab = tabShowing(e.conversationId);
+  if (tab === null) return;
+  const { live, setLive } = tab.getState();
+  if (live?.tutorMessageId !== e.messageId) {
+    const stored = queryClient.getQueryData<SessionThread>(keys.sessionThread(e.conversationId));
+    // An answer heard from its middle (a reload, a session shown again) stays the stored one's, read again every 2 s.
+    if (!startsLive(stored, e.messageId)) return;
+    // A new turn of a session already read (another question, a resend): its rows are read, so its bubbles are drawn.
+    if (stored !== undefined && !stored.messages.some((m) => m.id === e.messageId)) void queryClient.invalidateQueries({ queryKey: keys.sessionThread(e.conversationId) });
+  }
+  setLive(applyTurnEvent(live, e));
+}
+
+/**
  * Once per window (MainWindow): what main says about answers goes to the tab that shows their session, whether or not its panel is on
  * screen, so a panel shown later has the whole answer. An answer that ended has its thread read again (with its sources). A new
  * session main created for an item is the one that item's tab shows if the tab was on a new empty session: its question made it.
  */
 export function useTurnEvents(): void {
-  useLearnEvent('tutor:turn', (e) => {
-    if (e.kind === 'done' || e.kind === 'failed') {
-      // Failed before any answer: its rows may be gone with it, and no stored copy will end the live turn of the tab's own question.
-      const tab = e.kind === 'failed' && e.phase === 'before' ? tabShowing(e.conversationId) : null;
-      if (tab?.getState().live?.tutorMessageId === e.messageId) tab.getState().setLive(null);
-      void queryClient.invalidateQueries({ queryKey: keys.sessionThread(e.conversationId) });
-      return;
-    }
-    const tab = tabShowing(e.conversationId);
-    if (tab === null) return;
-    const { live, setLive } = tab.getState();
-    if (live?.tutorMessageId !== e.messageId) {
-      const stored = queryClient.getQueryData<SessionThread>(keys.sessionThread(e.conversationId));
-      // An answer heard from its middle (a reload, a session shown again) stays the stored one's, read again every 2 s.
-      if (!startsLive(stored, e.messageId)) return;
-      // A new turn of a session already read (another question, a resend): its rows are read, so its bubbles are drawn.
-      if (stored !== undefined && !stored.messages.some((m) => m.id === e.messageId)) void queryClient.invalidateQueries({ queryKey: keys.sessionThread(e.conversationId) });
-    }
-    setLive(applyTurnEvent(live, e));
-  });
+  useLearnEvent('tutor:turn', hearTurn);
   useLearnEvent('sessions:changed', (c) => {
     const made = createdSession(c);
     if (made === null) return;

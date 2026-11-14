@@ -78,7 +78,7 @@ const SELECTOR: Record<Landing, string> = {
 
 /**
  * The first time the tab's tutor can be seen — or a PDF opens while it can — the outline's pages are resolved for its questions, the
- * first 300 entries, whether or not the outline pane is open (spec 5.1, P-13). Nothing waits for it: a question carries what is resolved.
+ * first 300 entries, whether or not the outline pane is open (spec 5.1). Nothing waits for it: a question carries what is resolved.
  */
 function useOutlineForQuestions(visible: boolean): void {
   const scope = useReaderScope();

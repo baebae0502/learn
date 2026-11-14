@@ -72,16 +72,22 @@
     --page-original-text: #1b1d20;
     --page-original-muted: #5f646b;
     --page-original-rule: #d9dce1;
+    --page-original-attach-wash: oklch(0% 0 0 / 0.08);
+    --page-original-attach-bar: oklch(53% 0.088 190);
     --page-original-highlight-alpha: 0.4;
     --page-sepia-bg: oklch(95.2% 0.028 85);
     --page-sepia-text: oklch(34% 0.035 60);
     --page-sepia-muted: oklch(50% 0.035 65);
     --page-sepia-rule: oklch(85% 0.03 80);
+    --page-sepia-attach-wash: oklch(35% 0.04 70 / 0.1);
+    --page-sepia-attach-bar: oklch(50% 0.088 190);
     --page-sepia-highlight-alpha: 0.4;
     --page-dark-bg: oklch(24% 0.004 250);
     --page-dark-text: oklch(88% 0.004 250);
     --page-dark-muted: oklch(70% 0.006 250);
     --page-dark-rule: oklch(36% 0.005 250);
+    --page-dark-attach-wash: oklch(100% 0 0 / 0.12);
+    --page-dark-attach-bar: oklch(72% 0.1 190);
     --page-dark-highlight-alpha: 0.32;
     /* Elevation */
     --shadow-e1: 0 0 0 0.5px light-dark(oklch(20% 0.01 250 / 0.14), oklch(100% 0 0 / 0.12)), inset 0 0.5px 0 0 light-dark(oklch(100% 0 0 / 0), oklch(100% 0 0 / 0.07)), 0 4px 12px 0 light-dark(oklch(20% 0.01 250 / 0.08), oklch(0% 0 0 / 0.32)), 0 12px 32px -4px light-dark(oklch(20% 0.01 250 / 0.1), oklch(0% 0 0 / 0.36));

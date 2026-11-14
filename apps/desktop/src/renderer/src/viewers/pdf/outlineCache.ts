@@ -5,7 +5,7 @@ import { flattenOutline, outlinePages, outlineRows, type OutlineRow } from './ou
 import type { ReaderStore } from './readerStore';
 
 /**
- * A tab's outline of the document it shows (spec 5.1, P-13): every entry as a tree and in reading order, and the page (from 1) of
+ * A tab's outline of the document it shows (spec 5.1): every entry as a tree and in reading order, and the page (from 1) of
  * each entry resolved so far — the entries in reading order are resolved from the first, `resolvedUpTo` of them by now. The outline
  * pane and the tutor read the same cache, so each entry's page is asked once.
  */
@@ -15,9 +15,6 @@ export interface OutlineCache {
   pages: ReadonlyMap<string, number>;
   resolvedUpTo: number;
 }
-
-/** The deepest level a question's outline carries (the reader snapshot's schema): a deeper entry is sent at this depth. */
-const DEPTH_MAX = 8;
 
 /** The resolving of one document's outline for one tab: how far it is wanted, and whether its loop runs. */
 interface Job {
@@ -29,7 +26,7 @@ const jobs = new WeakMap<StoreApi<ReaderStore>, Job>();
 
 /**
  * The tab's outline cache for `doc`, made if there is none, and its pages resolved in the background to the first `want` entries in
- * reading order (or all of them), a batch at a time; nothing is asked twice. The tutor asks for the first 300 when it shows (J25), the
+ * reading order (or all of them), a batch at a time; nothing is asked twice. The tutor asks for the first 300 when it shows, the
  * outline pane for all, from where the tutor's left off. Never waited for: a question carries what is resolved when it goes.
  */
 export function ensureOutline(scope: { reader: StoreApi<ReaderStore> }, doc: PDFDocumentProxy, want: number | 'all'): void {
@@ -100,8 +97,8 @@ function cut(text: string, n: number): string {
 }
 
 /**
- * What a question carries of the outline (spec 5.1, J25), as the cache has it now: the first 300 entries in reading order, titles cut
- * at 300 characters and depths at 8, each with its page (0-based) or null — no destination, a broken one, or not resolved yet; whether
+ * What a question carries of the outline (spec 5.1), as the cache has it now: the first 300 entries in reading order, titles cut
+ * at 300 characters and depths at 8 (a deeper entry is sent at that depth), each with its page (0-based) or null — no destination, a broken one, or not resolved yet; whether
  * those entries are all resolved, and how many entries the document's outline has. No cache yet: nothing, not complete.
  */
 export function outlineSnapshot(c: OutlineCache | null): { outline: TutorAskInput['reader']['outline']; outlineComplete: boolean; outlineTotal: number } {
@@ -110,7 +107,7 @@ export function outlineSnapshot(c: OutlineCache | null): { outline: TutorAskInpu
   return {
     outline: first.map((row) => {
       const page = c.pages.get(row.id);
-      return { title: cut(row.title, TUTOR_LIMITS.outlineTitle), depth: Math.min(row.depth, DEPTH_MAX), pageIndex: page !== undefined && page >= 1 ? page - 1 : null };
+      return { title: cut(row.title, TUTOR_LIMITS.outlineTitle), depth: Math.min(row.depth, TUTOR_LIMITS.outlineDepth), pageIndex: page !== undefined && page >= 1 ? page - 1 : null };
     }),
     outlineComplete: c.resolvedUpTo >= first.length,
     outlineTotal: c.flat.length,

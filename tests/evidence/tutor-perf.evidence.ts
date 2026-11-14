@@ -1,7 +1,8 @@
 // @perf — T1a spec 15 (tutor-perf.json): the tutor with the fake agent. A send to its user bubble and "답하는 중…" painted, on
 // paper-100.pdf and on long-outline.pdf (300 outline entries, the send never waiting for their pages); a send to the answer's first
 // text painted, the agent started ahead (learn:tutor:send → learn:tutor:first-text-paint); the frames while 6,000 characters stream
-// in at 60 pieces a second with 20 citations, and the long tasks among them; the fake agent's start to its initialize
+// in at 60 pieces a second with 20 citations — from the turn's first text notice to its last — and the long tasks among them, with
+// what they were; the redraw at the answer's end, reported apart and not gated; the fake agent's start to its initialize
 // answer, tutor:ask in main up to its rows, and read_pdf_pages of 5 pages × 4,000 characters in main (__learnLastMs); the fake
 // agent's RSS. Linux CI fails beyond twice each budget (budget.ts); every other run reports.
 //
@@ -84,23 +85,51 @@ async function sendAndTime(page: Page, text: string): Promise<{ bubbleMs: number
   return { bubbleMs, firstTextMs };
 }
 
+/** A long task (over 50 ms) and what it was: the browser's attribution, and the scripts of the long frames it falls in. */
+interface LongTask {
+  atMs: number;
+  durationMs: number;
+  attribution: Array<{ name: string; containerType: string; containerName: string; containerSrc: string }>;
+  scripts: Array<{ invoker: string; fn: string; at: string; ms: number }>;
+}
+/** One streamed answer, as the page saw it. */
+interface Stream {
+  /** rAF gaps whose frame fell between the first and the last text notice of the turn: the streaming itself. */
+  gaps: number[];
+  /** Long tasks that overlap the streaming. */
+  longTasks: LongTask[];
+  /** The 500 ms after the turn's end notice: the bubble drawn again from the stored answer (20 chips). */
+  end: { longestTaskMs: number; longestGapMs: number; longTasks: LongTask[] };
+  /** The long animation frames over the whole turn, where a long frame's time went. */
+  longFrames: LongFrame[];
+  notices: { text: number; spanMs: number };
+}
+
 /**
- * The frames while one streamed answer comes in: rAF gaps from its first text to its end, the long tasks meanwhile (over 50 ms, the
- * budget's "긴 작업"), and the long animation frames, which say where a long frame's time went.
+ * One streamed answer (the fake's stream: 6,000 characters at 60 pieces a second, 20 cites). The window that counts is the streaming
+ * itself, from the turn's first text notice to its last (T1a spec 15 "받는 동안"); the end notice's redraw from the stored answer is timed
+ * apart, over the 500 ms after it. Every long task is kept with its attribution and the scripts of the long frames it falls in.
  */
-async function streamFrames(page: Page): Promise<{ gaps: number[]; longTasks: number[]; longFrames: LongFrame[] }> {
+async function streamFrames(page: Page): Promise<Stream> {
   await composer(page).click();
   await page.keyboard.insertText('긴 답을 흘려 보내 주세요.');
-  const answers = await page.getByTestId('tutor-answer').count();
-  await page.evaluate((n) => {
+  await page.evaluate(() => {
     type Loaf = PerformanceEntry & { renderStart: number; styleAndLayoutStart: number; blockingDuration: number; scripts: LongFrame['scripts'] };
-    const w = window as unknown as { __tutorFrames: Promise<{ gaps: number[]; longTasks: number[]; longFrames: LongFrame[] }> };
-    w.__tutorFrames = new Promise((resolve) => {
+    type Attribution = PerformanceEntry & { containerType: string; containerName: string; containerSrc: string };
+    type Task = PerformanceEntry & { attribution?: Attribution[] };
+    const w = window as unknown as { __tutorStream: Promise<Stream>; learn: { on(name: 'tutor:turn', cb: (e: { kind: string }) => void): () => void } };
+    w.__tutorStream = new Promise((resolve) => {
+      const frames: number[] = [];
+      const tasks: Array<{ startTime: number; duration: number; attribution: LongTask['attribution'] }> = [];
       const longFrames: LongFrame[] = [];
-      const longTasks: Array<{ startTime: number; duration: number }> = [];
-      const tasks = new PerformanceObserver((list) => {
-        for (const e of list.getEntries()) longTasks.push({ startTime: e.startTime, duration: e.duration });
+      const texts: number[] = [];
+      let doneAt = 0;
+      const taskObserver = new PerformanceObserver((list) => {
+        for (const e of list.getEntries() as Task[]) {
+          tasks.push({ startTime: e.startTime, duration: e.duration, attribution: (e.attribution ?? []).map((a) => ({ name: a.name, containerType: a.containerType, containerName: a.containerName, containerSrc: a.containerSrc })) });
+        }
       });
+      taskObserver.observe({ type: 'longtask' });
       const loaf = PerformanceObserver.supportedEntryTypes.includes('long-animation-frame')
         ? new PerformanceObserver((list) => {
             for (const e of list.getEntries() as Loaf[]) {
@@ -108,25 +137,42 @@ async function streamFrames(page: Page): Promise<{ gaps: number[]; longTasks: nu
             }
           })
         : null;
-      const gaps: number[] = [];
-      let last = 0;
-      let from = 0;
+      loaf?.observe({ type: 'long-animation-frame' });
+      const stop = w.learn.on('tutor:turn', (e) => {
+        if (e.kind === 'text') texts.push(performance.now());
+        if ((e.kind === 'done' || e.kind === 'failed') && doneAt === 0) doneAt = performance.now();
+      });
+      const describe = (t: { startTime: number; duration: number; attribution: LongTask['attribution'] }, origin: number): LongTask => ({
+        atMs: Math.round(t.startTime - origin),
+        durationMs: Math.round(t.duration),
+        attribution: t.attribution,
+        scripts: longFrames
+          .filter((f) => f.startTime < t.startTime + t.duration && f.startTime + f.duration > t.startTime)
+          .flatMap((f) => f.scripts)
+          .sort((a, b) => b.duration - a.duration)
+          .slice(0, 3)
+          .map((x) => ({ invoker: x.invoker, fn: x.sourceFunctionName, at: `${x.sourceURL.split('/').pop() ?? ''}:${x.sourceCharPosition}`, ms: Math.round(x.duration) })),
+      });
       const step = (t: number) => {
-        const answer = document.querySelectorAll('[data-testid="tutor-answer"]')[n];
-        const text = answer?.querySelector('[data-testid="tutor-answer-text"]')?.textContent ?? '';
-        if (from === 0 && text !== '') {
-          from = t;
-          loaf?.observe({ type: 'long-animation-frame' });
-          tasks.observe({ type: 'longtask' });
-        }
-        if (from !== 0 && last !== 0) gaps.push(t - last);
-        if (from !== 0) last = t;
-        if (answer?.getAttribute('data-status') === 'complete') {
-          // Observers deliver a frame's entries after it: the last ones are let in before the window closes.
+        frames.push(t);
+        if (doneAt !== 0 && t > doneAt + 500) {
+          // Observers deliver a frame's entries after it: the last ones are let in before the windows close.
           setTimeout(() => {
+            stop();
+            taskObserver.disconnect();
             loaf?.disconnect();
-            tasks.disconnect();
-            resolve({ gaps, longTasks: longTasks.filter((x) => x.startTime + x.duration >= from && x.duration > 50).map((x) => Math.round(x.duration)), longFrames: longFrames.filter((f) => f.startTime + f.duration >= from) });
+            const [first, last] = [texts[0] ?? doneAt, texts.at(-1) ?? doneAt];
+            const gaps = frames.flatMap((at, i) => (i > 0 && frames[i - 1]! >= first && at <= last ? [at - frames[i - 1]!] : []));
+            const over = (from: number, to: number) => tasks.filter((x) => x.startTime < to && x.startTime + x.duration > from && x.duration > 50);
+            const endTasks = over(doneAt, doneAt + 500);
+            const endGaps = frames.flatMap((at, i) => (i > 0 && at > doneAt && at <= doneAt + 500 ? [at - frames[i - 1]!] : []));
+            resolve({
+              gaps,
+              longTasks: over(first, last).map((x) => describe(x, first)),
+              end: { longestTaskMs: Math.round(Math.max(0, ...endTasks.map((x) => x.duration))), longestGapMs: Math.round(Math.max(0, ...endGaps)), longTasks: endTasks.map((x) => describe(x, doneAt)) },
+              longFrames: longFrames.filter((f) => f.startTime + f.duration >= first),
+              notices: { text: texts.length, spanMs: Math.round(last - first) },
+            });
           }, 300);
           return;
         }
@@ -134,9 +180,9 @@ async function streamFrames(page: Page): Promise<{ gaps: number[]; longTasks: nu
       };
       requestAnimationFrame(step);
     });
-  }, answers);
+  });
   await page.keyboard.press('Enter');
-  return page.evaluate(() => (window as unknown as { __tutorFrames: Promise<{ gaps: number[]; longTasks: number[]; longFrames: LongFrame[] }> }).__tutorFrames);
+  return page.evaluate(() => (window as unknown as { __tutorStream: Promise<Stream> }).__tutorStream);
 }
 
 test('the tutor with the fake agent: send → bubble and first text, streaming frames, the agent\'s start, main\'s ask and page reads, its RSS', { tag: '@perf' }, async ({}, testInfo) => {
@@ -175,8 +221,19 @@ test('the tutor with the fake agent: send → bubble and first text, streaming f
     await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', '6');
     await expect(page.getByTestId('tutor-empty')).toBeVisible();
     const resolvedAtFirstSend = await page.evaluate(() => (window as unknown as { __learnReader: { getState(): { outline: { resolvedUpTo: number } | null } } }).__learnReader.getState().outline?.resolvedUpTo ?? null);
+    // Each question in a session of its own (새 세션 between them): a session's first question, whose answer is drawn as it comes too.
     const outlineBubble: number[] = [];
-    for (let i = 0; i < RUNS; i++) outlineBubble.push((await sendAndTime(page, `목차 질문 ${i + 1}: 이 부분은 어디에 있나요?`)).bubbleMs);
+    const newSessionFirstText: number[] = [];
+    for (let i = 0; i < RUNS; i++) {
+      if (i > 0) {
+        await page.getByTestId('tutor-new-session').click();
+        await expect(page.getByTestId('tutor-empty')).toBeVisible();
+      }
+      const r = await sendAndTime(page, `목차 질문 ${i + 1}: 이 부분은 어디에 있나요?`);
+      outlineBubble.push(r.bubbleMs);
+      expect(r.firstTextMs, `new session ${i + 1}: its first answer was drawn as it came`).not.toBeNull();
+      newSessionFirstText.push(r.firstTextMs!);
+    }
     const outlineAfter = await page.evaluate(() => (window as unknown as { __learnReader: { getState(): { outline: { resolvedUpTo: number; flat: unknown[] } | null } } }).__learnReader.getState().outline);
     expect(outlineAfter, 'the tutor resolved the long outline\'s 300 entries').toMatchObject({ resolvedUpTo: 300 });
 
@@ -185,14 +242,20 @@ test('the tutor with the fake agent: send → bubble and first text, streaming f
     await expect(page.getByTestId('tutor-log')).toBeVisible();
     await tutorFakeScript(app, 'stream');
     const gaps: number[] = [];
-    const longTasks: number[] = [];
+    const longTasks: LongTask[] = [];
     const longFrames: LongFrame[] = [];
+    const endRedraw: Stream['end'][] = [];
+    const notices: Stream['notices'][] = [];
     for (let i = 0; i < STREAMS; i++) {
       const f = await streamFrames(page);
+      // main sends the text in batches of 33 ms: the 100 pieces come as some 30–50 notices over about 1.7 s.
+      expect(f.notices.text, 'the answer came in its pieces').toBeGreaterThan(20);
       expect(f.gaps.length, 'frames were counted while the answer came in').toBeGreaterThan(30);
-      gaps.push(...f.gaps.slice(1));
+      gaps.push(...f.gaps);
       longTasks.push(...f.longTasks);
       longFrames.push(...f.longFrames);
+      endRedraw.push(f.end);
+      notices.push(f.notices);
     }
     const cites = await page.getByTestId('tutor-answer').last().getByTestId('cite-chip').count();
     expect(cites, 'the streamed answer carries its 20 citations').toBe(20);
@@ -252,9 +315,11 @@ test('the tutor with the fake agent: send → bubble and first text, streaming f
       sendToBubbleMs: spread(paperBubble),
       sendToBubbleLongOutlineMs: { ...spread(outlineBubble), outlineResolvedAtFirstSend: resolvedAtFirstSend, outlineEntries: outlineAfter?.flat.length ?? null },
       sendToFirstTextMs: spread(firstText),
-      streamFrameMs: spread(gaps),
-      longTasksMs: longTasks,
+      streamFrameMs: { ...spread(gaps), notices },
+      streamLongTasks: longTasks,
+      endRedraw: { longestTaskMs: Math.max(...endRedraw.map((e) => e.longestTaskMs)), longestGapMs: Math.max(...endRedraw.map((e) => e.longestGapMs)), runs: endRedraw },
       longFrames: { count: longFrames.length, longest: summarizeLongFrames(longFrames, [], 0).slice(0, 5) },
+      sendToFirstTextNewSessionMs: spread(newSessionFirstText),
       initializeMs: spread(initialize),
       askMainMs: spread(askMain),
       readPagesMainMs: spread(readPages),
@@ -263,8 +328,8 @@ test('the tutor with the fake agent: send → bubble and first text, streaming f
       platform: `${process.platform}-${process.arch}`,
       ci: process.env['CI'] ?? null,
     };
-    writeJson('tutor-perf.json', result, 'T1a tutor (fake agent): send → bubble (paper-100, long-outline), send → first text, streaming frames and long frames, the agent\'s start → initialize, tutor:ask and read_pdf_pages in main, the fake agent\'s RSS');
-    console.log('[measure] tutor-perf', JSON.stringify({ values, fakeAgentRssMB: result.fakeAgentRssMB, outlineResolvedAtFirstSend: resolvedAtFirstSend }));
+    writeJson('tutor-perf.json', result, 'T1a tutor (fake agent): send → bubble (paper-100; long-outline, each a new session), send → first text, the frames and long tasks while an answer streams (first to last text notice) and the end redraw apart, the agent\'s start → initialize, tutor:ask and read_pdf_pages in main, the fake agent\'s RSS');
+    console.log('[measure] tutor-perf', JSON.stringify({ values, endRedraw: { longestTaskMs: result.endRedraw.longestTaskMs, longestGapMs: result.endRedraw.longestGapMs }, newSessionFirstTextP95: result.sendToFirstTextNewSessionMs.p95, fakeAgentRssMB: result.fakeAgentRssMB, outlineResolvedAtFirstSend: resolvedAtFirstSend }));
 
     if (process.platform === 'linux' && process.env['CI']) {
       const limits: Limit[] = [

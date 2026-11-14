@@ -12,7 +12,7 @@ export const STOP_REASONS = ['end_turn', 'max_tokens', 'max_turn_requests', 'ref
 export type StopReason = (typeof STOP_REASONS)[number];
 
 export const TUTOR_LIMITS = {
-  pagesPerCall: 5, charsPerCall: 24_000, charsPerPage: 12_000, pagesPerTurn: 40, outlineEntries: 300, outlineTitle: 300,
+  pagesPerCall: 5, charsPerCall: 24_000, charsPerPage: 12_000, pagesPerTurn: 40, outlineEntries: 300, outlineTitle: 300, outlineDepth: 8,
   selectionChars: 4_000, questionChars: 8_000, replayChars: 16_000, answerChars: 100_000, saveEveryMs: 2_000, saveEveryChars: 2_000,
   textBatchMs: 33, pendingWaitMs: 10_000, sessionTitle: 200,
   idleCloseMs: 300_000, // a Claude process group holds 315–433 MB, so five minutes, not ten
@@ -101,7 +101,7 @@ export const readerSnapshotSchema = z.object({
   pageIndex: z.number().int().min(0),
   pageCount: z.number().int().min(1).max(100_000),
   outline: z.array(z.object({
-    title: z.string().max(TUTOR_LIMITS.outlineTitle), depth: z.number().int().min(0).max(8), pageIndex: z.number().int().min(0).nullable(),
+    title: z.string().max(TUTOR_LIMITS.outlineTitle), depth: z.number().int().min(0).max(TUTOR_LIMITS.outlineDepth), pageIndex: z.number().int().min(0).nullable(),
   }).strict()).max(TUTOR_LIMITS.outlineEntries),
   outlineComplete: z.boolean(),
   outlineTotal: z.number().int().min(0),

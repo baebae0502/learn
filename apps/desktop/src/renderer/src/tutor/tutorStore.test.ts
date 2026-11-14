@@ -24,16 +24,22 @@ describe('the tutor store of one reader tab', () => {
   });
   it('holds nothing but the tab\'s own fields', () => {
     expect(Object.keys(createTutorTabStore().getState()).sort()).toEqual([
-      'attached', 'choosing', 'conversationId', 'currentCite', 'drafts', 'live', 'setAttached', 'setChoosing', 'setConversation', 'setCurrentCite', 'setDraft', 'setLive',
-      'setWaiting', 'waiting',
+      'attached', 'choosing', 'conversationId', 'currentCite', 'drafts', 'droppedAnswers', 'live', 'noteDropped', 'setAttached', 'setChoosing', 'setConversation',
+      'setCurrentCite', 'setDraft', 'setLive', 'setWaiting', 'waiting',
     ]);
+  });
+  it('remembers the newest few answers that failed before any answer, once each', () => {
+    const a = createTutorTabStore();
+    for (let i = 0; i < 10; i++) a.getState().noteDropped(`m${i}`);
+    a.getState().noteDropped('m5');
+    expect(a.getState().droppedAnswers).toEqual(['m2', 'm3', 'm4', 'm6', 'm7', 'm8', 'm9', 'm5']);
   });
   it('keeps the attached passage per tab, across sessions: only ×, a new selection or the question that took it changes it', () => {
     const a = createTutorTabStore();
     const b = createTutorTabStore();
     const passage = {
       anchor: { kind: 'pdf', revisionId: '3f0d9a0e-6b1e-4c1e-8f6a-1d2f9b7c5e11', precision: 'span', pageIndex: 0, quads: [[0, 1, 1, 1, 0, 0, 1, 0]], coordinateSpace: 'pdf-user-space', text: { quote: { exact: 'x', prefix: '', suffix: '' } } },
-      text: 'x', pageIndex: 0, multipage: false, long: false, lineStart: 0,
+      text: 'x', pageIndex: 0, multipage: false, long: false, margin: null,
     } as const;
     expect(a.getState().attached).toBeNull();
     a.getState().setAttached(passage as never);

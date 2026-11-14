@@ -510,6 +510,9 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
           // A page drawn again (a zoom, a turn, a page that came back into view) gets the attached passage's mark again.
           markPage(e.pageNumber - 1);
         });
+        // A redraw that is not a CSS zoom resets the page (its layers but the canvas and the text go) before it draws: the mark is put
+        // back as the draw begins, so it does not drop out for the length of the render.
+        eventBus.on('pagerender', (e: { pageNumber: number }) => markPage(e.pageNumber - 1));
         /** The passage attached to the tab's question, when it is of this revision (spec 8.4). */
         const attachedHere = () => {
           const a = scope.tutor.getState().attached;
@@ -520,7 +523,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
           const view = viewer.getPageView(pageIndex) as { div?: HTMLElement; viewport?: MarkViewport } | undefined;
           if (!view?.div || !view.viewport) return;
           const a = attachedHere();
-          if (a?.pageIndex === pageIndex) drawAttached(view.div, a.anchor, view.viewport, a.lineStart);
+          if (a?.pageIndex === pageIndex) drawAttached(view.div, a.anchor, view.viewport, a.margin);
           else drawAttached(view.div, null, view.viewport);
         };
         // A chip of another revision cannot go with a question about this one.

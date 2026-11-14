@@ -1,6 +1,7 @@
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type { PDFViewer } from 'pdfjs-dist/web/pdf_viewer.mjs';
 import { buildPageText, quoteAround, rectsToQuads, TUTOR_LIMITS, type PageText, type PdfSpanAnchor, type Quad } from '@learn/domain';
+import { marginOf, toFrame, type MarkMargin, type TextLine, type Turn } from './attachedMark';
 
 /**
  * A selection in a page's text layer as a span anchor of that page (spec 8.4, ADR-0009): its page-text offsets, its quads and its quote.
@@ -16,17 +17,20 @@ export interface PageView {
   renderingState: number;
 }
 
-/** An item's line as lineStartOf reads it: whether a line ends after it, and the start of its baseline and its height (page space); null: drawn at an angle. */
-export interface ItemLine {
+/**
+ * Where an item of the page's text sits: whether a line ends after it, and — for text set square to the page — the start of its baseline,
+ * its height, its length along the text and the direction it runs in (page space); null for text set at another angle.
+ */
+export interface ItemGeom {
   hasEOL: boolean;
-  at: { x: number; y: number; h: number } | null;
+  at: { x: number; y: number; h: number; w: number; turn: Turn } | null;
 }
 
-/** A page's text as its text layer was made from it: the text, which items are empty (no span), and each item's line. */
+/** A page's text as its text layer was made from it: the text, which items are empty (no span), and where each item sits. */
 export interface LoadedText {
   page: PageText;
   empty: boolean[];
-  lines: ItemLine[];
+  items: ItemGeom[];
 }
 
 /** A page's text with the span of each item that has text, by item index; null for an empty item (pdf.js makes no span for it). */
@@ -40,14 +44,18 @@ interface TextItem {
   str: string;
   hasEOL?: boolean;
   transform?: number[];
+  width?: number;
 }
 
 const texts = new WeakMap<PDFDocumentProxy, Map<number, Promise<LoadedText>>>();
 
-/** An upright item's baseline start and height; null for one turned or skewed. */
-function lineOf(item: TextItem): ItemLine['at'] {
+/** Where an item sits, when its text runs square to the page (any of the four ways); null when it is set at another angle. */
+function geomOf(item: TextItem): ItemGeom['at'] {
   const [a = 0, b = 0, c = 0, d = 0, x = 0, y = 0] = item.transform ?? [];
-  return a > 0 && d > 0 && Math.abs(b) < 1e-6 && Math.abs(c) < 1e-6 ? { x, y, h: Math.hypot(c, d) } : null;
+  const angle = (Math.atan2(b, a) * 180) / Math.PI;
+  const turn = (((Math.round(angle / 90) * 90) % 360) + 360) % 360;
+  if (Math.abs(angle - Math.round(angle / 90) * 90) > 1 || Math.hypot(a, b) === 0) return null;
+  return { x, y, h: Math.hypot(c, d), w: item.width ?? 0, turn: turn as Turn };
 }
 
 /** The page's text, read once per document: the same request the viewer's text layer makes, so the items are the ones its spans were made from. */
@@ -64,7 +72,7 @@ export function pageTextOf(doc: PDFDocumentProxy, pageIndex: number): Promise<Lo
         return {
           page: buildPageText(items.map((i) => ({ str: i.str, hasEOL: i.hasEOL === true }))),
           empty: items.map((i) => i.str === ''),
-          lines: items.map((i) => ({ hasEOL: i.hasEOL === true, at: lineOf(i) })),
+          items: items.map((i) => ({ hasEOL: i.hasEOL === true, at: geomOf(i) })),
         };
       });
     pages.set(pageIndex, hit);
@@ -164,7 +172,7 @@ export function spanAnchor(m: PageModel, range: Range, o: { start: number; end: 
   };
 }
 
-/** At most 4,000 characters of the selection's first page (J46), never ending inside a surrogate pair; `long` when it was cut. */
+/** At most 4,000 characters of the selection's first page (spec 8.4), never ending inside a surrogate pair; `long` when it was cut. */
 export function clipAttached(text: string): { text: string; long: boolean } {
   const max = TUTOR_LIMITS.selectionChars;
   if (text.length <= max) return { text, long: false };
@@ -173,25 +181,36 @@ export function clipAttached(text: string): { text: string; long: boolean } {
 }
 
 /**
- * Where the line of item `first` begins, in page space: the leftmost item on its baseline among the items read with it since the last
- * line end (a column beside it is another line of the text, read before or after). Null when the item is not upright.
+ * The page's lines in reading order (an item that ends a line ends one), in the frame of text running `turn`: where each begins and ends
+ * along the text, its baseline and its height, from its items that run that way. An item of no length only ends a line: pdf.js puts such
+ * an empty item, standing where the next run of text begins (the title above, the footnote below), between two lines. `lineOfItem` names
+ * each item's line (−1: none).
  */
-export function lineStartOf(items: readonly ItemLine[], first: number): number | null {
-  const at = items[first]?.at;
-  if (!at) return null;
-  let x = at.x;
-  for (let i = first - 1; i >= 0; i--) {
-    const item = items[i]!;
-    if (item.hasEOL) break;
-    if (item.at && Math.abs(item.at.y - at.y) <= at.h / 2) x = Math.min(x, item.at.x);
+export function pageLines(items: readonly ItemGeom[], turn: Turn): { lines: TextLine[]; lineOfItem: number[] } {
+  const lines: TextLine[] = [];
+  const lineOfItem: number[] = [];
+  let open: TextLine | null = null;
+  for (const item of items) {
+    const at = item.at;
+    if (at !== null && at.turn === turn && at.w > 0) {
+      const [u, v] = toFrame(turn, at.x, at.y);
+      if (open === null) lines.push((open = { start: u, end: u + at.w, base: v, h: at.h }));
+      else {
+        open.start = Math.min(open.start, u);
+        open.end = Math.max(open.end, u + at.w);
+        open.h = Math.max(open.h, at.h);
+      }
+    }
+    lineOfItem.push(open === null ? -1 : lines.length - 1);
+    if (item.hasEOL) open = null;
   }
-  return x;
+  return { lines, lineOfItem };
 }
 
 /**
- * What a question carries of a selection (spec 8.4, J46): the span anchor of its start page and that page's text of it (at most 4,000
- * characters), `multipage` when it went on to another page, `long` when it was cut, and `lineStart` — the page-space x where the lines
- * it covers begin, which the page mark's bar stands left of.
+ * What a question carries of a selection (spec 8.4): the span anchor of its start page and that page's text of it (at most 4,000
+ * characters), `multipage` when it went on to another page, `long` when it was cut, and `margin` — where the page mark's bars stand,
+ * one beside each run of the lines it covers (null for text set at an angle: the mark then finds the runs on the screen).
  */
 export interface AttachableSelection {
   anchor: PdfSpanAnchor;
@@ -199,7 +218,19 @@ export interface AttachableSelection {
   pageIndex: number;
   multipage: boolean;
   long: boolean;
-  lineStart: number;
+  margin: MarkMargin | null;
+}
+
+/** The bars of the page text `start`..`stop` (item indices `first`..`last`): one per run of its lines, in the frame its text runs in. */
+function marginFor(items: readonly ItemGeom[], first: number, last: number, quads: readonly Quad[]): MarkMargin | null {
+  const turn = items[first]?.at?.turn;
+  if (turn === undefined) return null;
+  const { lines, lineOfItem } = pageLines(items, turn);
+  const from = lineOfItem[first] ?? -1;
+  const to = Math.max(...lineOfItem.slice(first, last + 1));
+  if (from < 0 || to < from) return null;
+  const margin = marginOf(lines, from, to, quads, turn);
+  return margin.bars.length > 0 ? margin : null;
 }
 
 const elementOf = (node: Node): Element | null => (node instanceof Element ? node : node.parentElement);
@@ -232,7 +263,6 @@ export async function attachableSelection(o: { doc: PDFDocumentProxy; viewer: PD
   const stop = start + kept.text.length;
   const anchor = spanAnchor(m, kept.long ? rangeOf(m, start, stop) : range, { start, end: stop, revisionId: o.revisionId, pageIndex });
   if (anchor === null) return null;
-  const left = Math.min(...anchor.quads.map((q) => Math.min(q[0], q[4])));
-  const lineStart = Math.min(left, lineStartOf(text.lines, place(m, start, 'start').item) ?? left);
-  return { anchor, text: kept.text, pageIndex, multipage, long: kept.long, lineStart };
+  const margin = marginFor(text.items, place(m, start, 'start').item, place(m, stop, 'end').item, anchor.quads);
+  return { anchor, text: kept.text, pageIndex, multipage, long: kept.long, margin };
 }

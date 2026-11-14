@@ -82,12 +82,21 @@ export interface TutorTabStore {
   waiting: WaitingQuestion | null;
   setWaiting(w: WaitingQuestion | null): void;
   /**
-   * The passage the reader's last selection attached to the next question (spec 8.4, J46): one chip over the composer, marked on its
+   * The passage the reader's last selection attached to the next question (spec 8.4): one chip over the composer, marked on its
    * page. It stays when the page's selection goes, and changes only with ×, a new selection or the question that took it with it.
    */
   attached: AttachableSelection | null;
   setAttached(a: AttachableSelection | null): void;
+  /**
+   * The answers of this tab's sessions that failed before any answer (their rows may be gone): the newest few, so a question whose
+   * failure notice came before tutor:ask's own answer does not start a live answer that nothing would end.
+   */
+  droppedAnswers: readonly string[];
+  noteDropped(messageId: string): void;
 }
+
+/** How many dropped answers a tab remembers: only a question still on its way can meet one. */
+const DROPPED_KEPT = 8;
 
 export interface CurrentCite {
   key: string;
@@ -128,6 +137,8 @@ export function createTutorTabStore(tabId = ''): StoreApi<TutorTabStore> {
     setWaiting: (waiting) => set({ waiting }),
     attached: null,
     setAttached: (attached) => set({ attached }),
+    droppedAnswers: [],
+    noteDropped: (messageId) => set(({ droppedAnswers }) => ({ droppedAnswers: [...droppedAnswers.filter((m) => m !== messageId), messageId].slice(-DROPPED_KEPT) })),
   }));
 }
 

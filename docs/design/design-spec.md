@@ -180,6 +180,7 @@
 | `--image-bg-light` / `--image-bg-dark` | 93.2% / 17.5%(두 테마 같은 값 — chroma 0.004, hue 250) | 이미지 무대의 바탕 '밝게' · '어둡게'(M7c). 테마가 아니라 리더의 선택이라 두 테마에서 같다. 밝게는 PDF 쪽 뒤 바탕(`--bg-sunken` 라이트)과 같은 면, 어둡게는 그 다크와 같은 면 |
 | `--image-checker-a` / `-b` | 80% / 92%(chroma 0, 두 테마 같음) | 체크무늬 8px 두 칸, `background-attachment: local`(끌면 무늬가 그림과 함께 움직인다) |
 | `--image-focus-light` / `-dark` / `-checker` | `oklch(57% .096 190)` / `oklch(72% .11 190)` / `oklch(48% .08 190)`(두 테마 같음) | 이미지 무대의 포커스 링. 앱 테마가 아니라 고른 배경을 따른다 — 모든 바탕에서 3:1 이상(`tokens.test.ts`, M7c R50) |
+| `--page-{original,sepia,dark}-attach-wash` / `-attach-bar` | 원본 검정 8% / `oklch(53% .088 190)` · 세피아 `oklch(35% .04 70 / .1)` / `oklch(50% .088 190)` · 어둡게 흰 12% / `oklch(72% .1 190)` | 튜터 질문에 붙은 구간의 쪽 위 표시(T1a): 줄 위의 옅은 면과 여백 막대. 앱 테마가 아니라 쪽 색을 따른다 — 막대는 각 쪽 색 위에서 3:1 이상(5.05 · 4.97 · 6.93:1), 면 아래 쪽 글자는 4.5:1 이상(`tokens.test.ts`). 찾기 색이 아니다 |
 | `--danger/-warning/-success`(+`-text`, `-soft`) | | | 의미색. 글자는 `-text`만 쓴다. |
 
 - 강조색은 Linear식 base/accent/contrast: `accent`(채움) ↔ `textOnAccent`(흰 글자, 4.5:1 이상) ↔ `accentText`(면 위 글자, 4.5:1 이상). 다크의 채움은 라이트보다 어둡다(흰 글자 대비 때문). 모든 값은 sRGB 색역 안(생성기가 확인).

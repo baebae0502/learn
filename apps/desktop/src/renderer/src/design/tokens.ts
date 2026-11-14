@@ -229,11 +229,19 @@ export const tagColors = [
   { position: 8, id: 'gray', name: '회색', hex: '#aaaaaa' },
 ] as const;
 
-/** Reader page themes (independent of the app theme; default follows the app theme). */
+/**
+ * Reader page themes (independent of the app theme; default follows the app theme). `attachWash` and `attachBar`: the mark of the
+ * passage attached to a tutor question — a neutral wash over its lines and a bar in the margin (3:1 on the page, tokens.test.ts) —
+ * which follows the page's colour, never the app theme's.
+ */
 export const pageThemes = {
-  original: { bg: '#ffffff', text: '#1b1d20', muted: '#5f646b', rule: '#d9dce1' },
-  sepia: { bg: 'oklch(95.2% 0.028 85)', text: 'oklch(34% 0.035 60)', muted: 'oklch(50% 0.035 65)', rule: 'oklch(85% 0.03 80)' },
-  dark: { bg: 'oklch(24% 0.004 250)', text: 'oklch(88% 0.004 250)', muted: 'oklch(70% 0.006 250)', rule: 'oklch(36% 0.005 250)' },
+  original: { bg: '#ffffff', text: '#1b1d20', muted: '#5f646b', rule: '#d9dce1', attachWash: 'oklch(0% 0 0 / 0.08)', attachBar: 'oklch(53% 0.088 190)' },
+  sepia: {
+    bg: 'oklch(95.2% 0.028 85)', text: 'oklch(34% 0.035 60)', muted: 'oklch(50% 0.035 65)', rule: 'oklch(85% 0.03 80)', attachWash: 'oklch(35% 0.04 70 / 0.1)', attachBar: 'oklch(50% 0.088 190)',
+  },
+  dark: {
+    bg: 'oklch(24% 0.004 250)', text: 'oklch(88% 0.004 250)', muted: 'oklch(70% 0.006 250)', rule: 'oklch(36% 0.005 250)', attachWash: 'oklch(100% 0 0 / 0.12)', attachBar: 'oklch(72% 0.1 190)',
+  },
 } as const;
 
 /** Highlight opacity per page theme (highlights blend with `multiply` on light pages). */

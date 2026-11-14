@@ -17,6 +17,8 @@ vi.mock('../api', async (original) => ({
 }));
 
 const { sendQuestion, waitEnded } = await import('./useSend');
+const { hearTurn } = await import('./useTurnEvents');
+const { answerComingIn } = await import('./useSessionThread');
 const { readerScopes } = await import('../viewers/readerScope');
 const { queryClient } = await import('../data/query-client');
 const { keys } = await import('../data/queries');
@@ -151,10 +153,10 @@ describe('a question that waits for another session\'s answer is sent once that 
   });
 });
 
-describe('the passage attached in the composer goes with the question, and the answer is heard from its start (Task 19)', () => {
+describe('the passage attached in the composer goes with the question, and the answer is heard from its start', () => {
   const passage = {
     anchor: { kind: 'pdf', revisionId: '3f0d9a0e-6b1e-4c1e-8f6a-1d2f9b7c5e11', precision: 'span', pageIndex: 0, quads: [[0, 1, 1, 1, 0, 0, 1, 0]], coordinateSpace: 'pdf-user-space', text: { quote: { exact: '구간', prefix: '', suffix: '' } } },
-    text: '구간', pageIndex: 0, multipage: false, long: false, lineStart: 0,
+    text: '구간', pageIndex: 0, multipage: false, long: false, margin: null,
   } as const;
   beforeEach(() => {
     tab().setAttached(passage as never);
@@ -172,6 +174,28 @@ describe('the passage attached in the composer goes with the question, and the a
     await sent;
     expect(tab().attached).toBeNull();
     expect(tab().live).toMatchObject({ tutorMessageId: MADE.tutorMessageId, text: '', fromStart: true });
+  });
+
+  it('a new session\'s first question: the tab moved to the session main made before tutor:ask answered — still heard from its start', async () => {
+    const sent = sendQuestion(scope, '이 구간은?', 'fake');
+    await drain();
+    // main's notice that the session was made comes before its answer to tutor:ask, and moves the tab there.
+    tab().setConversation(MADE.conversationId);
+    asks[0]!.settle(ok(MADE));
+    await sent;
+    expect(tab().conversationId).toBe(MADE.conversationId);
+    expect(tab().live).toMatchObject({ tutorMessageId: MADE.tutorMessageId, fromStart: true });
+  });
+
+  it('a failure before any answer whose notice came before tutor:ask\'s answer leaves no answer coming', async () => {
+    const sent = sendQuestion(scope, '이 구간은?', 'fake');
+    await drain();
+    tab().setConversation(MADE.conversationId);
+    hearTurn({ conversationId: MADE.conversationId, messageId: MADE.tutorMessageId, kind: 'failed', phase: 'before', code: 'AGENT_START_FAILED' });
+    asks[0]!.settle(ok(MADE));
+    await sent;
+    expect(tab().live).toBeNull();
+    expect(answerComingIn(scope)).toBeNull();
   });
 
   it('keeps the chip when main refuses the question before any row, and while it waits for another session\'s answer', async () => {

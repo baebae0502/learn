@@ -12,6 +12,7 @@ import {
   density,
   inactiveOpacity,
   layout,
+  pageThemes,
   space,
   tagColors,
   typeScale,
@@ -187,6 +188,14 @@ describe('colour tokens', () => {
     // The light and dark rings are the app's own focus colours: a theme's ring on its own ground is what it always was.
     expect(colors.imageFocusLight.light).toBe(colors.focus.light);
     expect(colors.imageFocusDark.dark).toBe(colors.focus.dark);
+  });
+
+  it('the page mark of a passage attached to a tutor question: its bar keeps 3:1 on each page colour, and the page text stays readable under its wash', () => {
+    for (const [name, page] of Object.entries(pageThemes)) {
+      const paper = parseColor(page.bg);
+      expectContrast(`attachBar/${name} page`, parseColor(page.attachBar), paper, 3);
+      expectContrast(`text/attachWash on the ${name} page`, parseColor(page.text), composite(parseColor(page.attachWash), paper), 4.5);
+    }
   });
 
   it('the drop ring (tree row, 컬렉션 heading, table row) and the header drop line are --accent-ring, which keeps 3:1 on the surface and on its own soft fill in both themes', () => {

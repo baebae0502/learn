@@ -21,6 +21,8 @@ declare global {
   interface Window {
     /** The PDF reader's E2E probe (e2e=1 only): a selection's span anchor for a question's attached passage. */
     __learnPdf?: LearnPdfProbe;
+    /** E2E only: whether the active reader holds a selection of its page. */
+    __learnSelection?: { hasRange(): boolean };
   }
 }
 
@@ -1553,7 +1555,7 @@ test('F6 into the tutor\'s panel and ⌃⌘2 land in the composer\'s text area, 
   }
 });
 
-// ---- The passage attached to a question, its page mark, and the outline a question carries (Task 19) ----
+// ---- The passage attached to a question, its page mark, and the outline a question carries (spec 5.1, 8.4) ----
 
 const attachedChip = (page: Page) => page.getByTestId('tutor-attached');
 /** The page mark of the attached passage on page `n` (1-based). */
@@ -1623,6 +1625,13 @@ async function expectMarkOn(page: Page, n: number, passage: string, what: string
   }
 }
 
+/** The tooltip that shows stands 6 px above the chip, centred on it (design-spec 6; the mockup anchors it on the whole chip). */
+async function expectTooltipOverChip(page: Page): Promise<void> {
+  const [tip, chip] = [(await page.getByRole('tooltip').boundingBox())!, (await attachedChip(page).boundingBox())!];
+  expect(Math.abs(chip.y - (tip.y + tip.height) - 6), 'the tooltip is 6 above the chip').toBeLessThanOrEqual(1);
+  expect(Math.abs(chip.x + chip.width / 2 - (tip.x + tip.width / 2)), 'the tooltip is centred on the chip').toBeLessThanOrEqual(1);
+}
+
 test('a selection in the reader attaches itself to the next question: one chip of its page, its tooltip and ×, marked on the page through a zoom and a turn; it stays when the page\'s selection goes, × takes it off, and the question carries it', async ({}, testInfo) => {
   const { app, page } = await atSession(testInfo);
   try {
@@ -1643,6 +1652,7 @@ test('a selection in the reader attaches itself to the next question: one chip o
     // The tooltip says it goes with the question; × says what it takes off.
     await hoverOver(page, chip.getByTestId('tutor-attached-label'));
     await expectTooltipText(page, '질문에 붙은 구간 · 1쪽 — 질문과 함께 보냅니다', 'tutor-attached-label');
+    await expectTooltipOverChip(page);
     const remove = chip.getByTestId('tutor-attached-remove');
     // Drawn 16 square, pressed 28 square (spec 8.11): a point 5 px past its drawn edges, either side, is still the ×.
     const x = (await remove.boundingBox())!;
@@ -1654,7 +1664,15 @@ test('a selection in the reader attaches itself to the next question: one chip o
     await expect(remove).toHaveAccessibleDescription('질문에 붙은 구간 · 1쪽 — 질문과 함께 보냅니다');
     await hoverOver(page, remove);
     await expectTooltipText(page, '구간 떼기', 'tutor-attached-remove');
+    await expectTooltipOverChip(page);
     await expectNoSeriousA11y(page, 'tutor composer with an attached passage');
+
+    // The page's selection goes (the reader lets go of it once 300 ms pass, as of a keyboard selection): the chip and its mark stay.
+    expect(await page.evaluate(() => window.__learnSelection!.hasRange()), 'the reader holds the selection').toBe(true);
+    await page.evaluate(() => window.getSelection()!.removeAllRanges());
+    await expect.poll(() => page.evaluate(() => window.__learnSelection!.hasRange())).toBe(false);
+    await expect(chip).toBeVisible();
+    await expect(pageMark(page, 1).locator('.attached')).toHaveCount(1);
 
     // A zoom and a quarter turn draw the page again: the mark is drawn again for it.
     await setPdfZoom(page, 2);
@@ -1666,12 +1684,6 @@ test('a selection in the reader attaches itself to the next question: one chip o
     await runMenuCommand(app, 'reader.rotateCcw');
     await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rotation', '0');
     await setPdfZoom(page, 'auto');
-
-    // The page's selection goes (past the 300 ms a keyboard selection settles in): the chip and its mark stay.
-    await page.evaluate(() => window.getSelection()!.removeAllRanges());
-    await page.waitForTimeout(600);
-    await expect(chip).toBeVisible();
-    await expect(pageMark(page, 1).locator('.attached')).toHaveCount(1);
 
     // × is the chip's Tab stop, just before the text area; it takes the chip and its mark off, and the focus goes to the text area.
     await composerInput(page).focus();
@@ -1693,6 +1705,8 @@ test('a selection in the reader attaches itself to the next question: one chip o
     await expect(chip).toHaveCount(0);
     await expect(page.locator('[data-testid="pdf-attached"]')).toHaveCount(0);
     await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'complete');
+    // A new session's first question: its answer was drawn as it came (the mark of its first text, made only for a live answer).
+    expect(await page.evaluate(() => performance.getEntriesByName('learn:tutor:first-text-paint').length), 'the answer was drawn as it came').toBeGreaterThan(0);
     await expect(page.getByTestId('tutor-answer').getByTestId('tool-chip').first()).toHaveText('선택한 구간 확인');
     await expect(question.getByTestId('sent-scope')).toHaveAccessibleName(/^선택\s1\s·\s자료\s1$/);
     const said = (await tutorFakeLog(app)).filter((e) => e.t === 'prompt').at(-1)!.blocks.map((b) => b.text).join('\n');
@@ -1727,8 +1741,8 @@ test('a selection across two pages attaches the first page\'s text only, and one
     await hoverOver(page, chip.getByTestId('tutor-attached-label'));
     await expectTooltipText(page, '질문에 붙은 구간 · 1쪽 — 질문과 함께 보냅니다여러 쪽에 걸친 선택은 첫 쪽의 글만 붙습니다.', 'tutor-attached-label');
     await expect(page.getByRole('tooltip').locator('.tooltip-note')).toHaveText('여러 쪽에 걸친 선택은 첫 쪽의 글만 붙습니다.');
-    await expect(pageMark(page, 2)).toHaveCount(0);
     await expect(pageMark(page, 1).locator('.attached')).not.toHaveCount(0);
+    await expect(pageMark(page, 2)).toHaveCount(0);
     await sendFromComposer(page, '이 부분은 무엇을 말하나요?');
     await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'complete');
     const [first] = await answersOf(page, itemId);
@@ -1752,6 +1766,14 @@ test('a selection across two pages attaches the first page\'s text only, and one
     // The mark covers what goes: not the last lines of the page.
     const markBottom = (await boxesOf(page, '.pdfViewer .page[data-page-number="2"] [data-testid="pdf-attached"] .attached'))!.bottom;
     expect(markBottom).toBeLessThan((await selectionBox(page))!.bottom - 5);
+    // From the keyboard, × shows the same second line under its name.
+    await page.mouse.move(5, 5);
+    await composerInput(page).focus();
+    await page.keyboard.press('Shift+Tab');
+    await expect(chip.getByTestId('tutor-attached-remove')).toBeFocused();
+    await expectTooltipText(page, '구간 떼기앞 4,000자만 보냅니다.', 'tutor-attached-remove');
+    await expectTooltipOverChip(page);
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await sendFromComposer(page, '이 쪽을 요약해 주세요.');
     await expect(page.getByTestId('tutor-question')).toHaveCount(2);
     await expect(page.getByTestId('tutor-answer').last()).toHaveAttribute('data-status', 'complete');
@@ -1760,6 +1782,94 @@ test('a selection across two pages attaches the first page\'s text only, and one
     const long = again.data.messages.filter((m) => m.role === 'user').at(-1)!.attached!;
     expect(long.pageIndex).toBe(1);
     expect(long.quote).toBe(text2.slice(0, 4000).normalize('NFC'));
+  } finally {
+    await app.close();
+  }
+});
+
+/** The text spans of page `n`, in reading order: their words, where they start in the page text, their boxes (client px). */
+const spansOf = (page: Page, n: number) =>
+  page.evaluate(async (n) => {
+    const text = await window.__learnPdf!.pageText(n - 1);
+    let cursor = 0;
+    return [...document.querySelectorAll(`.page[data-page-number="${n}"] .textLayer span:not(.markedContent)`)].map((el) => {
+      const words = el.textContent ?? '';
+      const at = text.indexOf(words, cursor);
+      cursor = at + words.length;
+      const r = el.getBoundingClientRect();
+      return { words, at, left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+    });
+  }, n);
+/** The page mark's boxes on page `n` (client px). */
+const markBoxes = (page: Page, n: number, what: 'attached' | 'attach-bar') =>
+  page.locator(`.pdfViewer .page[data-page-number="${n}"] [data-testid="pdf-attached"] .${what}`).evaluateAll((els) =>
+    els.map((el) => {
+      const r = el.getBoundingClientRect();
+      return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+    }),
+  );
+
+test('the page mark stands a bar beside each run of attached lines: one left of each column a passage crosses, none beside lines that do not go', async ({}, testInfo) => {
+  const { app, page } = await atSession(testInfo);
+  try {
+    await page.waitForFunction(() => window.__learnPdf !== undefined);
+    // Page 3: from the middle of column 1's third line from its foot into column 2's second line.
+    await selectInPage(page, 2, 0, 5);
+    const spans = await spansOf(page, 3);
+    const mid = (Math.min(...spans.map((x) => x.left)) + Math.max(...spans.map((x) => x.right))) / 2;
+    const body = spans.slice(1).filter((x) => !x.words.includes('Footnote'));
+    const [col1, col2] = [body.filter((x) => x.left < mid), body.filter((x) => x.left >= mid)];
+    expect(col1.length, 'page 3 has two columns').toBeGreaterThan(10);
+    expect(col2.length, 'page 3 has two columns').toBeGreaterThan(10);
+    const from = col1.at(-3)!;
+    const to = col2[1]!;
+    await selectInPage(page, 2, from.at + 5, to.at + to.words.length - 3);
+    await expect(attachedChip(page)).toHaveAttribute('data-page', '3');
+    await expect.poll(async () => (await markBoxes(page, 3, 'attach-bar')).length).toBe(2);
+    const [bar1, bar2] = (await markBoxes(page, 3, 'attach-bar')).sort((a, b) => a.left - b.left);
+    const col1Left = Math.min(...col1.map((x) => x.left));
+    const col1Right = Math.max(...col1.map((x) => x.right));
+    const col2Left = Math.min(...col2.map((x) => x.left));
+    // Column 1's bar in the page's margin, beside its three lines; column 2's in the gutter, beside its two (within the anchors' 2 pt).
+    const twoPoints = 2 * (96 / 72) * Number(await page.getByTestId('pdf-viewer').getAttribute('data-scale'));
+    expect(bar1!.right).toBeLessThan(col1Left);
+    expect(Math.abs(bar1!.top - from.top)).toBeLessThanOrEqual(twoPoints);
+    expect(Math.abs(bar1!.bottom - col1.at(-1)!.bottom)).toBeLessThanOrEqual(twoPoints);
+    expect(bar2!.left).toBeGreaterThan(col1Right);
+    expect(bar2!.right).toBeLessThan(col2Left);
+    expect(Math.abs(bar2!.top - col2[0]!.top)).toBeLessThanOrEqual(twoPoints);
+    expect(Math.abs(bar2!.bottom - to.bottom)).toBeLessThanOrEqual(twoPoints);
+
+    // Page 1, from "We propose…" on to page 2: the title is read after it (above it), then the columns. No bar runs beside the two
+    // sentences before the passage; every washed line has a bar beside it.
+    const text1 = await page.evaluate(() => window.__learnPdf!.pageText(0));
+    await selectInPage(page, 1, 0, 10);
+    await selectInPage(page, 0, text1.indexOf('We propose'), text1.indexOf('We propose') + 5);
+    await page.evaluate(() => {
+      const sel = window.getSelection()!;
+      const range = sel.getRangeAt(0).cloneRange();
+      range.setEnd(document.querySelector('.page[data-page-number="2"] .textLayer span:not(.markedContent)')!.firstChild!, 5);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    });
+    await expect(attachedChip(page)).toHaveAttribute('data-multipage', '');
+    await expect.poll(async () => (await markBoxes(page, 1, 'attach-bar')).length).toBeGreaterThan(1);
+    const bars = await markBoxes(page, 1, 'attach-bar');
+    const washes = await markBoxes(page, 1, 'attached');
+    const page1 = await spansOf(page, 1);
+    for (const words of ['Attention is all you need.', 'The dominant sequence transduction models are based on complex recurrent neural networks.']) {
+      const line = page1.find((x) => x.words === words)!;
+      const centre = (line.top + line.bottom) / 2;
+      expect(bars.filter((b) => b.top <= centre && b.bottom >= centre), `no bar beside "${words.slice(0, 20)}…"`).toEqual([]);
+    }
+    for (const w of washes) {
+      // The nearest bar to its left that spans it is its own column's: no other washed line stands between them.
+      const beside = bars.filter((b) => b.right < w.left && b.top <= w.top + 1 && b.bottom >= w.bottom - 1);
+      const where = `${Math.round(w.left)}, ${Math.round(w.top)}`;
+      expect(beside.length, `a bar beside the washed line at ${where}`).toBeGreaterThan(0);
+      const nearest = beside.reduce((a, b) => (b.right > a.right ? b : a));
+      expect(washes.filter((o) => o !== w && o.right <= w.left && o.left >= nearest.right && o.bottom > w.top + 1 && o.top < w.bottom - 1), `the bar beside the washed line at ${where} is its own column's`).toEqual([]);
+    }
   } finally {
     await app.close();
   }

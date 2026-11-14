@@ -34,7 +34,7 @@ async function carrying(id: string, run: () => Promise<void>): Promise<void> {
 
 /**
  * The reader's numbers a question carries: its page, its page count and its outline as far as the tab's cache has resolved it — never
- * waited for (spec 5.1, J25, J63). Null while the PDF is still opening.
+ * waited for (spec 5.1). Null while the PDF is still opening.
  */
 function readerNow(scope: ReaderScope): TutorAskInput['reader'] | null {
   const { pdf, outline } = scope.reader.getState();
@@ -110,13 +110,19 @@ async function ask(scope: ReaderScope, text: string): Promise<boolean> {
   if ((tab.drafts[key] ?? '').trim() === text) tab.setDraft(key, '');
   if (attached !== null && tab.attached === attached) tab.setAttached(null);
   tab.setWaiting(null);
-  if (tab.conversationId === from) {
-    tab.setConversation(answer.data.conversationId);
-    // This tab's own question: its answer is heard from the start (notices before this one made it already), whatever order main's
-    // notices and its answer to the read below arrive in — a read that came first must not leave the answer to the 2 s re-reads.
-    const { live, setLive } = scope.tutor.getState();
-    const id = answer.data.tutorMessageId;
-    setLive(live?.tutorMessageId === id ? { ...live, fromStart: true } : { tutorMessageId: id, text: '', tools: [], running: null, verifiedSoFar: new Set(), fromStart: true });
+  if (tab.conversationId === from) tab.setConversation(answer.data.conversationId);
+  // This tab's own question, the tab on its session (a new session's first question moved it there already, through main's notice
+  // that the session was made): its answer is heard from the start (notices before this one made it already), whatever order main's
+  // notices and the rows a read brings arrive in — a read that came first must not leave the answer to the 2 s re-reads. An answer
+  // already dropped (its failure before any answer came first) has nothing left to hear.
+  const now = scope.tutor.getState();
+  const id = answer.data.tutorMessageId;
+  if (now.conversationId === answer.data.conversationId) {
+    if (now.droppedAnswers.includes(id)) {
+      if (now.live?.tutorMessageId === id) now.setLive(null);
+    } else {
+      now.setLive(now.live?.tutorMessageId === id ? { ...now.live, fromStart: true } : { tutorMessageId: id, text: '', tools: [], running: null, verifiedSoFar: new Set(), fromStart: true });
+    }
   }
   void queryClient.invalidateQueries({ queryKey: keys.sessionThread(answer.data.conversationId) });
   return false;
@@ -189,14 +195,15 @@ export async function sendQuestion(scope: ReaderScope, text: string, agent: Agen
   const question = text.trim();
   const tab = scope.tutor.getState();
   if (question === '' || agent === null || onTheWay(scope.id) || tab.waiting !== null || answerComingIn(scope) !== null || readerNow(scope) === null) return;
-  // Where tutor-perf times a send from (to its first text painted, Bubble.tsx).
-  perfMarkLatest('tutor:send');
+  // perfMarkLatest('tutor:send'): where tutor-perf times a send from (to its first text painted, Bubble.tsx) — only a send that goes.
   if (knownReady(agent)) {
+    perfMarkLatest('tutor:send');
     await carrying(scope.id, () => askAndFollow(scope, question));
     return;
   }
   const check = recheckAgent(agent);
   if (check === null) return;
+  perfMarkLatest('tutor:send');
   await carrying(scope.id, async () => {
     await check;
     await askAndFollow(scope, question);

@@ -2,7 +2,7 @@
 // piece). T1a has one real agent and one company: the card says Claude Code and Anthropic, as the approved mockup does.
 // Rows join this file with the task that draws them: the mode segment, the consent card, the off state, the agent chooser, the
 // conversation (Task 17: the empty session, the chips, the sent-scope line and list, the lines under an answer, 최신으로), the
-// composer with its agent button and menu (Task 18), and the passage attached to a question (Task 19).
+// composer with its agent button and menu (Task 18), and the passage attached to a question.
 import { SPIKE_FACTS, type AgentId } from '@learn/domain';
 import { euroRo } from './josa';
 
@@ -152,7 +152,7 @@ export const tutor = {
     dontSend: '보내지 않기',
   },
   /**
-   * The passage attached to the next question (spec 8.4, J46; the approved mockup's chip and its tooltip): its page and words on one
+   * The passage attached to the next question (spec 8.4; the approved mockup's chip and its tooltip): its page and words on one
    * line, the tooltip's second line when only part of the selection goes, and the ×.
    */
   attached: {

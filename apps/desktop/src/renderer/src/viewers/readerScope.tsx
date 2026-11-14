@@ -181,9 +181,12 @@ declare global {
     __learnReader?: ReturnType<typeof learnReaderHook>;
     /** E2E only: what the image reader shows. */
     __learnImage?: ReturnType<typeof learnImageHook>;
+    /** E2E only: whether the active reader holds a selection of its page (the range the translation pop-up and the tutor take). */
+    __learnSelection?: { hasRange(): boolean };
   }
 }
 if (typeof window !== 'undefined' && readWindowParams(window.location.search).e2e) {
   window.__learnReader = learnReaderHook();
   window.__learnImage = learnImageHook();
+  window.__learnSelection = { hasRange: () => currentScope().selection.getState().range !== null };
 }

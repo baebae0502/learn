@@ -820,7 +820,7 @@
   .tutor-attach .x::before {
     content: '';
     position: absolute;
-    inset: -6px;
+    inset: calc(var(--space-6) * -1);
   }
   /* The chip under the pointer shows its × as the way to take it off (mockup .attach.is-hover). */
   .tutor-attach:hover .x,

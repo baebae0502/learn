@@ -6,7 +6,7 @@ import { createReaderStore } from './readerStore';
 
 const row = (id: string, depth: number, title: string): OutlineRow => ({ id, title, depth, dest: null, url: null, children: [] });
 
-describe('the outline a question carries (spec 5.1, P-13, J25)', () => {
+describe('the outline a question carries (spec 5.1)', () => {
   it('sends the first 300 entries in reading order, titles cut at 300, and whether their pages are all resolved', () => {
     const flat = Array.from({ length: 400 }, (_, i) => row(String(i), i % 10, i === 0 ? 'x'.repeat(400) : `e${i}`));
     const pages = new Map(flat.slice(0, 299).map((r, i) => [r.id, i + 1]));

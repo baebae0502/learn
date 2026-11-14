@@ -12,9 +12,9 @@ import type { LearnPdfProbe } from '../../../apps/desktop/src/renderer/src/viewe
 import {
   FIXTURES, addToCollection, assignTag, backupPause, backupResume, backupWaiting, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, drag, dropSource, expectWindow, holdCopies, holdJob, imageState, importFiles as importFilesNow, importPause, importPaths as importNow, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, requestLibraryCheck, rowAt, recordedPopups, restorePause, restoreResume, restoreWaiting, rowByTitle, runMenuCommand, seedLibrary, selectInPage, translationFake, seedMetadata, selectRows,
   makeTags, setTagColor, specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubSaveDialog, tagChip, textExtraction, trashItems, treeRow, waitForSheet, waitImportIdle, type Session,
-  backFromReader, runMenuAccelerator, seedSessions, tutorFakeScript, tutorNetwork, tutorProcesses,
+  backFromReader, runMenuAccelerator, seedSessions, tutorFakeScript, tutorKillAgent, tutorNetwork, tutorProcesses,
 } from '../helpers';
-import { READER_100, askViaApi, consentAndChoose, installFakeAgents, turnEnded } from '../tutor-helpers';
+import { READER_100, askViaApi, consentAndChoose, installFakeAgents, nextFakeScript, turnEnded } from '../tutor-helpers';
 import { THEMES, TOUR_VIDEO_BYTES, bodyIndexDone, closeReaderTabs, fixedSizeCopy, importStarting, launchTour, readEndedImports, setTheme, shoot } from './tour';
 
 declare global {
@@ -2548,13 +2548,6 @@ async function sendQuestion(page: Page, text: string): Promise<void> {
   await page.keyboard.press('Enter');
 }
 
-/** The next fake script: the composer let go first, so the fake that ended its turn is closed and nothing starts it before the question. */
-async function nextScript(s: Session, name: Parameters<typeof tutorFakeScript>[1]): Promise<void> {
-  await s.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-  await tutorFakeScript(s.app, name);
-  await expect.poll(async () => (await tutorProcesses(s.app)).count).toBe(0);
-}
-
 /**
  * An answer's frame held still for its pictures: from the `texts`-th piece of an answer's text on, main's tutor and session events to the
  * window wait (the fake streams on and the answer ends in main; the window shows the turn where it was, and follows everything else, as the
@@ -2587,7 +2580,7 @@ async function holdAnswerAfter(app: ElectronApplication, texts: number): Promise
   };
 }
 
-test('T1a tutor: the consent card, 나중에 and the tutor off, the chooser — Claude Code in its five states, the fake chosen, searching again', async ({}, testInfo) => {
+test('T1a tutor: the consent card, 나중에 and the tutor off, the chooser — Claude Code in its five states, opened again over the fake in use, searching again', async ({}, testInfo) => {
   const home = tourHome(testInfo.outputPath());
   const npm = path.join(home, 'npm');
   const install = (layout: Parameters<typeof installFakeAgents>[1]) => {
@@ -2634,9 +2627,18 @@ test('T1a tutor: the consent card, 나중에 and the tutor off, the chooser — 
     }
     await expect(claude.getByRole('radio')).toBeChecked();
 
-    // The fake chosen in its own group (tutor--3-backend-fake): 시작 says so.
+    // The fake started, then 에이전트 고르기… again from the composer's agent menu (tutor--3-backend-fake): the fake's band over the
+    // chooser, the fake checked in its own group, 시작 says so.
     await page.getByTestId('agent-dev-group').getByTestId('agent-row').click();
+    await page.getByTestId('agent-start').click();
+    await expect(page.getByTestId('tutor-empty')).toBeVisible();
+    await page.getByTestId('tutor-agent').click();
+    await page.getByTestId('tutor-agent-choose').click();
+    await expect(page.getByTestId('tutor-chooser')).toBeVisible();
+    await expect(page.getByTestId('tutor-fake-band')).toBeVisible();
+    await expect(page.getByTestId('agent-dev-group').getByRole('radio')).toBeChecked();
     await expect(page.getByTestId('agent-start')).toHaveText('가짜 에이전트로 시작');
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await noTooltip(page);
     await shootBoth(page, 'tutor-chooser-fake');
 
@@ -2709,7 +2711,7 @@ test('T1a tutor: an empty session, a passage attached, an answer coming, the ans
     }
 
     // 중지: an answer that waits after its first sentence, stopped — what came stays, 중지함 under it (tutor--8-stopped).
-    await nextScript(s, 'permission-pending');
+    await nextFakeScript(s.page, s.app, 'permission-pending');
     await sendQuestion(page, '천천히 답해 주세요.');
     await expect(answer.last().getByTestId('tutor-answer-text')).toHaveText('첫 문장만 보낸 뒤 기다리는 표본 답입니다.');
     await page.keyboard.press('Escape');
@@ -2719,7 +2721,7 @@ test('T1a tutor: an empty session, a passage attached, an answer coming, the ans
     await shootBoth(page, 'tutor-stopped');
 
     // 최신으로 (tutor--5-scrolled): scrolled up while a long answer came, it stays once the answer has ended, unread text below it.
-    await nextScript(s, 'slow');
+    await nextFakeScript(s.page, s.app, 'slow');
     await sendQuestion(page, '더 길게 설명해 주세요.');
     const log = page.getByTestId('tutor-log');
     await expect.poll(() => log.evaluate((el) => el.scrollHeight - el.clientHeight), { timeout: 15_000 }).toBeGreaterThan(600);
@@ -2735,7 +2737,7 @@ test('T1a tutor: an empty session, a passage attached, an answer coming, the ans
   }
 });
 
-test('T1a tutor: cites it did not read with the notice, the reground turn, and a PDF without text', async ({}, testInfo) => {
+test('T1a tutor: cites it did not read with the notice, the reground turn, an answer in Markdown, and a PDF without text', async ({}, testInfo) => {
   const s = await tutorTour(testInfo.outputPath());
   const { app, page } = s;
   try {
@@ -2757,7 +2759,7 @@ test('T1a tutor: cites it did not read with the notice, the reground turn, and a
     await shootBoth(page, 'tutor-unverified-notice');
 
     // 원문 근거로 다시 묻기: a new turn that reads page 1 first, verified; the notice before it keeps its title (tutor--6-reground).
-    await nextScript(s, 'answer');
+    await nextFakeScript(s.page, s.app, 'answer');
     await page.getByTestId('tutor-reground').click();
     await expect(answer).toHaveCount(2);
     await expect(page.getByTestId('tutor-question').last().locator('.bubble p')).toHaveText('1쪽을 먼저 읽고 다시 답해 주세요.');
@@ -2769,6 +2771,18 @@ test('T1a tutor: cites it did not read with the notice, the reground turn, and a
     // The turn that asked again in the middle: the first answer's notice, its title alone, above it.
     await logTo(page, page.getByTestId('tutor-question').last());
     await shootBoth(page, 'tutor-reground');
+
+    // An answer in the tutor's small Markdown, in a new session (tutor--5-msg-doc): a heading, bold and code, lists with cites, a quote.
+    await page.getByTestId('tutor-new-session').click();
+    await expect(page.getByTestId('tutor-empty')).toBeVisible();
+    await nextFakeScript(page, app, 'markdown');
+    await sendQuestion(page, '정리해 주세요.');
+    await expect(answer.last()).toHaveAttribute('data-status', 'complete');
+    await expect(answer.last().locator('pre')).toHaveCount(1);
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await noTooltip(page);
+    await logTo(page);
+    await shootBoth(page, 'tutor-markdown');
 
     // A PDF without text (tutor--4-text-empty): the notice over its empty session, which says only what is true.
     await backFromReader(page);
@@ -2782,7 +2796,7 @@ test('T1a tutor: cites it did not read with the notice, the reground turn, and a
   }
 });
 
-test('T1a tutor failures: offline, before the answer, during it, a tool Learn turned off; Claude Code\'s login', async ({}, testInfo) => {
+test('T1a tutor failures: offline, before the answer, during it, a tool Learn turned off; Claude Code\'s login, at the tutor\'s 320 too, and not ready', async ({}, testInfo) => {
   const s = await tutorTour(testInfo.outputPath());
   const { app, page } = s;
   const failure = page.getByTestId('tutor-failure');
@@ -2802,7 +2816,7 @@ test('T1a tutor failures: offline, before the answer, during it, a tool Learn tu
     await clearComposer();
 
     // Before any answer: the agent stopped (tutor--8-failure-exited).
-    await nextScript(s, 'fail-before');
+    await nextFakeScript(s.page, s.app, 'fail-before');
     await sendQuestion(page, '답하기 전에 멈출 질문입니다.');
     await expect(failure.getByTestId('tutor-failure-title')).toHaveText('가짜 에이전트가 답하기 전에 멈췄습니다');
     await expect(tutorInput(page)).toHaveValue('답하기 전에 멈출 질문입니다.');
@@ -2810,7 +2824,7 @@ test('T1a tutor failures: offline, before the answer, during it, a tool Learn tu
     await clearComposer();
 
     // During the answer: the part that came, cut, and 다시 보내기 (tutor--8-failure-agent).
-    await nextScript(s, 'fail-mid');
+    await nextFakeScript(s.page, s.app, 'fail-mid');
     await sendQuestion(page, '도중에 끊길 질문입니다.');
     const answer = page.getByTestId('tutor-answer');
     await expect(answer.last()).toHaveAttribute('data-status', 'failed');
@@ -2819,7 +2833,7 @@ test('T1a tutor failures: offline, before the answer, during it, a tool Learn tu
     await shootBoth(page, 'tutor-fail-during');
 
     // A tool Learn turned off: the turn stopped, 에이전트 고르기… (tutor--8-failure-lockdown).
-    await nextScript(s, 'lockdown');
+    await nextFakeScript(s.page, s.app, 'lockdown');
     await sendQuestion(page, '목록을 보여 주세요.');
     await expect(answer.last().getByTestId('tutor-failure')).toHaveAttribute('data-code', 'AGENT_LOCKDOWN');
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
@@ -2841,8 +2855,71 @@ test('T1a tutor failures: offline, before the answer, during it, a tool Learn tu
     await expect(login.getByTestId('tutor-failure-copy-text')).toHaveText(/^CLAUDE_CONFIG_DIR="\$HOME\/userdata\/Tutor\/agents\/claude"\s*claude auth login$/);
     await expect(c.page.getByTestId('tutor-agent')).toHaveText('Claude Code · 로그인 필요');
     await shootBoth(c.page, 'tutor-fail-login');
+
+    // Logged in again in a terminal: ↩ checks Claude Code again and asks; a conversation. Then the login lapses once more (the agent
+    // that answered gone, so the next start runs the new install): in a 1000 window the tutor is at its 320 with the conversation and
+    // the command under it (tutor--5-width-320, tutor--8-failure-login-w320).
+    const npm = path.join(home, 'npm');
+    const reinstall = async (layout: Parameters<typeof installFakeAgents>[1]) => {
+      fs.rmSync(npm, { recursive: true, force: true });
+      installFakeAgents(npm, layout);
+      await tutorKillAgent(c.app);
+      await expect.poll(async () => (await tutorProcesses(c.app)).count).toBe(0);
+    };
+    await reinstall({ cli: '2.1.318', adapter: '0.103.0', script: 'answer' });
+    await tutorInput(c.page).focus();
+    await c.page.keyboard.press('Enter');
+    await expect(c.page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'complete', { timeout: 30_000 });
+    await reinstall({ cli: '2.1.318', adapter: '0.103.0', script: 'login-silent' });
+    await sendQuestion(c.page, '로그인이 다시 풀린 뒤의 질문입니다.');
+    await expect(login.getByTestId('tutor-failure-title')).toHaveText('Claude Code 로그인이 필요합니다', { timeout: 30_000 });
+    await expect(login).toBeInViewport();
+    const width = async (w: number) => {
+      await (await mainWindow(c.app)).evaluate((win, w) => win.setContentSize(w, 900), w);
+      await expect.poll(() => c.page.evaluate(() => innerWidth)).toBe(w);
+    };
+    await width(1000);
+    await expect.poll(async () => Math.round((await c.page.getByTestId('inspector-panel').boundingBox())?.width ?? 0)).toBe(320);
+    await expect(login).toBeInViewport();
+    await shootBoth(c.page, 'tutor-narrow-1000');
+
+    // The connection tool gone: ↩ checks Claude Code again, which is not ready — a notice before the answer with 에이전트 고르기…, the
+    // agent button in its warning tone with the state (tutor--8-failure-notready).
+    await width(1440);
+    await reinstall({ cli: '2.1.318', adapter: null });
+    await tutorInput(c.page).focus();
+    await c.page.keyboard.press('Enter');
+    await expect(login.getByTestId('tutor-failure-title')).toHaveText('Claude Code가 준비되지 않았습니다', { timeout: 30_000 });
+    await expect(login.getByRole('button', { name: '에이전트 고르기…' })).toBeVisible();
+    await expect(c.page.getByTestId('tutor-agent')).toHaveText('Claude Code · 연결 도구 필요');
+    await expect(login).toBeInViewport();
+    await shootBoth(c.page, 'tutor-fail-notready');
   } finally {
     await c.app.close();
+  }
+});
+
+test('T1a tutor: the waiting line — a question in another tab while the first tab\'s answer comes', async ({}, testInfo) => {
+  const s = await tutorTour(testInfo.outputPath());
+  const { app, page } = s;
+  try {
+    await importPaths(page, [path.join(FIXTURES, 'long-outline.pdf')]);
+    // The first tab's answer: one sentence, then it waits (it never ends while the pictures are taken).
+    await nextFakeScript(page, app, 'permission-pending');
+    await sendQuestion(page, '천천히 답해 주세요.');
+    await expect(page.getByTestId('tutor-answer').getByTestId('tutor-answer-text')).toHaveText('첫 문장만 보낸 뒤 기다리는 표본 답입니다.');
+    // Another tab: its question waits above the composer, held in it (tutor--8-failure-busy).
+    await backFromReader(page);
+    await openItem(page, 'long-outline');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]/);
+    await expect(page.getByTestId('tutor-empty')).toBeVisible();
+    await sendQuestion(page, '이 논문의 결론은 무엇인가요?');
+    await expect(page.getByTestId('tutor-waiting')).toBeVisible();
+    await expect(tutorInput(page)).toHaveAttribute('readonly');
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await shootBoth(page, 'tutor-fail-busy');
+  } finally {
+    await app.close();
   }
 });
 

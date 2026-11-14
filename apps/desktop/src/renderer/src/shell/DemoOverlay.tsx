@@ -4,6 +4,7 @@ import { useLearnEvent } from '../events';
 import { afterPaint, type Pending } from '../ui/afterPaint';
 import { Kbd } from '../ui/Kbd';
 import { currentPlatform } from '../ui/platform';
+import { useSessionRowFocused } from '../tutor/sessions/useSessionFocus';
 import { commandPill, keyPill, shortcutPill, type DemoPill, type KeyPlace } from './demoPill';
 import { useSidebarHidden } from './useSidebar';
 
@@ -129,18 +130,24 @@ export function DemoOverlay() {
   });
   const lastPointer = useRef<{ x: number; y: number } | null>(null);
   const ringTimers = useRef<Pending[]>([]);
-  // The sidebar state as last drawn, i.e. before a ⌃⌘S that is arriving now: the pill names what the command did.
+  // The sidebar state and the session row's focus as last drawn, i.e. before a ⌃⌘S or ⌘⌫ that is arriving now: the pill names what
+  // the command did, as the menu named it (사이드바 가리기, 세션 삭제).
   const hidden = useSidebarHidden();
   const drawnHidden = useRef(hidden);
+  const sessionFocused = useSessionRowFocused();
+  const drawnSessionFocused = useRef(sessionFocused);
   useEffect(() => {
     drawnHidden.current = hidden;
+    drawnSessionFocused.current = sessionFocused;
   });
   // Its place is fixed here, when it appears (aside under a sheet, or for a command that opens one): a pill on screen
   // never moves (critique round 3 m1).
   const pillFor = (p: DemoPill | null) => {
     if (p) showPill(sheetOpen.current && !p.aside ? { ...p, aside: true } : p, p.held ? null : PILL_MS);
   };
-  useLearnEvent('menuCommand', ({ commandId }) => pillFor(commandPill(commandId, currentPlatform(), drawnHidden.current ? 'hidden' : 'shown')));
+  useLearnEvent('menuCommand', ({ commandId }) =>
+    pillFor(commandPill(commandId, currentPlatform(), { sidebar: drawnHidden.current ? 'hidden' : 'shown', ...(drawnSessionFocused.current ? { sessionFocused: true } : {}) })),
+  );
   useLearnEvent('demoShortcut', (item) => pillFor(shortcutPill(item, currentPlatform())));
   // The latest pill, for the key-up of a held modifier (the listeners below are installed once).
   const pillRef = useRef(pill);

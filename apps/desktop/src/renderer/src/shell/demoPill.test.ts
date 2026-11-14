@@ -21,8 +21,13 @@ describe('demo pills', () => {
     expect(commandPill('view.toggleSidebar', 'darwin')!.aside).toBeUndefined();
   });
   it('name a toggle by what it did: the state before the command ran', () => {
-    expect(commandPill('view.toggleSidebar', 'darwin', 'shown')!.label).toBe('사이드바 가리기');
-    expect(commandPill('view.toggleSidebar', 'darwin', 'hidden')!.label).toBe('사이드바 보기');
+    expect(commandPill('view.toggleSidebar', 'darwin', { sidebar: 'shown' })!.label).toBe('사이드바 가리기');
+    expect(commandPill('view.toggleSidebar', 'darwin', { sidebar: 'hidden' })!.label).toBe('사이드바 보기');
+  });
+  it('name ⌘⌫ on a session row as the menu does: 세션 삭제, not 휴지통으로 이동', () => {
+    expect(commandPill('item.trash', 'darwin', { sessionFocused: true })).toEqual({ keys: ['⌘', '⌫'], label: '세션 삭제' });
+    expect(commandPill('item.trash', 'linux', { sessionFocused: true })).toEqual({ keys: ['Ctrl', 'Backspace'], label: '세션 삭제' });
+    expect(commandPill('item.trash', 'darwin', { sidebar: 'shown' })!.label).toBe('휴지통으로 이동');
   });
   it('show nothing for a command without a shortcut', () => {
     expect(commandPill('item.open', 'darwin')).toBeNull();

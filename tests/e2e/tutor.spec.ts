@@ -1682,6 +1682,9 @@ test('every control of the tutor is a 28 px target or a small one with 4 px clea
     await page.waitForFunction(() => window.__learnPdf !== undefined);
     await selectInPage(page, 0, 0, 30);
     await expect(attachedChip(page)).toBeVisible();
+    // The page's own selection let go, so its translation pop-up is gone before the click (a click while it shows may only close it).
+    await page.evaluate(() => window.getSelection()?.removeAllRanges());
+    await expect(page.getByTestId('selection-popup')).toHaveCount(0);
     await page.getByTestId('tutor-question').getByTestId('sent-scope').click();
     await expect(page.getByTestId('sent-scope-list')).toBeVisible();
     expect(await smallTargets(page, { inline: true }), 'the positive control: an inline cite chip is under 22').toEqual(expect.arrayContaining([expect.stringMatching(/^cite-chip "\d+쪽" \d+×18$/)]));

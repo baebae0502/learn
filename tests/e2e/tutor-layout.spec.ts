@@ -16,23 +16,41 @@ const dirs = (testInfo: { outputPath(...p: string[]): string }) => [testInfo.out
 const contentWidth = async (app: ElectronApplication, width: number) => (await mainWindow(app)).evaluate((w, width) => w.setContentSize(width, w.getContentSize()[1]!), width);
 const zoom = async (app: ElectronApplication, f: number) => (await mainWindow(app)).evaluate((w, f) => w.webContents.setZoomFactor(f), f);
 /**
- * Nothing on screen scrolls sideways: the page, and every box shown in the window that could (a code block in an answer scrolls by
- * design, and a text area wraps).
+ * What scrolls on screen, and which of those are wider than their box (scroll or cut sideways): the page, and every box shown in the
+ * window that scrolls on either axis (`examined`, by test id or class). Three scroll sideways by design and are left out: a code block in
+ * an answer, the reader tabs' strip (design-spec 2.4, M7b: it scrolls in its own area) and a text area, which wraps; an inert (folded)
+ * pane is not on screen.
  */
-const sidewaysScrollers = (page: Page) =>
+const sideways = (page: Page) =>
   page.evaluate(() => {
-    const out: string[] = [];
-    if (document.documentElement.scrollWidth > innerWidth) out.push(`the page ${document.documentElement.scrollWidth} > ${innerWidth}`);
+    const offenders: string[] = [];
+    const examined: string[] = [];
+    if (document.documentElement.scrollWidth > innerWidth) offenders.push(`the page ${document.documentElement.scrollWidth} > ${innerWidth}`);
     for (const el of document.querySelectorAll<HTMLElement>('[data-testid="shell"] *')) {
-      if (el.closest('[inert], pre') !== null || el instanceof HTMLTextAreaElement || el.clientWidth === 0) continue;
+      if (el.closest('[inert], pre, [data-testid="tab-scroll"]') !== null || el instanceof HTMLTextAreaElement || el.clientWidth === 0) continue;
       const cs = getComputedStyle(el);
-      if ((cs.overflowX === 'auto' || cs.overflowX === 'scroll') && el.scrollWidth > el.clientWidth + 1) {
-        out.push(`${el.getAttribute('data-testid') ?? el.className} ${el.scrollWidth} > ${el.clientWidth}`);
-      }
+      if (![cs.overflowX, cs.overflowY].some((o) => o === 'auto' || o === 'scroll')) continue;
+      const name = el.getAttribute('data-testid') ?? el.className;
+      examined.push(name);
+      if (el.scrollWidth > el.clientWidth + 1) offenders.push(`${name} ${el.scrollWidth} > ${el.clientWidth}`);
     }
-    return out;
+    return { offenders, examined };
   });
+/** Nothing sideways (polled: a fold settles over a frame or two), having looked at the scrollers named. */
+async function expectNothingSideways(page: Page, scrollers: readonly string[]): Promise<void> {
+  await expect.poll(async () => (await sideways(page)).offenders).toEqual([]);
+  expect((await sideways(page)).examined).toEqual(expect.arrayContaining([...scrollers]));
+}
 const shell = (page: Page, attr: 'data-sidebar' | 'data-inspector') => page.getByTestId('shell').getAttribute(attr);
+/**
+ * A screen narrower than `need` (the 1024 px macOS runner fits the window to it) has the sidebar folded first, so the right panel's own
+ * widths fit beside the reader's 440; a 1440 window keeps it.
+ */
+async function roomFor(app: ElectronApplication, page: Page, need: number): Promise<void> {
+  if ((await page.evaluate(() => innerWidth)) >= need) return;
+  await runMenuCommand(app, 'view.toggleSidebar');
+  await expect.poll(() => shell(page, 'data-sidebar')).toBe('hidden');
+}
 const slotWidth = async (page: Page) => Math.round((await page.getByTestId('inspector-panel').boundingBox())?.width ?? 0);
 const readerWidth = async (page: Page) => Math.round((await page.getByTestId('content').boundingBox())?.width ?? 0);
 const modeOf = (page: Page) => page.getByTestId('inspector').getAttribute('data-mode');
@@ -55,6 +73,7 @@ test('a first reader opens on 튜터 with the consent card; ⌃⌘1 shows 정보
   try {
     await contentWidth(app, 1440);
     await openPaper(page);
+    await roomFor(app, page, 240 + 380 + 440);
     await expect(page.getByTestId('inspector')).toHaveAttribute('data-mode', 'tutor');
     const tabs = page.getByRole('tablist', { name: '오른쪽 패널' });
     await expect(tabs.getByRole('tab', { name: '튜터' })).toHaveAttribute('aria-selected', 'true');
@@ -130,6 +149,8 @@ test('each mode keeps its own width, which a restart keeps too', async ({}, test
   try {
     await contentWidth(app, 1440);
     await openPaper(page);
+    // The widest the steps below drag the tutor to (440) beside the sidebar and a 440 reader.
+    await roomFor(app, page, 240 + 440 + 440);
     const drag = async (by: number) => {
       const box = (await page.getByRole('separator', { name: '오른쪽 패널' }).boundingBox())!;
       const x = box.x + box.width / 2;
@@ -331,8 +352,9 @@ test('a tutor shown on demand pushes the sidebar away only beside a PDF: a video
 test('200 % zoom: the tutor folds, then the sidebar, and nothing scrolls sideways; shown on demand it fits; 100 % gives them back, nothing stored', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo), UNSET);
   try {
+    // The widest the screen gives (1440 on Linux; the 1024 px macOS runner fits the window to 1024): 200 % halves what it got.
     await contentWidth(app, 1440);
-    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(1440);
+    const w0 = await page.evaluate(() => innerWidth);
     const [paper] = await importPaths(page, [PAPER]);
     await textExtraction(app, 'now');
     await textIdle(app);
@@ -345,12 +367,14 @@ test('200 % zoom: the tutor folds, then the sidebar, and nothing scrolls sideway
     await expect(page.getByTestId('tutor-answer').getByTestId('cite-chip')).toHaveText(['41쪽', '42쪽']);
     expect(await shell(page, 'data-inspector')).toBe('shown'); // the positive control for the folds below
     expect(await shell(page, 'data-sidebar')).toBe('shown');
+    const slot0 = await slotWidth(page);
+    const sidebar0 = Math.round((await page.locator('#sidebar').boundingBox())!.width);
 
     await zoom(app, 2);
-    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(720);
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(Math.round(w0 / 2));
     await expect.poll(() => shell(page, 'data-inspector')).toBe('hidden');
     await expect.poll(() => shell(page, 'data-sidebar')).toBe('hidden');
-    expect(await sidewaysScrollers(page)).toEqual([]);
+    await expectNothingSideways(page, ['pdf-scroll']);
     await expectNoSeriousA11y(page, 'the reader at 200 %, the tutor and the sidebar folded');
 
     // ⌥⌘I: the tutor shown on demand at 200 % is whole and its conversation scrolls only up and down.
@@ -358,16 +382,17 @@ test('200 % zoom: the tutor folds, then the sidebar, and nothing scrolls sideway
     await expect.poll(() => shell(page, 'data-inspector')).toBe('shown');
     await expect(page.getByTestId('tutor-answer').getByTestId('cite-chip')).toHaveText(['41쪽', '42쪽']);
     expect(await shell(page, 'data-sidebar')).toBe('hidden');
-    expect(await sidewaysScrollers(page)).toEqual([]);
+    await expectNothingSideways(page, ['pdf-scroll', 'tutor-log']);
     await expectNoSeriousA11y(page, 'the tutor shown on demand at 200 %');
 
     await runMenuCommand(app, 'view.toggleInspector');
     await expect.poll(() => shell(page, 'data-inspector')).toBe('hidden');
     await zoom(app, 1);
-    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(1440);
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(w0);
     await expect.poll(() => shell(page, 'data-inspector')).toBe('shown');
     await expect.poll(() => shell(page, 'data-sidebar')).toBe('shown');
-    expect(await slotWidth(page)).toBe(380);
+    await expect.poll(() => slotWidth(page)).toBe(slot0);
+    await expect.poll(async () => Math.round((await page.locator('#sidebar').boundingBox())!.width)).toBe(sidebar0);
     const panes = (await storedPanes(page)) ?? {};
     expect(panes['sidebarCollapsed'] ?? 0).toBe(0);
     expect(panes['inspectorCollapsed'] ?? 0).toBe(0);

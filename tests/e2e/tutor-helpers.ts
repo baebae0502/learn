@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { expect, type Page } from '@playwright/test';
+import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import type { AgentId } from '../../packages/domain/src/agents';
 import type { MessageView, TutorAskAnswer, TutorAskInput } from '../../packages/domain/src/tutor';
 import type { FakeScript } from '../../apps/desktop/src/main/tutor/fake-agent/fake-agent';
-import { ROOT } from './helpers';
+import { ROOT, tutorFakeScript, tutorProcesses } from './helpers';
 
 /** The fake agent as the unpackaged build has it (pnpm build). */
 const FAKE_ENTRY = path.join(ROOT, 'apps/desktop/out/main/fake-agent.js');
@@ -37,6 +37,16 @@ export function installFakeAgents(dir: string, layout: { cli: string | null; ada
     fs.symlinkSync(path.join('..', 'lib', 'node_modules', ...ADAPTER.split('/'), 'dist', 'index.js'), path.join(bin, 'claude-agent-acp'));
   }
   return bin;
+}
+
+/**
+ * The fake's next script, set while nothing is on its way: the focus let go first (a composer with the focus starts a fake ahead, with
+ * the script it has then), and the fake that ended its turn closed, so the next question's start runs `name`.
+ */
+export async function nextFakeScript(page: Page, app: ElectronApplication, name: FakeScript): Promise<void> {
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await tutorFakeScript(app, name);
+  await expect.poll(async () => (await tutorProcesses(app)).count, { message: `no fake left before "${name}"` }).toBe(0);
 }
 
 /** 동의, then the agent chosen — through window.learn.tutor, as the screens will call it; the agent must be ready. */

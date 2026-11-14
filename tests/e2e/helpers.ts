@@ -70,6 +70,13 @@ export interface LaunchOptions {
 const CLOSE_GRACE_MS = 10_000;
 
 /**
+ * LEARN_E2E_MAC_WINDOW=1 (off by default): the main window as the macOS runner has it — a 1024 × 768 display fits it to content
+ * 1024 × 656 (docs/mac-verification.md) — at launch and on every later resize, so a Linux run (xvfb at 1024x768x24) meets the Mac's widths.
+ */
+const MAC_WINDOW = { width: 1024, height: 656 } as const;
+const macWindow = () => process.env['LEARN_E2E_MAC_WINDOW'] === '1';
+
+/**
  * Where a launch keeps main's log: the running test's own output folder (main.log, main-2.log… for its later launches),
  * beside the library/ and userdata/ folders tests make there — not inside them, which the Mac upload leaves out. The same
  * for launch(null, null). Outside a test there is no folder to keep it in, and nothing is kept.
@@ -123,6 +130,16 @@ export async function launch(libraryDir: string | null, userDataDir: string | nu
   };
   try {
     const page = await app.firstWindow();
+    // setMaximumSize clamps every later setContentSize, setSize and setBounds too (checked on Linux).
+    if (macWindow()) {
+      await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((x) => x.webContents.getURL().includes('window=main')))).toBe(true);
+      await (await mainWindow(app)).evaluate((w, max) => {
+        const [cw, ch] = w.getContentSize();
+        const [ww, wh] = w.getSize();
+        w.setMaximumSize(max.width + (ww! - cw!), max.height + (wh! - ch!));
+        w.setContentSize(Math.min(cw!, max.width), Math.min(ch!, max.height));
+      }, MAC_WINDOW);
+    }
     shownTestIds(page);
     await expect(page.getByTestId('app-ready')).toBeAttached();
     // The menu bar stays disabled until the renderer's first ui:reportContext (M3 Task 2).

@@ -16,7 +16,7 @@ import {
   menuSnapshot, openItem, readClipboard, readerTab, recordedPopups, rowByTitle, runMenuAccelerator, runMenuCommand, runPalette, seedSessions, setPdfZoom, specialRow, stubContextMenu,
   stubFolderPicker, stubFolderPicks, textExtraction, textIdle, trashItems, tutorFailAgents, tutorFakeLog, tutorFakeScript, tutorProcesses, type MenuNode, type Session,
 } from './helpers';
-import { READER_100, askViaApi, consentAndChoose, installFakeAgents, turnEnded } from './tutor-helpers';
+import { READER_100, askViaApi, consentAndChoose, installFakeAgents, nextFakeScript, turnEnded } from './tutor-helpers';
 
 declare global {
   interface Window {
@@ -338,6 +338,12 @@ for (const [name, width, tutor] of [['380', 1440, 380], ['320', 1000, 320]] as c
     const s = await atChooser(testInfo, { cli: '2.1.318', adapter: null }, { width });
     const { page } = s;
     try {
+      // A screen too narrow for the sidebar, this tutor width and the reader's 440 (the 1024 px macOS runner) folds the sidebar: the
+      // tutor then has its width.
+      if ((await page.evaluate(() => innerWidth)) < 240 + tutor + 440) {
+        await runMenuCommand(s.app, 'view.toggleSidebar');
+        await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
+      }
       await expect.poll(() => page.getByTestId('inspector-panel').evaluate((e) => Math.round(e.getBoundingClientRect().width))).toBe(tutor);
       await expect(flagOf(page)).toHaveText('연결 도구 필요');
       await expectCommandFits(page, 'adapter');
@@ -683,6 +689,10 @@ async function recordCites(page: Page): Promise<() => Promise<string[]>> {
 async function hoverOver(page: Page, target: ReturnType<Page['locator']>): Promise<void> {
   const [x, y] = await page.evaluate(() => [Math.round(innerWidth / 2), Math.round(innerHeight / 2)] as const);
   await page.mouse.move(x, y);
+  // Brought into view first, and let settle: a column scrolled away from its head shows the session's name above it, which moves what
+  // is under the pointer (a short window scrolls the column to reach a chip).
+  await target.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   await target.hover();
 }
 
@@ -1346,8 +1356,13 @@ test('the foot never overflows: while an answer comes, the agent button\'s longe
     await expect(button).toHaveText('Claude Code · 지원하지 않는 버전');
     await expect(page.getByTestId('tutor-answering')).toBeVisible();
     const stop = page.getByTestId('tutor-stop');
-    for (const [width, tutor] of [[1440, 380], [1000, 320]] as const) {
+    for (const [width, tutor] of [[1000, 320], [1440, 380]] as const) {
       await window.evaluate((w, x) => w.setContentSize(x, w.getContentSize()[1]!), width);
+      // A screen too narrow for the sidebar, 380 and a 440 reader (the 1024 px macOS runner) folds the sidebar for the 380 step.
+      if (tutor === 380 && (await page.evaluate(() => innerWidth)) < 240 + 380 + 440) {
+        await runMenuCommand(app, 'view.toggleSidebar');
+        await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
+      }
       await expect.poll(() => page.getByTestId('inspector-panel').evaluate((e) => Math.round(e.getBoundingClientRect().width))).toBe(tutor);
       const foot = page.getByTestId('tutor-composer').locator('.foot');
       expect(await foot.evaluate((el) => el.scrollWidth <= el.clientWidth), `the foot at ${tutor} scrolls`).toBe(true);
@@ -1556,24 +1571,33 @@ test('보내지 않기: the question that waited is a draft to edit again, and n
 
 /**
  * The tutor's targets that are too small (spec 8.11, design-spec 8.3 "히트 영역 28 이상(22 작은 버튼은 주변 4 이상 띄움)"): every control
- * in the right panel, the 세션 pane and an open menu is pressed over 28 × 28 or more, or is a small one — 22 or more each way — with
- * 4 px clear of every other control. A segmented control, a menu and a list are one target each whose segments or rows sit side by side
- * (design-spec 6: a web menu's rows are 24 high), each segment 28 or more wide. A cite chip is a link inside a sentence, its 18 px keeping
- * the paragraph's 20 px line (design-spec 2.6): WCAG 2.5.8's inline case, left out unless `inline` (the positive control: those chips
- * are what this finds then). A visually hidden control (a popover's dismiss button for screen readers) is no target.
+ * in the right panel, the reader's segment, the 세션 pane and an open menu is pressed over 28 × 28 or more, or is a small one — 22 or
+ * more each way — with 4 px clear of every other control. A segmented control, a menu, a list, a tree and a grid are one target each,
+ * whose segments or rows sit side by side: each member at least 24 high (design-spec 6: a segment cell and a web menu row are 24), a
+ * segment 28 or more wide. A cite chip inside a line of text — the answer's, or the quote line of a question's passage — is a link in a
+ * sentence, its 18 px keeping the line's 20 (design-spec 2.6): WCAG 2.5.8's inline case, left out unless `inline` (the positive control:
+ * those chips are what this finds then); a chip anywhere else is measured. A visually hidden control (a popover's dismiss button for
+ * screen readers) is no target.
  */
 async function smallTargets(page: Page, opts: { inline?: boolean } = {}): Promise<string[]> {
   await page.mouse.move(0, 0); // no hover tooltip over a control
   return page.evaluate((inline) => {
-    const SEL = 'button, [role="button"], [role="tab"], [role="link"], [role="option"], [role="row"], [role="treeitem"], [role="menuitem"], [role="menuitemradio"], [role="img"][tabindex="0"], label:has(input[type="radio"])';
-    const roots = [...document.querySelectorAll('[data-testid="inspector-panel"], [data-testid="reader-nav"], [data-testid="reader-sessions"], .menu-popover')];
+    const SEL = [
+      'button', 'a[href]', 'input:not([type="hidden"]):not([type="radio"])', '[role="button"]', '[role="tab"]', '[role="link"]', '[role="checkbox"]', '[role="switch"]',
+      '[role="option"]', '[role="row"]', '[role="treeitem"]', '[role="menuitem"]', '[role="menuitemradio"]', '[role="menuitemcheckbox"]', '[role="img"][tabindex="0"]',
+      'label:has(input[type="radio"])',
+    ].join(', ');
+    const MEMBER = '[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], [role="row"], [role="treeitem"]';
+    const roots = [...document.querySelectorAll('[data-testid="inspector-panel"], [data-testid="reader-nav"], [data-testid="reader-sessions"], .menu-popover, [data-small-target-probe]')];
     const clipped = (el: Element) => {
       for (let a: Element | null = el; a !== null; a = a.parentElement) if (getComputedStyle(a).clipPath !== 'none') return true;
       return false;
     };
     const shown = (el: Element) => el.getClientRects().length > 0 && el.closest('[inert], .visually-hidden') === null && !clipped(el);
-    const targets = [...new Set(roots.flatMap((r) => [...r.querySelectorAll<HTMLElement>(SEL)]))].filter(shown).filter((el) => inline || !el.matches('.cite'));
-    const group = (el: Element) => (el.matches('[role="menuitem"], [role="menuitemradio"], [role="option"], [role="row"], [role="treeitem"]') ? el.closest('[role="menu"], [role="listbox"], [role="grid"], [role="tree"], [role="treegrid"]') : null) ?? el.closest('.segmented') ?? el;
+    const inLine = (el: Element) => el.matches('.cite') && el.closest('[data-testid="tutor-answer-text"], .tutor-quote') !== null;
+    const targets = [...new Set(roots.flatMap((r) => [...r.querySelectorAll<HTMLElement>(SEL)]))].filter(shown).filter((el) => inline || !inLine(el));
+    const groupOf = (el: Element) => (el.matches(MEMBER) ? el.closest('[role="menu"], [role="listbox"], [role="grid"], [role="tree"], [role="treegrid"]') : null) ?? el.closest('.segmented');
+    const group = (el: Element) => groupOf(el) ?? el;
     const name = (el: Element) => `${el.getAttribute('data-testid') ?? el.getAttribute('role') ?? el.tagName.toLowerCase()} "${(el.getAttribute('aria-label') ?? el.textContent ?? '').trim().slice(0, 24)}"`;
     const pressed = (el: Element, x: number, y: number) => {
       const at = document.elementFromPoint(x, y);
@@ -1582,10 +1606,15 @@ async function smallTargets(page: Page, opts: { inline?: boolean } = {}): Promis
     const out: string[] = [];
     for (const el of targets) {
       const r = el.getBoundingClientRect();
+      const size = `${Math.round(r.width)}×${Math.round(r.height)}`;
+      // A member of a group stands side by side with the others: its own height is its share of the press.
+      if (groupOf(el) !== null && (r.height < 23.5 || (el.closest('.segmented') !== null && r.width < 27.5))) {
+        out.push(`${name(el)} ${size} (a member under 24 high or a segment under 28 wide)`);
+        continue;
+      }
       const [cx, cy] = [r.left + r.width / 2, r.top + r.height / 2];
       if ([[cx - 13.5, cy], [cx + 13.5, cy], [cx, cy - 13.5], [cx, cy + 13.5]].every(([x, y]) => pressed(el, x!, y!))) continue;
-      const size = `${Math.round(r.width)}×${Math.round(r.height)}`;
-      if (Math.min(r.width, r.height) < 21.5 || (el.closest('.segmented') !== null && r.width < 27.5)) {
+      if (Math.min(r.width, r.height) < 21.5) {
         out.push(`${name(el)} ${size}`);
         continue;
       }
@@ -1603,6 +1632,27 @@ async function smallTargets(page: Page, opts: { inline?: boolean } = {}): Promis
   }, opts.inline === true);
 }
 
+/**
+ * The positive controls for smallTargets' two measured rules, drawn over the panel for one reading and then removed: two 24 px buttons
+ * 2 px apart (each within 4 px of the other), and a menu whose rows are 22 high (members under 24).
+ */
+async function smallTargetProbes(page: Page): Promise<string[]> {
+  await page.evaluate(() => {
+    const probe = document.createElement('div');
+    probe.setAttribute('data-small-target-probe', '');
+    probe.style.cssText = 'position: fixed; left: 40px; top: 40px; z-index: 2147483647; display: flex; gap: 2px; background: white;';
+    probe.innerHTML =
+      '<button data-testid="probe-a" style="width:24px;height:24px">a</button><button data-testid="probe-b" style="width:24px;height:24px">b</button>' +
+      '<div role="menu" style="margin-left:40px"><div role="menuitem" data-testid="probe-row" style="height:22px;width:120px">row</div></div>';
+    document.body.append(probe);
+  });
+  try {
+    return await smallTargets(page);
+  } finally {
+    await page.evaluate(() => document.querySelector('[data-small-target-probe]')?.remove());
+  }
+}
+
 test('every control of the tutor is a 28 px target or a small one with 4 px clear around it: the chooser, an empty session, a conversation with its notice, a passage and the sent list, the agent menu, a failure, 최신으로, the 세션 pane', async ({}, testInfo) => {
   const s = await atChooser(testInfo, { cli: '2.1.318', adapter: null });
   const { app, page } = s;
@@ -1612,6 +1662,10 @@ test('every control of the tutor is a 28 px target or a small one with 4 px clea
     // The chooser: Claude Code's row with its command, 명령 복사 and 다시 확인; the fake's row; 다시 찾기 and 시작.
     await expect(claudeRow(page).getByTestId('agent-copy')).toBeVisible();
     await expect(claudeRow(page).getByTestId('agent-recheck')).toBeVisible();
+    // The positive controls of the two measured rules first: they are what this finds.
+    expect(await smallTargetProbes(page), 'the probes').toEqual(expect.arrayContaining([
+      'probe-a "a" 24×24 within 4 px of probe-b "b"', 'probe-b "b" 24×24 within 4 px of probe-a "a"', 'probe-row "row" 120×22 (a member under 24 high or a segment under 28 wide)',
+    ]));
     expect(await smallTargets(page), 'the chooser').toEqual([]);
     // 시작 puts the focus in the composer, which starts the fake: its first script is set before.
     await tutorFakeScript(app, 'unverified');
@@ -1619,12 +1673,6 @@ test('every control of the tutor is a 28 px target or a small one with 4 px clea
     await page.getByTestId('agent-start').click();
     await expect(page.getByTestId('tutor-empty')).toBeVisible();
     expect(await smallTargets(page), 'an empty session').toEqual([]);
-    // Another script closes the fake that ended its turn; out of the composer nothing starts it again until the next question's click.
-    const script = async (name: Parameters<typeof tutorFakeScript>[1]) => {
-      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-      await tutorFakeScript(app, name);
-      await expect.poll(async () => (await tutorProcesses(app)).count).toBe(0);
-    };
 
     // A conversation: tool chips, cites (one not verified, with its notice and 원문 근거로 다시 묻기), 답 복사, the sent-scope line and
     // its list; a passage attached in the composer, its ×; the agent button and 보내기.
@@ -1648,14 +1696,14 @@ test('every control of the tutor is a 28 px target or a small one with 4 px clea
 
     // A failure during the answer: its notice and 다시 보내기.
     await page.getByTestId('tutor-attached-remove').click();
-    await script('fail-mid');
+    await nextFakeScript(page, app, 'fail-mid');
     await sendFromComposer(page, '도중에 끊길 질문입니다.');
     await expect(page.getByTestId('tutor-answer').last()).toHaveAttribute('data-status', 'failed');
     await expect(page.getByTestId('tutor-resend')).toBeVisible();
     expect(await smallTargets(page), 'a failure').toEqual([]);
 
     // 최신으로 over a column scrolled up while an answer comes; 중지 in the composer.
-    await script('slow');
+    await nextFakeScript(page, app, 'slow');
     await sendFromComposer(page, '천천히 답해 주세요.');
     await expect(page.getByTestId('tutor-stop')).toBeVisible();
     const log = page.getByTestId('tutor-log');

@@ -2883,12 +2883,15 @@ test('T1a tutor failures: offline, before the answer, during it, a tool Learn tu
     await expect(login).toBeInViewport();
     await shootBoth(c.page, 'tutor-narrow-1000');
 
-    // The connection tool gone: ↩ checks Claude Code again, which is not ready — a notice before the answer with 에이전트 고르기…, the
-    // agent button in its warning tone with the state (tutor--8-failure-notready).
+    // The connection tool gone: a question in a new session — one that says nothing of logins, as the scene is about the tool —
+    // checks Claude Code again, which is not ready: a notice before the answer with 에이전트 고르기…, the agent button in its warning
+    // tone with the state (tutor--8-failure-notready).
     await width(1440);
     await reinstall({ cli: '2.1.318', adapter: null });
-    await tutorInput(c.page).focus();
-    await c.page.keyboard.press('Enter');
+    await c.page.getByTestId('tutor-new-session').click();
+    await expect(c.page.getByTestId('tutor-empty')).toBeVisible();
+    await tutorInput(c.page).fill('');
+    await sendQuestion(c.page, '연결 도구를 지운 뒤의 질문입니다.');
     await expect(login.getByTestId('tutor-failure-title')).toHaveText('Claude Code가 준비되지 않았습니다', { timeout: 30_000 });
     await expect(login.getByRole('button', { name: '에이전트 고르기…' })).toBeVisible();
     await expect(c.page.getByTestId('tutor-agent')).toHaveText('Claude Code · 연결 도구 필요');

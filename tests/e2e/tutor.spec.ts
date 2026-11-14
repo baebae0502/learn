@@ -2446,6 +2446,17 @@ test('the library sidebar with the tutor\'s sessions scrolls as one region — �
       const [row, box] = await Promise.all([landed.boundingBox(), scroller.boundingBox()]);
       return row!.y >= box!.y - 0.5 && row!.y + row!.height <= box!.y + box!.height + 0.5;
     }).toBe(true);
+    // Naming the tree's last row: the name field's note goes over the 세션 section under the tree, not cut by the tree's edge.
+    await page.keyboard.press('End');
+    const lastRow = page.getByTestId(`nav-collection-${ids[5]}`); // 학회 준비, last in name order
+    await expect(lastRow).toBeFocused();
+    await lastRow.evaluate((el) => el.scrollIntoView({ block: 'center' })); // room under it in the sidebar's scroll area
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('rename-input')).toBeFocused();
+    await page.getByTestId('rename-input').fill('라'.repeat(201));
+    await expectNoteInsideSidebar(page.getByTestId('rename-note'));
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('rename-input')).toHaveCount(0);
     // The tree as tall as its rows is still a virtual list: of 150 more collections it draws those near the window, and the
     // sidebar's scroll brings the rest in.
     await page.evaluate(async () => {

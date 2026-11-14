@@ -36,6 +36,12 @@
   }
   .sidebar-body[data-after] .sidebar-tree:not([data-fit]) {
     flex: none;
+    overflow: visible; /* as tall as its rows, it never scrolls; a name field's note under its last rows goes over the section */
+  }
+  /* The virtual list draws each row, and each section, in a box of its own stacked in order, so a later row would cover the note
+     under the row being named: that row's boxes come first. */
+  .sidebar-tree [role='presentation']:has(.rename-note) {
+    z-index: 1 !important; /* local: over the virtualizer's own inline z-index: 0 */
   }
   .library-sessions {
     flex: none;

@@ -1973,22 +1973,38 @@ export async function dragSidebarTo(page: Page, width: number): Promise<void> {
 }
 /**
  * A name field's note under its row stays inside the sidebar: its box clear of the sidebar's edges by the rows' own 8 px (its shadow's
- * edge shows), and nothing between it and the sidebar scrolls sideways or clips it.
+ * edge shows), nothing between it and the sidebar scrolls sideways or clips it, and it is over the rows and sections under it — its
+ * middle and its last line are the note's own when hit.
  */
 export async function expectNoteInsideSidebar(note: Locator): Promise<void> {
-  const at = await note.evaluate((el) => {
-    const side = el.closest('#sidebar')!.getBoundingClientRect();
-    const box = el.getBoundingClientRect();
-    const sideways: string[] = [];
-    for (let a = el.parentElement; a; a = a.parentElement) {
-      if (getComputedStyle(a).overflowX !== 'visible' && a.scrollWidth > a.clientWidth) sideways.push(a.className || a.id);
-      if (a.id === 'sidebar') break;
-    }
-    return { left: box.left - side.left, right: side.right - box.right, sideways };
-  });
-  expect(at.left, 'the note starts inside the sidebar').toBeGreaterThanOrEqual(8);
-  expect(at.right, 'the note ends 8 px or more inside the sidebar').toBeGreaterThanOrEqual(8);
-  expect(at.sideways, 'nothing scrolls sideways').toEqual([]);
+  // Measured again until it holds: right after the note comes, a pointer check was seen to hit the label under it, and one a moment
+  // later the note.
+  await expect(async () => {
+    const at = await note.evaluate((el) => {
+      const side = el.closest('#sidebar')!.getBoundingClientRect();
+      const box = el.getBoundingClientRect();
+      const sideways: string[] = [];
+      const cut: string[] = [];
+      for (let a = el.parentElement; a; a = a.parentElement) {
+        const cs = getComputedStyle(a);
+        if (cs.overflowX !== 'visible' && a.scrollWidth > a.clientWidth) sideways.push(a.className || a.id);
+        if (cs.overflowY !== 'visible' && a.getBoundingClientRect().bottom < box.bottom - 0.5) cut.push(a.className || a.id);
+        if (a.id === 'sidebar') break;
+      }
+      const x = box.left + box.width / 2;
+      // What a pointer there hits: the note, or what covers it.
+      const hit = (y: number) => {
+        const at = document.elementFromPoint(x, y);
+        return at !== null && el.contains(at) ? 'note' : `${at?.tagName ?? 'nothing'}.${at?.className ?? ''} ${at?.getAttribute('data-testid') ?? ''}`.trim();
+      };
+      return { left: box.left - side.left, right: side.right - box.right, sideways, cut, onTop: [hit(box.top + box.height / 2), hit(box.bottom - 4)] };
+    });
+    expect(at.left, 'the note starts inside the sidebar').toBeGreaterThanOrEqual(8);
+    expect(at.right, 'the note ends 8 px or more inside the sidebar').toBeGreaterThanOrEqual(8);
+    expect(at.sideways, 'nothing scrolls sideways').toEqual([]);
+    expect(at.cut, 'nothing clips its last line').toEqual([]);
+    expect(at.onTop, 'over what is under it').toEqual(['note', 'note']);
+  }).toPass({ timeout: 5_000 });
 }
 export async function seedSessions(app: ElectronApplication, input: SeedSessionsInput): Promise<{ conversationIds: string[] }> {
   for (let attempt = 1; ; attempt += 1) {

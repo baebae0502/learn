@@ -1682,9 +1682,10 @@ test('every control of the tutor is a 28 px target or a small one with 4 px clea
     await page.waitForFunction(() => window.__learnPdf !== undefined);
     await selectInPage(page, 0, 0, 30);
     await expect(attachedChip(page)).toBeVisible();
-    // The page's own selection let go, so its translation pop-up is gone before the click (a click while it shows may only close it).
-    await page.evaluate(() => window.getSelection()?.removeAllRanges());
-    await expect(page.getByTestId('selection-popup')).toHaveCount(0);
+    // The chip's row made the column follow its end, past the first question. Back at the top the session's name row goes a render
+    // after the scroll and moves the column 28 px up: a click must wait for it, or its pointer comes up off the line it went down on.
+    await page.getByTestId('tutor-log').evaluate((el) => el.scrollTo({ top: 0 }));
+    await expect(page.getByTestId('tutor-sticky')).toBeHidden();
     await page.getByTestId('tutor-question').getByTestId('sent-scope').click();
     await expect(page.getByTestId('sent-scope-list')).toBeVisible();
     expect(await smallTargets(page, { inline: true }), 'the positive control: an inline cite chip is under 22').toEqual(expect.arrayContaining([expect.stringMatching(/^cite-chip "\d+쪽" \d+×18$/)]));

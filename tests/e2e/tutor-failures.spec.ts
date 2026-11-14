@@ -1,7 +1,7 @@
 // T1a Task 20: what a failed turn shows (AC14, spec 8.8, 13) — before any answer the question and its chip go back to the composer and
 // nothing is sent again by itself; during one the part that came stays with 다시 보내기; offline, the agent not answering, its login that
 // lapsed, a tool Learn turned off, the agent killed, Learn killed mid-answer; a resend main refused or whose turn failed before its
-// answer. The fake agent only, as itself or inside a Claude-shaped install. Each state on screen has its axe stop (Task 22).
+// answer. The fake agent only, as itself or inside a Claude-shaped install. Each state on screen has its axe stop.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

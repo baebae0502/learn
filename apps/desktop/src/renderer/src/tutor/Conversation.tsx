@@ -170,15 +170,23 @@ export function Conversation({ conversationId, visible }: { conversationId: stri
     return () => watch.disconnect();
   }, [loaded, toBottom, settle]);
 
-  // Another session, a new question asked, or a failure before its answer standing in that turn's place (no question row is written,
-  // so nothing else would bring it into view from a column scrolled up): the column starts at its bottom, following.
+  // Another session, or a new question asked: the column starts at its bottom, following.
   const questions = thread?.messages.filter((m) => m.role === 'user').length ?? 0;
   useLayoutEffect(() => {
     following.current = true;
     unread.current = false;
     if (visibleRef.current) toBottom();
     settle();
-  }, [conversationId, questions, notice, loaded, toBottom, settle]);
+  }, [conversationId, questions, loaded, toBottom, settle]);
+  // A failure before its answer, standing in that turn's place: no question row is written, so nothing else brings it into view from a
+  // column scrolled up. It is new content at the end, as a question is; a notice that goes away is none.
+  useLayoutEffect(() => {
+    if (notice === null) return;
+    following.current = true;
+    unread.current = false;
+    if (visibleRef.current) toBottom();
+    settle();
+  }, [notice, toBottom, settle]);
   // Shown again after the panel was folded: back to the bottom if it was following (sizes were not followed meanwhile).
   useLayoutEffect(() => {
     if (!visible) return;

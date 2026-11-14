@@ -37,11 +37,10 @@ import { expect, test, type ElectronApplication, type Locator, type Page } from 
 import { acceleratorLabel } from '../../packages/domain/src/accelerator';
 import { commandById, type CommandId } from '../../packages/domain/src/commands';
 import { motion } from '../../apps/desktop/src/renderer/src/design/tokens';
-import type { FakeScript } from '../../apps/desktop/src/main/tutor/fake-agent/fake-agent';
 import type { LearnPdfProbe } from '../../apps/desktop/src/renderer/src/viewers/pdf/anchorProbe';
 import {
   NativeInputNotPermitted, ROOT, bringAppToFront, importFiles, launch, nativeKeyCode, nativeKeystroke, openItem, osascriptLimits, rowByTitle, runMenuCommand, seedSessions,
-  textExtraction, textIdle, tutorFakeScript, tutorNetwork, tutorProcesses, waitImportIdle,
+  textExtraction, textIdle, tutorFakeScript, tutorNetwork, waitImportIdle,
   type KeyModifier, type LaunchOptions, type Session,
 } from '../e2e/helpers';
 import { IS_MAC, outFile, record, startRecording, startScreencast, startX11Recording, type Recording, type StoppableRecording } from './capture';
@@ -52,6 +51,7 @@ import { OSASCRIPT_MS, glideCursor, hideDock, neutralDesktop, renamedElectron, w
 import { PDF_FOOTER, READ_TITLE, writeDemoMedia } from './demo-media';
 import { RecordingLost, exitedEarly, lossOf, recordingLoss, type RecordingEnd } from './demo-loss';
 import { mergeEnv } from './env';
+import { nextFakeScript } from '../e2e/tutor-helpers';
 
 declare global {
   interface Window {
@@ -202,8 +202,8 @@ const STOP_MS = 30_000;
  * consecutive F6 stops) may be read together with their pill.
  */
 const afterKey = (pressedAt: number, result = 2500) => sleep(Math.max(0, pressedAt + (PILL_GONE_MS + result) * PACE - Date.now()));
-/** T13R2-m3: a caption stays as long as it takes to read at 12 characters a second, 3.5–6.5 s. */
-const captionMs = (text: string) => Math.min(6500, Math.max(3500, Math.round((text.length / 12) * 1000)));
+/** T13R2-m3: a caption stays as long as it takes to read at 12 characters a second: 3.5 s at least, 9 s at most. */
+const captionMs = (text: string) => Math.min(9000, Math.max(3500, Math.round((text.length / 12) * 1000)));
 /** A shortcut as this platform's menus write it (⌘O on macOS, Ctrl+O elsewhere). */
 const key = (accelerator: string) => acceleratorLabel(accelerator, process.platform);
 const errorText = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message.split('\n')[0]}` : String(e));
@@ -686,6 +686,16 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await seedSessions(app, { itemId: readId, sessions: 1, messagesPerSession: 2, citationsPerAnswer: 1, startedAt: SEEDED.earlierAt, questions: [SEEDED.earlier] });
     await seedSessions(app, { itemId: await idOf(SEEDED.otherTitle), sessions: 2, messagesPerSession: 2, citationsPerAnswer: 1, startedAt: SEEDED.earlierAt, questions: SEEDED.other });
     notes.push('the 세션 pane\'s two older sessions and the library section\'s other note are seeded by a test hook before the recording; none is opened on camera');
+    // The reader has used Learn before: translation was answered 사용 안 함, so its offer never pops up over a selection (no translation
+    // request is ever made). The fake answers at a viewer's pace (its demo scripts).
+    await page.evaluate(async () => {
+      const r = await window.learn.prefs.get();
+      if (!r.ok) throw new Error(r.code);
+      const done = await window.learn.prefs.set({ translation: { ...r.data.translation, enabled: false } });
+      if (!done.ok) throw new Error(done.code);
+    });
+    await tutorFakeScript(app, 'demo');
+    notes.push('translation was set to 사용 안 함 before the recording (as a returning reader has it); the fake runs its demo-paced scripts (demo, demo-unverified)');
     await openItem(page, READ_TITLE);
     const viewer = page.getByTestId('pdf-viewer');
     await expect(viewer).toHaveAttribute('data-rendered', /^[1-9]/);
@@ -722,7 +732,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     started = Date.now();
 
     notes.push(
-      'the fake agent answers throughout (Claude Code is not installed for the recording: its row says 설치 안 됨); a test hook sets the fake\'s script between turns — the answer that cites a page it did not read is one of them, and its caption says so; the offline turn is a test hook too, captioned; the passages are selected by dragging the pointer over the page; ⌃⌘2, ⌘[, ⌥⌘5, ⌘⌫ and ⌘1 are keys (the menu items on Linux); the questions and the name are typed; the rest is clicked by the pointer',
+      'the fake agent answers throughout (Claude Code is not installed for the recording: its row says 설치 안 됨); a test hook sets the fake\'s script between turns — the answer that cites a page it did not read is one of them, and its caption says so; the offline turn is a test setting too, captioned and tagged; the passages are selected by dragging the pointer over the page; ⌃⌘2, ⌘[, ⌥⌘5, ⌘⌫ and ⌘1 are keys (the menu items on Linux); the questions and the name are typed; the rest is clicked by the pointer',
     );
     const shownTab = () => page.locator('[data-testid="tab"][aria-selected="true"]').getAttribute('data-item-id');
     const mode = () => page.getByTestId('inspector').getAttribute('data-mode');
@@ -731,12 +741,6 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     const log = page.getByTestId('tutor-log');
     const field = page.getByTestId('pdf-page-field');
     const accel = (id: CommandId) => key(commandById(id).accelerator!);
-    /** The fake's next script, set while nothing is on its way; the composer let go first, so no fake is started ahead with the old one. */
-    const script = async (name: FakeScript) => {
-      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-      await tutorFakeScript(app, name);
-      await expect.poll(async () => (await tutorProcesses(app)).count).toBe(0);
-    };
     /**
      * A sentence of page `n` selected as a reader does it: the pointer pressed on its first letter and dragged to its last, along its
      * line. The passage attaches itself to the next question; a drag that left nothing is made by the reader's own probe (a note).
@@ -764,9 +768,12 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       if (at !== null) {
         await glide(page, 'main', at.x0, at.y);
         await pause(300);
+        // While the system arrow is the pointer it is the drag's only cursor: the overlay's drawn one goes for the drag (as M7c's did).
+        if (cursor !== 'synthetic') await drawnCursor(page, false);
         await page.mouse.down();
         await dragAlong(page, 'main', at.x0, at.x1, at.y);
         await page.mouse.up();
+        if (cursor !== 'synthetic') await drawnCursor(page, true);
         attached = await expect(label).toContainText(sentence.slice(0, 8), { timeout: 5000 }).then(() => true, () => false);
       }
       if (!attached) {
@@ -778,8 +785,14 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       }
     };
 
+    /** The pointer rests on a chip's right third: its label stays clear of the drawn pointer, and its tooltip still comes. */
+    const hoverRightThird = async (target: Locator) => {
+      const box = (await target.boundingBox())!;
+      await glide(page, 'main', box.x + (box.width * 5) / 6, box.y + box.height / 2);
+    };
+
     // 1. ⌃⌘2: the right panel turns to the tutor, which asks first — the consent card — and 동의 turns it on.
-    await chapter(`${accel('view.inspectorTutor')}로 오른쪽 패널을 튜터로 바꿉니다. 처음에는 동의 카드가 질문과 함께 무엇이 어디로 가는지 먼저 알려 줍니다.`, page, 6500);
+    await chapter(`${accel('view.inspectorTutor')}로 오른쪽 패널을 튜터로 바꿉니다. 처음에는 동의 카드가 먼저 나와, 질문과 함께 무엇을 어디로 보내는지 알려 줍니다.`, page, 6500);
     await pause(2500);
     const turned = await press('2', ['control', 'command'], 'view.inspectorTutor', async () => (await mode()) === 'tutor');
     await expect(page.getByTestId('tutor-consent')).toBeVisible();
@@ -790,11 +803,12 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await pause(1500);
 
     // 2. The chooser: Claude Code is not installed here; the fake agent of a development build is chosen and started.
-    await chapter('동의하면 에이전트를 고릅니다. 이 녹화에는 Claude Code를 설치하지 않았으므로, 개발·데모 빌드에만 있는 가짜 에이전트로 시작합니다. 가짜는 정해 둔 답을 돌려줍니다.', page, 6500);
+    await chapter('동의하면 에이전트를 고릅니다. 이 녹화에는 Claude Code가 없어 개발·데모 빌드 전용 가짜 에이전트로 시작합니다. 가짜는 정해 둔 답을 돌려줍니다.', page, 7500);
     await expect(page.getByTestId('agent-row').and(page.locator('[data-agent="claude"]')).getByTestId('agent-flag')).toHaveText('설치 안 됨');
     await pause(5500);
     await glideClick(page, 'main', page.getByTestId('agent-dev-group').getByTestId('agent-row'));
     await expect(page.getByTestId('agent-start')).toHaveText('가짜 에이전트로 시작');
+    await park(page, 'main');
     await pause(2000);
     await glideClick(page, 'main', page.getByTestId('agent-start'));
     await expect(page.getByTestId('tutor-empty')).toBeVisible();
@@ -815,34 +829,31 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await pause(2000);
 
     // 4. ↩: the tool chips, then the answer as it comes.
-    await chapter('↩로 보내면 튜터가 붙인 구간과 목차를 확인하고 그 쪽을 읽은 뒤 답합니다. 위의 칩이 무엇을 읽었는지 보여 주고, 답은 받는 대로 흘러나옵니다.', page, 6500);
+    await chapter('↩로 보내면 튜터가 붙인 구간과 목차를 확인하고 그 쪽을 읽은 뒤 답합니다. 도구 칩이 무엇을 읽었는지 보여 주고, 답은 받는 대로 흘러나옵니다.', page, 6500);
     await pause(1500);
     await composer.focus();
     await page.keyboard.press('Enter');
     await expect(answers.first().getByTestId('tool-chip')).toHaveText(['선택한 구간 확인', '목차 확인', '1–2쪽 읽음'], { timeout: 30_000 });
     await expect(answers.first()).toHaveAttribute('data-status', 'complete', { timeout: 30_000 });
     await park(page, 'main');
-    await pause(9000);
+    await pause(7000);
 
     // 5. Its cite chips: the pages this turn read.
     await chapter('답 안의 ‘2쪽’ 같은 인용 칩은 튜터가 이번 답에서 실제로 읽은 쪽만 가리킵니다. 누르면 그 쪽으로 갑니다.', page, 6000);
     const chip = answers.first().getByTestId('cite-chip').filter({ hasText: '2쪽' }).first();
-    const logBox = (await log.boundingBox())!;
-    await glide(page, 'main', logBox.x + logBox.width / 2, logBox.y + logBox.height / 2);
-    await page.mouse.wheel(0, -4000);
     await expect(chip).toBeInViewport();
     await pause(1500);
-    const chipBox = (await chip.boundingBox())!;
-    await glide(page, 'main', chipBox.x + chipBox.width / 2, chipBox.y + chipBox.height / 2);
+    await hoverRightThird(chip);
     await pause(4500);
 
     // 6. Pressed: the reader at that page, its outline for a moment, the chip current; ⌘[ comes back.
     await chapter(`리더가 그 쪽으로 가고 쪽 둘레가 잠깐 강조됩니다. 칩에는 지금 보는 쪽이라는 테두리가 남고, ${accel('nav.historyBack')}로 돌아옵니다.`, page, 6500);
     await pause(800);
-    await chip.click();
+    await glideClick(page, 'main', chip);
     await expect(field).toHaveValue('2');
     await expect(chip).toHaveClass(/\bis-current\b/);
-    await releasePointer(page, 'main');
+    // Away from the chip at once: its current border shows, and goes once ⌘[ has left the page.
+    await park(page, 'main');
     await pause(6000);
     const back = await press('[', ['command'], 'nav.historyBack', async () => (await field.inputValue()) === '1');
     await expect(field).toHaveValue('1');
@@ -850,8 +861,9 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await park(page, 'main');
 
     // 7. An answer that cites a page it did not read: 출처 없음, its notice, and 원문 근거로 다시 묻기 — a turn that reads it first.
-    await script('unverified');
-    await chapter('튜터가 읽지 않은 쪽을 가리키면 그 인용은 ‘출처 없음’이 되고, 답 아래에 안내가 붙습니다. (가짜 에이전트가 일부러 읽지 않은 쪽을 가리키게 했습니다)', page, 6500);
+    await nextFakeScript(page, app, 'demo-unverified');
+    // The caption stays until the 출처 없음 chips are there to see, and some seconds more (the next caption takes its place).
+    await chapter('튜터가 읽지 않은 쪽을 가리키면 그 인용은 ‘출처 없음’이 되고, 답 아래에 안내가 붙습니다. (가짜 에이전트가 일부러 읽지 않은 쪽을 가리키게 했습니다)', page, 60_000);
     await pause(1000);
     await selectSentence(PASSAGES.second, 1);
     await glideClick(page, 'main', composer);
@@ -864,10 +876,9 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await pause(3000);
     const none = unverified.getByTestId('cite-chip').filter({ hasText: '출처 없음' }).first();
     await none.scrollIntoViewIfNeeded();
-    const noneBox = (await none.boundingBox())!;
-    await glide(page, 'main', noneBox.x + noneBox.width / 2, noneBox.y + noneBox.height / 2);
+    await hoverRightThird(none);
     await pause(4000);
-    await script('answer');
+    await nextFakeScript(page, app, 'demo');
     await caption(lastCaptioned, '‘원문 근거로 다시 묻기’를 누르면 튜터가 그 쪽을 먼저 읽고 다시 답합니다. 이번에는 그 쪽이 확인된 인용이 됩니다.', 6000);
     const reground = page.getByTestId('tutor-reground');
     await reground.scrollIntoViewIfNeeded();
@@ -877,15 +888,14 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await expect(page.getByTestId('tutor-question').last().locator('.bubble p')).toHaveText('1쪽을 먼저 읽고 다시 답해 주세요.');
     await expect(answers.nth(2)).toHaveAttribute('data-status', 'complete', { timeout: 30_000 });
     await expect(answers.nth(2).getByTestId('cite-chip').first()).toHaveText('1쪽');
-    await page.getByTestId('tutor-question').last().evaluate((el) => el.scrollIntoView({ block: 'start', behavior: 'smooth' }));
     await park(page, 'main');
     await pause(8000);
 
     // 8. Offline: nothing is sent, the question stays in the composer; once online one ↩ sends it.
-    await chapter('인터넷에 연결되어 있지 않으면 아무것도 보내지 않고 그렇다고 알립니다. 질문은 입력창에 그대로 남습니다. (연결 끊김은 시험 훅으로 재현합니다)', page, 6500);
+    await chapter('인터넷에 연결되어 있지 않으면 아무것도 보내지 않고 그렇다고 알립니다. 질문은 입력창에 그대로 남습니다. (연결 끊김은 시험용 설정으로 재현합니다)', page, 6500);
     await tutorNetwork(app, 'offline');
-    await scriptedTag('연결 끊김은 시험 훅으로 재현');
-    // The column back at its end, where the next turn's place is (it was left at the reground question).
+    await scriptedTag('연결 끊김은 시험용 설정으로 재현');
+    // The column at its end, where the next turn's place is.
     const end = (await log.boundingBox())!;
     await glide(page, 'main', end.x + end.width / 2, end.y + end.height / 2);
     await page.mouse.wheel(0, 20_000);
@@ -916,10 +926,14 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     const shown = await press('5', ['option', 'command'], 'reader.showSessions', async () => (await page.getByTestId('reader-sessions').count()) > 0);
     const rows = page.getByTestId('reader-sessions').getByTestId('session-row');
     await expect(rows).toHaveCount(3);
+    // The older sessions on screen (here, in chapter 10 and in the library) were written before the recording: a lasting tag says so.
+    await scriptedTag('이전 세션은 녹화 전에 넣어 둠');
     const current = page.locator('[data-testid="reader-sessions"] [data-testid="session-row"][aria-selected="true"]');
     await expect(current).toHaveText(QUESTIONS.first);
     await afterKey(shown, 3500);
     await glideClick(page, 'main', current);
+    // The pointer away before the name is typed, so it covers none of it.
+    await park(page, 'main');
     await page.keyboard.press('Enter');
     const name = page.getByTestId('session-name-input');
     await expect(name).toBeFocused();
@@ -950,7 +964,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await pause(4500);
 
     // 11. The library's 세션 section: the notes talked about last, each with its newest sessions; a row opens its note on that session.
-    await chapter('라이브러리 사이드바의 ‘세션’ 묶음에는 최근에 이야기한 자료와 그 세션이 모입니다. 행을 누르면 그 자료가 열리고 튜터가 그 세션을 보입니다.', page, 6500);
+    await chapter('라이브러리 사이드바의 ‘세션’ 묶음에는 최근 튜터에게 물어본 자료가 세션과 함께 모입니다. 행을 누르면 그 자료와 세션이 함께 열립니다.', page, 6500);
     const library = await press('1', ['command'], 'nav.back', async () => (await shownTab()) === 'library');
     const section = page.getByTestId('library-sessions');
     await expect(section).toBeVisible();
@@ -961,6 +975,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     expect(await mode()).toBe('tutor');
     await park(page, 'main');
     await pause(10000);
+    await scriptedTag(null);
 
     demoSeconds = Math.round((Date.now() - started) / 100) / 10;
     stopIfLost(); // an exit that came during the last pause

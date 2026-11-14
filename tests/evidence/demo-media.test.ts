@@ -5,7 +5,7 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { matchKorean } from '../../apps/desktop/src/renderer/src/palette/hangul';
 import { itemMetadataSchema } from '../../packages/domain/src/metadata';
-import { DEMO_METADATA, DEMO_ORGANIZE, DOCS, EXTRA_TITLES, MATCHES_TITLE, PALETTE_TITLE, PHOTO_TITLE, PICTURES, READ_TITLE, SEARCH_WORD, TRASHED_TITLE, VIDEOS, writeDemoMedia, writeDemoPictures } from './demo-media';
+import { DEMO_METADATA, DEMO_ORGANIZE, DOCS, EXTRA_TITLES, PALETTE_TITLE, READ_TITLE, VIDEOS, writeDemoMedia } from './demo-media';
 
 const pdfsIn = (dir: string) => fs.readdirSync(dir).filter((f) => f.endsWith('.pdf'));
 const hash = (file: string) => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -23,13 +23,13 @@ describe('the demo material when Chromium cannot print (re-review Important 1)',
       const printPdf = vi.fn().mockResolvedValueOnce(printed).mockRejectedValue(new Error('printing took over 20 s'));
       const media = await writeDemoMedia(dir, printPdf, (text) => notes.push(text), fixtures);
       const pdfs = pdfsIn(dir);
-      expect(pdfs.length).toBe(9);
+      expect(pdfs.length).toBe(DOCS.length - EXTRA_TITLES.length);
       expect(printPdf).toHaveBeenCalledTimes(2); // the first printed, the second failed, the rest not tried
       expect(notes).toHaveLength(1);
       expect(notes[0]).toMatch(/printing the demo PDFs failed .*20 s.*fixture/);
       // Every file is a PDF, and no two are the same bytes (the import would take them for duplicates).
       for (const f of pdfs) expect(fs.readFileSync(path.join(dir, f)).subarray(0, 5).toString()).toBe('%PDF-');
-      expect(new Set(pdfs.map((f) => hash(path.join(dir, f)))).size).toBe(9);
+      expect(new Set(pdfs.map((f) => hash(path.join(dir, f)))).size).toBe(pdfs.length);
       expect(path.basename(media.read)).toBe(`${READ_TITLE}.pdf`);
       expect(fs.existsSync(media.read)).toBe(true);
       expect(fs.existsSync(path.join(dir, '.pages'))).toBe(false);
@@ -48,7 +48,7 @@ describe('the demo table metadata (M4)', () => {
     for (const [from] of VIDEOS) fs.writeFileSync(path.join(fixtures, from), 'video');
     try {
       const media = await writeDemoMedia(dir, () => Promise.reject(new Error('no printing in a unit test')), () => {}, fixtures);
-      const titles = [media.read, ...media.drop, ...media.extra].map((f) => path.basename(f, path.extname(f))).sort();
+      const titles = [...[media.read, ...media.drop].map((f) => path.basename(f, path.extname(f))), ...EXTRA_TITLES].sort();
       expect(Object.keys(DEMO_METADATA).sort()).toEqual(titles);
       for (const meta of Object.values(DEMO_METADATA)) expect(itemMetadataSchema.parse(meta)).toEqual(meta);
       // The quick search's short fields: title, creators, publisher; the original file name is the title + extension.
@@ -70,14 +70,10 @@ describe('the demo material of the organise chapters (M5)', () => {
     for (const [from] of VIDEOS) fs.writeFileSync(path.join(fixtures, from), 'video');
     try {
       const media = await writeDemoMedia(dir, () => Promise.reject(new Error('no printing in a unit test')), () => {}, fixtures);
-      // The first import is the same nine files as before; the two extra notes are separate files with the titles the chapters expect.
+      // The first import is the same nine files as before; the two notes M5's chapters brought in later are no longer printed.
       expect([media.read, ...media.drop]).toHaveLength(9);
-      expect(media.extra.map((f) => path.basename(f, '.pdf'))).toEqual([...EXTRA_TITLES]);
-      for (const f of media.extra) {
-        expect(fs.existsSync(f)).toBe(true);
-        expect(media.drop).not.toContain(f);
-      }
-      const hashes = [media.read, ...media.drop, ...media.extra].filter((f) => f.endsWith('.pdf')).map(hash);
+      for (const title of EXTRA_TITLES) expect(fs.existsSync(path.join(dir, `${title}.pdf`))).toBe(false);
+      const hashes = [media.read, ...media.drop].filter((f) => f.endsWith('.pdf')).map(hash);
       expect(new Set(hashes).size).toBe(hashes.length); // no two are the same bytes: the import never takes one for a duplicate
       // The tags are put on titles the first import has (a title that is not there would be a silent no-op on camera).
       const firstImport = new Set([media.read, ...media.drop].map((f) => path.basename(f, path.extname(f))));
@@ -89,40 +85,5 @@ describe('the demo material of the organise chapters (M5)', () => {
       fs.rmSync(dir, { recursive: true, force: true });
       fs.rmSync(fixtures, { recursive: true, force: true });
     }
-  });
-});
-
-describe('the M7c demo material', () => {
-  it('writes the five pictures under their names, or distinct fixture copies once drawing fails, and says so once', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-demo-pictures-'));
-    const fixtures = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-demo-fixtures-'));
-    for (const name of ['photo-4032.jpg', 'transparent.png', 'alpha.webp']) fs.writeFileSync(path.join(fixtures, name), `stand-in ${name}`);
-    try {
-      const notes: string[] = [];
-      const draw = vi.fn().mockResolvedValueOnce(Buffer.from('drawn')).mockRejectedValue(new Error('drawing took over 20 s'));
-      const files = await writeDemoPictures(dir, draw, (text) => notes.push(text), fixtures);
-      expect(files.map((f) => path.basename(f))).toEqual(PICTURES.map((p) => p.file));
-      expect(draw).toHaveBeenCalledTimes(2);
-      expect(notes).toHaveLength(1);
-      expect(notes[0]).toMatch(/drawing the demo pictures failed .*20 s.*fixture/);
-      expect(new Set(files.map(hash)).size).toBe(PICTURES.length); // no two the same bytes: no duplicate question on camera
-      expect(fs.readdirSync(dir).sort()).toEqual(PICTURES.map((p) => p.file).sort()); // the drawing page is gone
-      expect(path.basename(files[0]!, '.jpg')).toBe(PHOTO_TITLE);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-      fs.rmSync(fixtures, { recursive: true, force: true });
-    }
-  });
-
-  it('finds the search word in the bodies of three notes (the panel\'s note and the trashed one among them), in one title, and in no picture\'s name', () => {
-    const body = (title: string) => DOCS.find((d) => d.title === title)!.pages.flatMap((p) => [p.heading, ...p.paragraphs, ...(p.bullets ?? [])]).join(' ');
-    const inBody = DOCS.filter((d) => body(d.title).includes(SEARCH_WORD)).map((d) => d.title);
-    expect(inBody).toHaveLength(3);
-    expect(inBody).toContain(MATCHES_TITLE);
-    expect(inBody).toContain(TRASHED_TITLE);
-    expect(DOCS.filter((d) => d.title.includes(SEARCH_WORD)).map((d) => d.title)).toHaveLength(1);
-    expect(PICTURES.filter((p) => p.file.includes(SEARCH_WORD))).toEqual([]);
-    expect(EXTRA_TITLES.filter((t) => body(t).includes(SEARCH_WORD))).toEqual([]); // the notes of the index chapter add no row
-    expect(MATCHES_TITLE).toBe(READ_TITLE);
   });
 });

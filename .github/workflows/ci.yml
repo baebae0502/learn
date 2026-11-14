@@ -19,7 +19,9 @@ jobs:
     runs-on: ubuntu-24.04
     # M5's main run took 18 min (E2E 13, evidence 4); M7c's took 37 (E2E 29) on one runner and the E2E alone 37 on a slower
     # one, which left the evidence step no room under 40. A hang still stops here.
-    timeout-minutes: 60
+    # T1a: run 42796079162 took 47 min, its E2E (Xvfb) 36.6. T1a's tests since eacaeed scale the E2E by 59.0 / 44.8 = 1.317 (48.2)
+    # and the rest (setup and the evidence harness, 10.4) by 13.6 / 11.4 = 1.19 (12.4): 60.6, + 25 % = 76.
+    timeout-minutes: 76
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

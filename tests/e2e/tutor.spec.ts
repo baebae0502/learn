@@ -1813,20 +1813,21 @@ test('the page mark stands a bar beside each run of attached lines: one left of 
   const { app, page } = await atSession(testInfo);
   try {
     await page.waitForFunction(() => window.__learnPdf !== undefined);
-    // Page 3: from the middle of column 1's third line from its foot into column 2's second line.
-    await selectInPage(page, 2, 0, 5);
-    const spans = await spansOf(page, 3);
+    // Page 2 (drawn ahead with page 1; a page further on, drawn only once the probe scrolls to it, can stay paused in pdf.js's render
+    // queue on a loaded machine): from the middle of column 1's third line from its foot into column 2's second line.
+    await selectInPage(page, 1, 0, 5);
+    const spans = await spansOf(page, 2);
     const mid = (Math.min(...spans.map((x) => x.left)) + Math.max(...spans.map((x) => x.right))) / 2;
     const body = spans.slice(1).filter((x) => !x.words.includes('Footnote'));
     const [col1, col2] = [body.filter((x) => x.left < mid), body.filter((x) => x.left >= mid)];
-    expect(col1.length, 'page 3 has two columns').toBeGreaterThan(10);
-    expect(col2.length, 'page 3 has two columns').toBeGreaterThan(10);
+    expect(col1.length, 'page 2 has two columns').toBeGreaterThan(10);
+    expect(col2.length, 'page 2 has two columns').toBeGreaterThan(10);
     const from = col1.at(-3)!;
     const to = col2[1]!;
-    await selectInPage(page, 2, from.at + 5, to.at + to.words.length - 3);
-    await expect(attachedChip(page)).toHaveAttribute('data-page', '3');
-    await expect.poll(async () => (await markBoxes(page, 3, 'attach-bar')).length).toBe(2);
-    const [bar1, bar2] = (await markBoxes(page, 3, 'attach-bar')).sort((a, b) => a.left - b.left);
+    await selectInPage(page, 1, from.at + 5, to.at + to.words.length - 3);
+    await expect(attachedChip(page)).toHaveAttribute('data-page', '2');
+    await expect.poll(async () => (await markBoxes(page, 2, 'attach-bar')).length).toBe(2);
+    const [bar1, bar2] = (await markBoxes(page, 2, 'attach-bar')).sort((a, b) => a.left - b.left);
     const col1Left = Math.min(...col1.map((x) => x.left));
     const col1Right = Math.max(...col1.map((x) => x.right));
     const col2Left = Math.min(...col2.map((x) => x.left));

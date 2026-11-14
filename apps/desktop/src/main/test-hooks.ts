@@ -396,6 +396,10 @@ export interface SeedSessionsInput {
   messagesPerSession: number;
   /** Each answer cites the pages from the first on, each one verified (0 to 40). */
   citationsPerAnswer: number;
+  /** When the first question was asked (ISO): sessions of another day for the session list's groups. Now by default. */
+  startedAt?: string;
+  /** The first question of the first sessions, one each: the names the list shows. */
+  questions?: readonly string[];
 }
 export interface SessionSeedDeps {
   db: Db;
@@ -421,7 +425,8 @@ export function seedSessions(deps: SessionSeedDeps, input: SeedSessionsInput): {
   if (!item || item.type !== 'pdf') throw new Error('seedSessions: the item must be a PDF in the library');
   const pages = Array.from({ length: citationsPerAnswer }, (_, p) => p);
   const verified = pages.map((p) => ({ pageIndex: p, label: mainStrings.tutor.pageLabel(p + 1) }));
-  const base = Date.now();
+  const base = input.startedAt === undefined ? Date.now() : Date.parse(input.startedAt);
+  if (!Number.isFinite(base)) throw new Error('seedSessions: startedAt is an ISO time');
   let tick = 0;
   const at = () => new Date(base + tick++).toISOString();
   return deps.db.transaction(() => {
@@ -431,7 +436,7 @@ export function seedSessions(deps: SessionSeedDeps, input: SeedSessionsInput): {
       for (let k = 0; k < messagesPerSession / 2; k += 1) {
         const b = deps.conversations.beginTurn({
           conversationId, itemId: item.id, revisionId: item.revisionId, agent: 'fake', openedAtPage: 0,
-          user: { kind: 'question', text: `Seeded question ${k + 1} of session ${s + 1}`, sent: { selection: 0, replayedTurns: 0, preamble: k === 0 }, attached: null },
+          user: { kind: 'question', text: (k === 0 ? input.questions?.[s] : undefined) ?? `Seeded question ${k + 1} of session ${s + 1}`, sent: { selection: 0, replayedTurns: 0, preamble: k === 0 }, attached: null },
           now: at(),
         });
         conversationId = b.conversationId;

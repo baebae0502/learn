@@ -2,8 +2,8 @@
 // piece). T1a has one real agent and one company: the card says Claude Code and Anthropic, as the approved mockup does.
 // Rows join this file with the task that draws them: the mode segment, the consent card, the off state, the agent chooser, the
 // conversation (Task 17: the empty session, the chips, the sent-scope line and list, the lines under an answer, 최신으로), the
-// composer with its agent button and menu (Task 18), the passage attached to a question, and what a failed turn, an answer with
-// unverified cites and a PDF without readable text say.
+// composer with its agent button and menu (Task 18), the passage attached to a question, what a failed turn, an answer with
+// unverified cites and a PDF without readable text say, and the session list.
 import { SPIKE_FACTS, type AgentId } from '@learn/domain';
 import { eulReul, euroRo, iGa, waGwa } from './josa';
 
@@ -255,6 +255,24 @@ export const tutor = {
       const list = pageList([first, ...more]);
       return `${list}${eulReul(list)} 먼저 읽고 다시 답해 주세요.`;
     },
+  },
+  /**
+   * The session list (spec 8.9, 13; the approved mockup's reader segment, its empty state, the library's section): a row's tooltip
+   * is its name and when it was last talked in, and says so of a fake agent's session.
+   */
+  sessions: {
+    segment: '세션',
+    tree: '세션',
+    libraryHeading: '세션',
+    emptyTitle: '이\u00a0자료의 세션이 없습니다',
+    emptyText: '튜터에게 질문하면 여기에 생깁니다.',
+    /** When a long name wraps, the time (and the fake agent's mark) stays one piece on the line after it, the dot with the name. */
+    tip: (name: string, when: string, fake: boolean) => `${name}\u00a0· ${`${when}${fake ? ' · 가짜 에이전트' : ''}`.replace(/ /g, '\u00a0')}`,
+    nameLabel: '세션 이름',
+    nameTooLong: '세션 이름은 200자까지 쓸 수 있습니다.',
+    deleted: '세션을 삭제했습니다',
+    deleteFailed: '세션을 삭제하지 못했습니다',
+    renameFailed: '세션 이름을 바꾸지 못했습니다',
   },
   /** The copied answer's cites (citationCopyText): "(42쪽)", "(출처 없음)". */
   copy: { page: (n: number) => `(${n}쪽)`, none: '(출처 없음)' },

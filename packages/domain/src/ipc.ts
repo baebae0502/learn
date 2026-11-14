@@ -143,6 +143,8 @@ export const commandContextInput = z
     tutorHasMessages: z.boolean().optional(),
     /** The active reader tab's session has an answer coming, the tutor on screen or not: 답 중지 is on; absent otherwise. */
     tutorStreaming: z.boolean().optional(),
+    /** A tutor session row of the sidebar has the focus: ⌘⌫ is 세션 삭제; absent otherwise. */
+    sessionFocused: z.boolean().optional(),
     textSize: z.union([z.literal(12), z.literal(13), z.literal(14), z.literal(15)]),
     libraryCount: contextCount,
     selectionCount: contextCount,
@@ -202,9 +204,15 @@ export const sheetResultInput = z.discriminatedUnion('kind', [
 /** A native question with the renderer's words (collection delete, tag merge and delete): spec 3.4. */
 export const confirmInput = z.object({ message: z.string().min(1).max(300), detail: z.string().max(600).optional(), confirm: z.string().min(1).max(40), caution: z.boolean().optional() }).strict();
 export type ConfirmInput = z.input<typeof confirmInput>;
-/** 영구 삭제… / 휴지통 비우기… (P-25): main opens the purge sheet with what it is about; the words are the sheet's own. */
+/**
+ * 영구 삭제… / 휴지통 비우기… (P-25): main opens the purge sheet with what it is about; the words are the sheet's own. `itemIds`: the
+ * items an `items` or `mixed` purge takes, whose tutor sessions main counts for the sheet (T1a spec 6.2) — never handed on to it.
+ */
 export const confirmPurgeInput = z
-  .object({ variant: z.enum(['items', 'collections', 'mixed', 'empty']) satisfies z.ZodType<PurgeVariant>, items: contextCount, collections: contextCount, name: z.string().min(1).max(1000).optional() })
+  .object({
+    variant: z.enum(['items', 'collections', 'mixed', 'empty']) satisfies z.ZodType<PurgeVariant>, items: contextCount, collections: contextCount, name: z.string().min(1).max(1000).optional(),
+    itemIds: z.array(z.uuid()).max(1_000_000).optional(),
+  })
   .strict();
 export type ConfirmPurgeInput = z.input<typeof confirmPurgeInput>;
 export type SheetResultInput = z.input<typeof sheetResultInput>;
@@ -237,6 +245,8 @@ export const showContextMenuInput = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('trash'), itemIds: z.array(z.uuid()).max(1_000_000), collectionIds: z.array(z.uuid()).max(5000), ...point }),
   // A reader tab (spec 3.4): the item it shows; `active` says it is the shown tab, whose menu names the keys of its commands.
   z.object({ kind: z.literal('tab'), itemId: z.uuid(), active: z.boolean().optional(), ...point }),
+  // A tutor session row (T1a spec 11): its conversation; main answers null for one that is gone or deleted.
+  z.object({ kind: z.literal('session'), conversationId: z.uuid(), ...point }),
 ]);
 /** The table header's native menu: which columns show now, which a view forces on (drawn checked and fixed), and where the pointer is. */
 export const showColumnMenuInput = z

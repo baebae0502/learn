@@ -10,6 +10,13 @@
     color: var(--text-primary);
     font: var(--type-caption);
   }
+  /* A list row's tooltip, placed by the list (tutor/sessions/SessionRow.tsx RowTip) over everything, as an overlay's is. */
+  .tooltip.row-tip {
+    position: fixed;
+    z-index: 100; /* local: above the panes, as the overlay layer the other tooltips are portalled to */
+    pointer-events: none;
+    animation: fade-in var(--duration-fast) var(--ease-standard);
+  }
   .tooltip[data-entering] {
     animation: fade-in var(--duration-fast) var(--ease-standard);
   }

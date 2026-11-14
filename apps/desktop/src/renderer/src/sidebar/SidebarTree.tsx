@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight, Clock, Copy, Folder, FolderOpen, GripVertical, Inbox, LibraryBig, Trash2, type LucideIcon } from 'lucide-react';
 import {
   Button, Tree, TreeHeader, TreeItem, TreeItemContent, TreeSection, Virtualizer, type Key, type Selection, type TreeProps, type TreeState,
@@ -48,6 +48,8 @@ export interface SidebarTreeProps {
   rowSize: number;
   /** The sidebar's drag and drop (dnd/treeDnd.ts): handed to the Tree as it is. */
   dragAndDropHooks?: TreeProps<object>['dragAndDropHooks'];
+  /** A section of its own under the tree (the tutor's sessions): the tree then takes its rows' height, not the rest of the sidebar. */
+  after?: ReactNode;
 }
 
 interface RowContext {
@@ -543,7 +545,17 @@ export function SidebarTree(props: SidebarTreeProps) {
   }, [restoreTo, focusRow]);
 
   return (
-    <div className="sidebar-body" onPointerDownCapture={onPointerDownCapture} onKeyDownCapture={onKeyDownCapture} onDragStartCapture={onDragStartCapture} onDropCapture={onDropCapture} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} onFocus={onFocus}>
+    <div
+      className="sidebar-body"
+      data-after={props.after !== undefined || undefined}
+      onPointerDownCapture={onPointerDownCapture}
+      onKeyDownCapture={onKeyDownCapture}
+      onDragStartCapture={onDragStartCapture}
+      onDropCapture={onDropCapture}
+      onContextMenu={onContextMenu}
+      onDoubleClick={onDoubleClick}
+      onFocus={onFocus}
+    >
       <div className="section-label" aria-hidden="true">
         {t.shell.libraryHeading}
       </div>
@@ -592,6 +604,7 @@ export function SidebarTree(props: SidebarTreeProps) {
           </div>
         </>
       )}
+      {props.after}
     </div>
   );
 }

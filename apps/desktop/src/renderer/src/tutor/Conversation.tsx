@@ -204,12 +204,18 @@ export function Conversation({ conversationId, visible }: { conversationId: stri
     else if (e.kind === 'text' || e.kind === 'tool') setSaid((s) => (s === '' ? s : ''));
   });
 
-  if (thread === null) return <div className="tutor-convo" data-testid="tutor-conversation">{failed && <ThreadFailed retry={retry} />}</div>;
+  if (thread === null) {
+    return (
+      <div className="tutor-convo" data-testid="tutor-conversation" data-conversation-id={conversationId}>
+        {failed && <ThreadFailed retry={retry} />}
+      </div>
+    );
+  }
   const { messages, session, item } = thread;
   const at = notice === null ? null : noticeIndex(messages, notice);
   const before = notice === null ? null : <BeforeNotice notice={notice} />;
   return (
-    <div className="tutor-convo" data-testid="tutor-conversation" data-streaming={streaming ? '' : undefined}>
+    <div className="tutor-convo" data-testid="tutor-conversation" data-conversation-id={conversationId} data-drawn="" data-streaming={streaming ? '' : undefined}>
       <StickyName title={session.title} shown={stuck} ref={stickyRef} />
       <div ref={logRef} className="tutor-log" role="log" aria-label={words.label} aria-live="off" tabIndex={0} onScroll={onScroll} data-testid="tutor-log">
         <div ref={contentRef} className="tutor-log-content">

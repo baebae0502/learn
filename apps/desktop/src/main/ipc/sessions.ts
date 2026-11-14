@@ -23,8 +23,11 @@ export function registerSessionsIpc(handle: Handle, deps: IpcDeps): void {
     return renamed;
   });
 
+  // A session whose answer is coming is stopped first (as 중지 stops it): no answer, and no 중지 for it, outlives the delete. Its
+  // answer ends stopped, which 실행 취소 brings back with the session.
   handle(Channels.sessions.delete, sessionIdInput, ({ conversationId }) => {
     const r = repo();
+    deps.tutor?.stopConversation(conversationId);
     r.remove(conversationId, nowIso());
     announce(r, 'deleted', conversationId);
   });

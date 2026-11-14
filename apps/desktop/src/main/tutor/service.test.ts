@@ -468,6 +468,23 @@ describe('the tutor service', () => {
       expect(r.events.at(-1)).toMatchObject({ kind: 'done', status: 'stopped' });
     });
 
+    it('stopConversation stops the answer of that session only (a deleted session keeps no answer coming)', async () => {
+      const r = rig();
+      const answer = gate<PromptOutcome>();
+      r.be.ctl.prompt = () => answer.p;
+      const a = askIds(await r.ask());
+      await vi.waitFor(() => expect(r.be.prompts).toHaveLength(1), { interval: 1 });
+      r.service.stopConversation('9f2b8c1e-5d4a-4b6f-8a9e-1c2d3e4f5a6b');
+      expect(r.be.interrupts).toEqual([]);
+      r.service.stopConversation(a.conversationId);
+      expect(r.be.interrupts).toEqual(['if-not-ended']);
+      answer.resolve({ ...OK, stopReason: 'cancelled' });
+      await r.ended();
+      expect(r.events.at(-1)).toMatchObject({ kind: 'done', status: 'stopped' });
+      r.service.stopConversation(a.conversationId); // nothing runs any more
+      expect(r.be.interrupts).toEqual(['if-not-ended']);
+    });
+
     it('a stop before the ACP session is ready ends the answer stopped and costs the session nothing: its next prompt still carries the head and the replay', async () => {
       const r = rig();
       const prior = r.answered();

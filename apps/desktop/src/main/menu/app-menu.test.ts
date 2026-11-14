@@ -118,6 +118,7 @@ const VIEW = (platform: NodeJS.Platform): Shape => ({
     },
     { id: 'reader.showThumbnails', label: '썸네일 보기', accelerator: 'Alt+CmdOrCtrl+2' },
     { id: 'reader.showOutline', label: '목차 보기', accelerator: 'Alt+CmdOrCtrl+3' },
+    { id: 'reader.showSessions', label: '세션 보기', accelerator: 'Alt+CmdOrCtrl+5' },
     SEP,
     // ⌘+ / ⌘− / ⌘0; #1 is ⌘+'s hidden ⌘= twin (shape() does not carry `visible`).
     { id: 'view.textBigger', label: '글자 크게', accelerator: 'CmdOrCtrl+Plus' },
@@ -439,6 +440,19 @@ describe('both panes\' state labels and the menu bar\'s item commands (P-2, P-3)
     expect(menuLabelsChanged(base, next({ view: 'viewer' }))).toBe(true); // ⌘+ is 확대 in the reader (P-9)
     expect(menuLabelsChanged(base, next({ blocked: true, textSize: 15 }))).toBe(false);
     expect(menuLabelsChanged(base, next({ pdfOpen: true }))).toBe(false);
+  });
+  it('carries a focused session row and relabels when it comes or goes (⌘⌫ is 세션 삭제 then)', () => {
+    expect(menuLabelState(next({ sessionFocused: true }))).toEqual({ sidebar: 'shown', inspector: 'shown', scope: 'all', view: 'library', sessionFocused: true });
+    expect(menuLabelState(next({ sessionFocused: false }))).toEqual(menuLabelState(base));
+    expect(menuLabelsChanged(base, next({ sessionFocused: true }))).toBe(true);
+    expect(menuLabelsChanged(next({ sessionFocused: true }), base)).toBe(true);
+    expect(menuLabelsChanged(menuLabelState(next({ sessionFocused: true })), menuLabelState(next({ sessionFocused: true })))).toBe(false);
+    const trash = commandById('item.trash');
+    const template = buildAppMenu({ isDev: false, platform: 'darwin', commands: [trash], enabled: ALL, onCommand: vi.fn(), labels: menuLabelState(next({ scope: 'trash', sessionFocused: true })) });
+    const byId = byIdOf(template);
+    expect(byId.get('item.trash')?.label).toBe('세션 삭제');
+    applyMenuLabels({ getMenuItemById: (id: string) => byId.get(id) ?? null }, 'darwin', menuLabelState(next({ scope: 'trash' })), [trash]);
+    expect(byId.get('item.trash')?.label).toBe('영구 삭제…');
   });
   it('relabels when a picture is drawn or goes, and carries that in the label state (한 쪽 전체 보기 is 창에 맞춤 for a picture)', () => {
     const reader = next({ view: 'viewer', inspector: undefined });

@@ -118,11 +118,12 @@ const M7B_COMMANDS: readonly CommandId[] = [
 const M7C_COMMANDS: readonly CommandId[] = ['reader.imageBackgroundLight', 'reader.imageBackgroundDark', 'reader.imageBackgroundChecker'] as CommandId[];
 
 /**
- * T1a's commands (the tutor, spec 11): each one is run here — the menu bar's in the reader pass below, 에이전트 고르기… (the palette's) after the
- * consent, 새 세션 (the palette's) after a question, 답 중지 (the palette's) while an answer comes — and none is left to another test. Later
- * tasks add theirs here — the ledger's three assertions below read this list.
+ * T1a's commands (the tutor, spec 11): each one is run here — the menu bar's in the reader pass below (세션 보기 among them), 에이전트 고르기…
+ * (the palette's) after the consent, 새 세션 (the palette's) after a question, 답 중지 (the palette's) while an answer comes, 이름 바꾸기 from a
+ * session row's menu and from the palette — and none is left to another test. item.trash's session way (세션 삭제) runs from a session row's
+ * menu too. The ledger's assertions below read this list.
  */
-const T1A_COMMANDS: readonly CommandId[] = ['view.inspectorInfo', 'view.inspectorTutor', 'tutor.chooseAgent', 'tutor.newSession', 'tutor.stop'];
+const T1A_COMMANDS: readonly CommandId[] = ['view.inspectorInfo', 'view.inspectorTutor', 'reader.showSessions', 'tutor.newSession', 'tutor.chooseAgent', 'tutor.stop', 'session.rename'];
 
 /**
  * Enabled in the library with one row selected, but running them here would trash the one sample the rest of the loop
@@ -256,6 +257,8 @@ test('every registry command runs without a page error (library and reader menus
     'reader.showThumbnails': () => expect(page.getByTestId('pdf-thumbnails')).toBeVisible(),
     // sample.pdf has no outline: the sidebar says so.
     'reader.showOutline': () => expect(page.getByTestId('reader-sidebar-empty')).toContainText('이 PDF에는 목차가 없습니다'),
+    // No question asked yet in this pass: the 세션 pane says where sessions come from.
+    'reader.showSessions': () => expect(page.getByTestId('reader-sessions-empty')).toContainText('세션이 없습니다'),
     // 보기 › 정렬 기준 ▸ 연도: the column row keeps the direction, so the table is sorted by 연도, newest first as it was.
     'library.sortBy': () => expect(page.locator('[data-testid="column-header"][data-col="year"]')).toHaveAttribute('aria-sort', 'descending'),
     // 컬렉션에 추가 ▸ 전수 시험: the selected sample is filed there (main has it, not only the screen).
@@ -822,6 +825,45 @@ test('every registry command runs without a page error (library and reader menus
       await expect(page.getByTestId('pdf-viewer')).toHaveCount(0);
     }
 
+    // A session row (T1a spec 8.9): its menu's 이름 바꾸기 and the palette's 세션 이름 바꾸기 name it in place; its menu's 세션 삭제 is item.trash's
+    // session way, undone by its toast. The two blocks above left sample.pdf two sessions.
+    let sessionWay = false;
+    {
+      await tutorFakeScript(app, 'answer');
+      await openItem(page, 'sample');
+      await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
+      await runMenuCommand(app, 'reader.showSessions');
+      const rows = page.getByTestId('reader-sessions').getByTestId('session-row');
+      await expect(rows).toHaveCount(2);
+      const row = rows.first();
+      const field = page.getByTestId('session-name-input');
+      await stubContextMenu(app, '이름 바꾸기');
+      await row.click({ button: 'right' });
+      await expect(field).toBeFocused();
+      await page.keyboard.insertText('메뉴에서 바꾼 이름');
+      await page.keyboard.press('Enter');
+      await expect(row).toHaveText('메뉴에서 바꾼 이름');
+      // The right click selected the row: the tutor shows its session, which has a question, so the palette offers the rename.
+      await expect(page.getByTestId('tutor-question').first()).toBeVisible();
+      await runPalette(page, app, '세션 이름 바꾸기', 'session.rename');
+      await expect(field).toBeFocused();
+      await page.keyboard.insertText('팔레트에서 바꾼 이름');
+      await page.keyboard.press('Enter');
+      await expect(row).toHaveText('팔레트에서 바꾼 이름');
+      ran.add('session.rename');
+      await stubContextMenu(app, '세션 삭제');
+      await row.click({ button: 'right' });
+      await expect(page.getByTestId('session-undo')).toContainText('세션을 삭제했습니다');
+      await expect(rows).toHaveCount(1);
+      sessionWay = true;
+      await page.getByTestId('session-undo').getByTestId('undo-action').click();
+      await expect(rows).toHaveCount(2);
+      await runMenuCommand(app, 'reader.showThumbnails');
+      await runMenuCommand(app, 'view.inspectorInfo');
+      await runMenuCommand(app, 'tab.close');
+      await expect(page.getByTestId('pdf-viewer')).toHaveCount(0);
+    }
+
     // The picture reader's commands (M7c): off with a PDF shown (the loop above) and on with a drawn picture, each run from the menu bar.
     {
       const [photo] = await importPaths(page, [PHOTO]);
@@ -863,11 +905,14 @@ test('every registry command runs without a page error (library and reader menus
     expect(T1A_COMMANDS.filter((id) => !all.includes(id)), 'T1a commands gone from the registry').toEqual([]);
     expect(T1A_COMMANDS.filter((id) => !ran.has(id)), 'T1a commands this test did not run itself').toEqual([]);
     expect(Object.keys(COVERED_ELSEWHERE).filter((id) => T1A_COMMANDS.includes(id as CommandId)), 'T1a commands left to another test').toEqual([]);
+    expect(sessionWay, 'item.trash ran its session way (세션 삭제) from a session row\'s menu').toBe(true);
     // The M7a commands: each ran here or is named in COVERED_ELSEWHERE with the test that runs it. The reader's and the translation's commands
     // are exactly the two lists' (M7a's and M7b's), compared by id: a new one is added to the list of the milestone that made it.
     expect(M7A_COMMANDS.filter((id) => !all.includes(id)), 'M7a commands gone from the registry').toEqual([]);
     const readerOrTranslation = all.filter((id) => id.startsWith('reader.') || id.startsWith('translation.')).sort();
-    expect(readerOrTranslation, 'the reader and translation commands in the registry').toEqual([...M7A_COMMANDS, ...M7B_COMMANDS.filter((id) => id.startsWith('reader.')), ...M7C_COMMANDS].sort());
+    expect(readerOrTranslation, 'the reader and translation commands in the registry').toEqual(
+      [...M7A_COMMANDS, ...M7B_COMMANDS.filter((id) => id.startsWith('reader.')), ...M7C_COMMANDS, ...T1A_COMMANDS.filter((id) => id.startsWith('reader.'))].sort(),
+    );
     expect(all.filter((id) => (id.startsWith('tab.') || id === 'item.openInBackground' || id.startsWith('nav.history'))).sort(), 'the tab and history commands in the registry').toEqual([...M7B_COMMANDS.filter((id) => !id.startsWith('reader.'))].sort());
     expect(M7A_COMMANDS.filter((id) => !ran.has(id) && !(id in COVERED_ELSEWHERE)), 'M7a commands neither run here nor covered elsewhere').toEqual([]);
     expect(Object.keys(COVERED_ELSEWHERE).filter((id) => M7A_COMMANDS.includes(id as CommandId)), 'M7a commands named as covered elsewhere').toEqual(['translation.translateSelection']);

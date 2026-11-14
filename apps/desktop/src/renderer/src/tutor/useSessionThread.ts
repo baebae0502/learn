@@ -108,11 +108,13 @@ export function useSessionThread(conversationId: string | null): { thread: Sessi
   useEffect(() => {
     if (stored !== null && thread !== null && live === null) setLive(null);
   }, [stored, thread, live, setLive]);
-  const gone = read.error instanceof ApiError && read.error.code === 'NOT_FOUND';
+  // A session found gone by a read that is over: one deleted and brought back (실행 취소) is read again before it counts as gone.
+  const notFound = read.error instanceof ApiError && read.error.code === 'NOT_FOUND';
+  const gone = notFound && !read.isFetching;
   useEffect(() => {
     if (gone) setConversation(null);
   }, [gone, setConversation]);
   const { refetch } = read;
   const retry = useCallback(() => void refetch(), [refetch]);
-  return { thread, live, failed: conversationId !== null && read.isError && !gone && read.data === undefined, retry };
+  return { thread, live, failed: conversationId !== null && read.isError && !notFound && read.data === undefined, retry };
 }

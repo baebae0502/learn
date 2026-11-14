@@ -1,12 +1,13 @@
 import type { QueryClient } from '@tanstack/react-query';
-import { itemTarget, type CommandTargetInfo, type LibraryItem, type OrganizeSnapshot } from '@learn/domain';
+import { SESSION_TARGET, itemTarget, type CommandTargetInfo, type LibraryItem, type OrganizeSnapshot } from '@learn/domain';
 import { keys } from '../data/queries';
 import { freshTargets } from '../data/targets';
 import type { CommandTarget } from './registry';
 
 /**
  * The facts a command is judged on, by kind: items from the freshest read (data/targets.ts), collections by id,
- * tags with whether they have a colour (from the organize snapshot; a tag it does not know is no target).
+ * tags with whether they have a colour (from the organize snapshot; a tag it does not know is no target), and a session
+ * for each conversation (its row is the fact: the row is drawn from the session list).
  */
 export function commandTargets(client: QueryClient, list: readonly LibraryItem[], target: CommandTarget): CommandTargetInfo[] {
   const tags = (target.tagIds ?? []).length > 0 ? client.getQueryData<OrganizeSnapshot>(keys.organize)?.tags : undefined;
@@ -17,5 +18,6 @@ export function commandTargets(client: QueryClient, list: readonly LibraryItem[]
       const tag = tags?.find((t) => t.id === id);
       return tag ? [{ kind: 'tag', id, hasColor: tag.color !== null }] : [];
     }),
+    ...(target.conversationIds ?? []).map((): CommandTargetInfo => SESSION_TARGET),
   ];
 }

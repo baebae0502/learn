@@ -699,6 +699,17 @@ describe('seedSessions (spec 15: the sessions fixture)', () => {
     }
   });
 
+  it('sessions of another day and with questions of their own, for the session list (its day groups and names)', () => {
+    const { deps, itemId } = library();
+    const startedAt = '2026-10-12T03:00:00.000Z';
+    const { conversationIds } = seedSessions(deps, { itemId, sessions: 2, messagesPerSession: 2, citationsPerAnswer: 0, startedAt, questions: ['그림 6-2는 어떻게 읽나요?'] });
+    const [first, second] = conversationIds.map((id) => deps.conversations.thread(id));
+    expect(first!.session).toMatchObject({ title: '그림 6-2는 어떻게 읽나요?', createdAt: startedAt });
+    expect(second!.session.title).toBe('Seeded question 1 of session 2'); // a session past the list keeps the seeded words
+    expect(Date.parse(second!.session.updatedAt) - Date.parse(startedAt)).toBeLessThan(10);
+    expect(() => seedSessions(deps, { itemId, sessions: 1, messagesPerSession: 2, citationsPerAnswer: 0, startedAt: 'x' })).toThrow(/startedAt/);
+  });
+
   it('writes nothing when the input does not fit (one transaction)', () => {
     const { db, deps, itemId } = library();
     expect(() => seedSessions(deps, { itemId, sessions: 2, messagesPerSession: 2, citationsPerAnswer: 41 })).toThrow();

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { COMMANDS, NO_LIBRARY_VIEW, type CommandId, type CommandTargetInfo } from '@learn/domain';
+import { COMMANDS, NO_LIBRARY_VIEW, SESSION_TARGET, type CommandId, type CommandTargetInfo } from '@learn/domain';
 import { COMMAND_HANDLERS, contextOf, isCommandEnabled, menuTarget, reportedContext, runCommand, runPicked, yieldsToText, type CommandEnv, type CommandTarget } from './registry';
 
 const ID = '7d3f3c3e-8a51-4f7e-9d7c-2b1f0f6f8f10';
@@ -83,6 +83,10 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   keepOneOfDuplicates: vi.fn(),
   keepAllDuplicates: vi.fn(),
   cancelImport: vi.fn(),
+  renameSession: vi.fn(),
+  deleteSession: vi.fn(),
+  currentSession: () => null,
+  focusedSession: () => null,
   modal: false,
   ...over,
 });
@@ -738,5 +742,61 @@ describe('tab commands (M7b)', () => {
     expect(contextOf(env())).not.toHaveProperty('tabCount');
     expect(contextOf(env())).not.toHaveProperty('closedOpenable');
     expect(contextOf(tabs())).toMatchObject({ tabCount: 3, closedOpenable: true });
+  });
+});
+
+describe('the session rows (T1a spec 8.9, 11)', () => {
+  const S = '3c2b1a09-8f7e-4d6c-9b5a-0f1e2d3c4b5a';
+  const T = '4d3c2b1a-0f9e-4d7c-8b6a-1f2e3d4c5b6a';
+  /** Targets as the window builds them: a session for each conversation id, items as before. */
+  const withSessions = (target: CommandTarget): CommandTargetInfo[] => [...available(target), ...(target.conversationIds ?? []).map(() => SESSION_TARGET)];
+  const focused = (over: Partial<CommandEnv> = {}) => env({ sessionFocused: true, focusedSession: () => S, targetsOf: withSessions, ...over });
+  it('⌘⌫ from the menu bar deletes the focused session row, in the reader and in the library (its trash view too), never the table\'s rows', () => {
+    for (const e of [focused({ view: 'viewer', pdfOpen: true }), focused({ libraryCount: 3, selectionCount: 1, selectionAvailable: 1, selection: () => [ID] }), focused({ libraryCount: 3, scope: 'trash', trashCount: 2, selectionCount: 1 })]) {
+      expect(menuTarget('item.trash', e)).toEqual({ conversationIds: [S] });
+      expect(runCommand('item.trash', e, menuTarget('item.trash', e))).toBe(true);
+      expect(e.deleteSession).toHaveBeenCalledExactlyOnceWith(S);
+      expect(e.trashItems).not.toHaveBeenCalled();
+      expect(e.purge).not.toHaveBeenCalled();
+    }
+    // No row with the focus: the reader has nothing to delete, the library its selection as before.
+    const reader = env({ view: 'viewer', pdfOpen: true, targetsOf: withSessions });
+    expect(runCommand('item.trash', reader, menuTarget('item.trash', reader))).toBe(false);
+    const library = env({ libraryCount: 3, selectionCount: 1, selectionAvailable: 1, selection: () => [ID], targetsOf: withSessions });
+    expect(menuTarget('item.trash', library)).toEqual({ itemIds: [ID] });
+    expect(runCommand('item.trash', library, menuTarget('item.trash', library))).toBe(true);
+    expect(library.trashItems).toHaveBeenCalledExactlyOnceWith([ID]);
+    expect(library.deleteSession).not.toHaveBeenCalled();
+  });
+  it('a session row\'s menu: its pick runs on that session, whatever has the focus', () => {
+    const e = env({ libraryCount: 3, scope: 'trash', trashCount: 2, targetsOf: withSessions, focusedSession: () => T });
+    expect(runPicked({ commandId: 'item.trash' }, e, { conversationIds: [S] })).toBe(true);
+    expect(e.deleteSession).toHaveBeenCalledExactlyOnceWith(S);
+    expect(e.purge).not.toHaveBeenCalled();
+    expect(runPicked({ commandId: 'session.rename' }, e, { conversationIds: [S] })).toBe(true);
+    expect(e.renameSession).toHaveBeenCalledExactlyOnceWith(S);
+  });
+  it('세션 이름 바꾸기: the focused row\'s session, or from the palette the tutor\'s session once it has a question', () => {
+    const row = focused({ view: 'viewer', pdfOpen: true, currentSession: () => T });
+    expect(menuTarget('session.rename', row)).toEqual({ conversationIds: [S] });
+    expect(runCommand('session.rename', row, menuTarget('session.rename', row))).toBe(true);
+    expect(row.renameSession).toHaveBeenCalledExactlyOnceWith(S);
+    const palette = env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor', tutorHasMessages: true, currentSession: () => T, targetsOf: withSessions });
+    expect(menuTarget('session.rename', palette)).toEqual({});
+    expect(runCommand('session.rename', palette)).toBe(true);
+    expect(palette.renameSession).toHaveBeenCalledExactlyOnceWith(T);
+    const empty = env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor', currentSession: () => null, targetsOf: withSessions });
+    expect(runCommand('session.rename', empty)).toBe(false);
+  });
+  it('⌥⌘5 shows the sessions in the reader\'s sidebar, with a PDF open', () => {
+    const e = env({ view: 'viewer', pdfOpen: true });
+    expect(runCommand('reader.showSessions', e)).toBe(true);
+    expect(e.showReaderNav).toHaveBeenCalledExactlyOnceWith('sessions');
+    expect(runCommand('reader.showSessions', env({ view: 'viewer' }))).toBe(false);
+  });
+  it('reports a focused session row only while there is one', () => {
+    expect(reportedContext(focused({ view: 'viewer', pdfOpen: true }))).toMatchObject({ sessionFocused: true });
+    expect(reportedContext(env({ view: 'viewer', pdfOpen: true }))).not.toHaveProperty('sessionFocused');
+    expect(reportedContext(env({ sessionFocused: false }))).not.toHaveProperty('sessionFocused');
   });
 });

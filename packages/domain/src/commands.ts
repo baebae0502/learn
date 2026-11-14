@@ -103,6 +103,8 @@ export type CommandId =
   | 'reader.findSelection'
   | 'reader.showThumbnails'
   | 'reader.showOutline'
+  | 'reader.showSessions'
+  | 'session.rename'
   | 'reader.pageColorAuto'
   | 'reader.pageColorOriginal'
   | 'reader.pageColorSepia'
@@ -123,20 +125,21 @@ export type PageColor = (typeof PAGE_COLORS)[number];
 /** The ground behind a picture (settings 'reader.imageBackground'): unset follows the app theme's light or dark. */
 export const IMAGE_BACKGROUNDS = ['light', 'dark', 'checker'] as const;
 export type ImageBackground = (typeof IMAGE_BACKGROUNDS)[number];
-/** What the reader's sidebar lists (settings 'reader.nav'). */
-export const READER_NAVS = ['thumbnails', 'outline'] as const;
+/** What the reader's sidebar lists (settings 'reader.nav'): the pages, the outline, or this item's tutor sessions. */
+export const READER_NAVS = ['thumbnails', 'outline', 'sessions'] as const;
 export type ReaderNav = (typeof READER_NAVS)[number];
 
 /**
  * `app`: anywhere in the main window; `library` / `viewer`: the current view; `item` / `collection` / `tag` / `trash`: needs a
  * target of that kind (judged on the targets handed in; the first of these a command lists decides). `trash` is the trash
- * view's rows (P-10): a command that lists it takes trash rows in the trash view, and its other kind elsewhere (⌘⌫).
+ * view's rows (P-10): a command that lists it takes trash rows in the trash view, and its other kind elsewhere (⌘⌫). `session`:
+ * a tutor session row of the sidebar — taken first, in any view, when one has the focus or is handed in (its context menu).
  */
-export type CommandContext = 'app' | 'library' | 'viewer' | 'item' | 'collection' | 'tag' | 'trash';
+export type CommandContext = 'app' | 'library' | 'viewer' | 'item' | 'collection' | 'tag' | 'trash' | 'session';
 /** `app` is the macOS application menu (Linux/Windows put those items at the end of 파일); `help` is 도움말. */
 export type MenuName = 'app' | 'file' | 'edit' | 'view' | 'go' | 'window' | 'help';
-export const CONTEXT_MENU_KINDS = ['item', 'collection', 'tag', 'column', 'trash', 'tab'] as const;
-/** Native context menus (ADR-0005 §4): items, collections, tags, table column headers, the trash's rows and a reader tab. */
+export const CONTEXT_MENU_KINDS = ['item', 'collection', 'tag', 'column', 'trash', 'tab', 'session'] as const;
+/** Native context menus (ADR-0005 §4): items, collections, tags, table column headers, the trash's rows, a reader tab and a tutor session row. */
 export type ContextMenuKind = (typeof CONTEXT_MENU_KINDS)[number];
 
 /**
@@ -188,9 +191,11 @@ export interface CommandSpec {
   /**
    * Mac pattern for a toggle (design-spec 7.4): the menu, the tooltip and the palette name what the command does now —
    * "사이드바 가리기" while the sidebar is shown, "사이드바 보기" while it is hidden. One command, one id, one shortcut.
-   * Exactly one key: the reported pane state the label follows.
+   * One key besides `focus` at most: the reported state the label follows. `focus` comes first.
    */
   stateLabels?: {
+    /** By what has the focus: ⌘⌫ on a focused session row is 세션 삭제, in the trash view too. */
+    focus?: Readonly<{ session: string }>;
     sidebar?: Readonly<Record<PaneShown, string>>;
     inspector?: Readonly<Record<PaneShown, string>>;
     /** By the view shown (P-11): ⌘⌫ is 영구 삭제… in the trash; a view without an entry keeps `label`. */
@@ -409,11 +414,12 @@ export const COMMANDS: readonly CommandSpec[] = [
   },
   // 휴지통으로 이동 ⌘⌫ (spec 4.1, 11.1): at once, with 실행 취소 in the toast. In the trash view the same line is 영구 삭제…
   // (P-11): one key, one id, named by the view — the registry allows no second ⌘⌫ in one context. 파일's last group, the
-  // item menu's last line; the trash rows' menu after 복원.
+  // item menu's last line; the trash rows' menu after 복원. A focused session row makes it 세션 삭제 (T1a): that session
+  // goes at once, with 실행 취소; the session row's menu has it after 이름 바꾸기.
   {
-    id: 'item.trash', label: '휴지통으로 이동', stateLabels: { scope: { trash: '영구 삭제…' } }, accelerator: 'CmdOrCtrl+Backspace',
-    menu: { menu: 'file', group: 4, order: 2 }, contexts: ['item', 'trash'], contextMenu: { kinds: ['item', 'trash'], group: 4, order: 1 }, palette: true,
-    keywords: ['휴지통', '삭제', '지우기', '버리기', '영구 삭제', 'trash', 'delete', 'remove'],
+    id: 'item.trash', label: '휴지통으로 이동', stateLabels: { scope: { trash: '영구 삭제…' }, focus: { session: '세션 삭제' } }, accelerator: 'CmdOrCtrl+Backspace',
+    menu: { menu: 'file', group: 4, order: 2 }, contexts: ['item', 'trash', 'session'], contextMenu: { kinds: ['item', 'trash', 'session'], group: 4, order: 1 }, palette: true,
+    keywords: ['휴지통', '삭제', '지우기', '버리기', '영구 삭제', '세션', 'trash', 'delete', 'remove'],
   },
   // 복원 (spec 4.4): the trash rows' menu and the palette; the item panel and the reader's notice have its button.
   {
@@ -568,6 +574,17 @@ export const COMMANDS: readonly CommandSpec[] = [
     id: 'reader.showOutline', label: '목차 보기', accelerator: 'Alt+CmdOrCtrl+3', menu: { menu: 'view', group: 2, order: 5 }, contexts: ['viewer'],
     keywords: ['목차', '차례', '장', '절', '사이드바', 'outline', 'contents', 'table of contents'],
   },
+  // This item's tutor sessions (T1a spec 8.9): the sidebar's third segment. ⌥⌘4 is left for the notes (M9), so the order sits after 목차 보기.
+  {
+    id: 'reader.showSessions', label: '세션 보기', accelerator: 'Alt+CmdOrCtrl+5', menu: { menu: 'view', group: 2, order: 5.1 }, contexts: ['viewer'],
+    keywords: ['세션', '튜터', '대화', '기록', '사이드바', 'sessions', 'tutor', 'history'],
+  },
+  // A session row is named in place (T1a spec 8.9): its context menu and ↩ on the row; the palette renames the tutor's session.
+  // 'viewer' with 'session': from the palette there is no session target, only the session the tutor shows.
+  {
+    id: 'session.rename', label: '이름 바꾸기', paletteLabel: '세션 이름 바꾸기', contexts: ['viewer', 'session'], contextMenu: { kinds: ['session'], group: 1, order: 1 },
+    keywords: ['세션', '이름', '바꾸기', '고치기', '튜터', 'rename', 'session'],
+  },
   // 쪽 색 ▸ is one group in SUBMENUS (P-14): the four members carry no placement, the group holds it. The palette names each
   // one with the group's word.
   ...(
@@ -665,7 +682,7 @@ export function paletteListed(spec: CommandSpec, ctx: Pick<CommandContextState, 
   return slot === null || hasTagPosition(ctx.tagPositions, slot);
 }
 /** What a state label follows: the pane states and the view's scope, as reported (absent ones name nothing). */
-export type LabelState = Partial<Pick<CommandContextState, 'sidebar' | 'inspector' | 'scope' | 'duplicateGroups' | 'view' | 'selectionCount' | 'imageOpen'>>;
+export type LabelState = Partial<Pick<CommandContextState, 'sidebar' | 'inspector' | 'scope' | 'duplicateGroups' | 'view' | 'selectionCount' | 'imageOpen' | 'sessionFocused'>>;
 
 /**
  * The label a menu, tooltip or palette shows: the state label when the command has one and the state is known (`state`
@@ -673,6 +690,8 @@ export type LabelState = Partial<Pick<CommandContextState, 'sidebar' | 'inspecto
  */
 export function commandLabel(c: CommandSpec, platform: string, state: LabelState = {}): string {
   const labels = c.stateLabels;
+  // What has the focus names it before the view does: a session row in the trash view is still 세션 삭제.
+  if (labels?.focus && state.sessionFocused === true) return labels.focus.session;
   if (labels?.sidebar && state.sidebar) return labels.sidebar[state.sidebar];
   if (labels?.inspector && state.inspector) return labels.inspector[state.inspector];
   const scoped = labels?.scope && state.scope ? labels.scope[state.scope] : undefined;
@@ -718,6 +737,8 @@ export interface CommandContextState {
   tutorHasMessages?: boolean;
   /** The active reader tab's session has an answer coming, whether or not the tutor is on screen: 답 중지 needs it. Absent otherwise. */
   tutorStreaming?: boolean;
+  /** A tutor session row of the sidebar has the focus (the reader's 세션 pane, the library's 세션 section): ⌘⌫ is 세션 삭제. Absent otherwise. */
+  sessionFocused?: boolean;
   /** UI text size in pt (prefs.fontSize, Task 10): ⌘+ / ⌘− stop at 15 / 12, ⌘0 only away from 13. */
   textSize: 12 | 13 | 14 | 15;
   /** Items in the library; 0 is the empty library (nothing to find or inspect). */
@@ -834,8 +855,13 @@ export interface TrashTargetInfo {
   kind: 'trash';
 }
 export const TRASH_TARGET: TrashTargetInfo = Object.freeze({ kind: 'trash' });
+/** A tutor session row (T1a): what 이름 바꾸기 and 세션 삭제 act on; which session it is, is the handler's. */
+export interface SessionTargetInfo {
+  kind: 'session';
+}
+export const SESSION_TARGET: SessionTargetInfo = Object.freeze({ kind: 'session' });
 /** What a command acts on, by kind: the item rules read the item ones only. */
-export type CommandTargetInfo = ItemTargetInfo | CollectionTargetInfo | TagTargetInfo | TrashTargetInfo;
+export type CommandTargetInfo = ItemTargetInfo | CollectionTargetInfo | TagTargetInfo | TrashTargetInfo | SessionTargetInfo;
 
 /** The availability facts of an item (a list row, a freshly read item) as a target. */
 export const itemTarget = (item: { storageMode: StorageMode; availability: Availability; trashed?: boolean }): ItemTargetInfo => ({
@@ -864,8 +890,9 @@ export interface Targets {
   collections: readonly CollectionTargetInfo[];
   tags: readonly TagTargetInfo[];
   trash: readonly TrashTargetInfo[];
+  sessions: readonly SessionTargetInfo[];
 }
-const NO_TARGETS: Targets = Object.freeze({ items: [], collections: [], tags: [], trash: [] });
+const NO_TARGETS: Targets = Object.freeze({ items: [], collections: [], tags: [], trash: [], sessions: [] });
 /** One split per array: the menu bar judges every command on the same selection array. */
 const split = new WeakMap<readonly CommandTargetInfo[], Targets>();
 function targetsByKind(targets: readonly CommandTargetInfo[]): Targets {
@@ -876,13 +903,15 @@ function targetsByKind(targets: readonly CommandTargetInfo[]): Targets {
     const collections: CollectionTargetInfo[] = [];
     const tags: TagTargetInfo[] = [];
     const trash: TrashTargetInfo[] = [];
+    const sessions: SessionTargetInfo[] = [];
     for (const t of targets) {
       if (t.kind === 'item') items.push(t);
       else if (t.kind === 'collection') collections.push(t);
       else if (t.kind === 'tag') tags.push(t);
+      else if (t.kind === 'session') sessions.push(t);
       else trash.push(t);
     }
-    found = { items, collections, tags, trash };
+    found = { items, collections, tags, trash, sessions };
     split.set(targets, found);
   }
   return found;
@@ -896,13 +925,13 @@ function targetsByKind(targets: readonly CommandTargetInfo[]): Targets {
 export function selectionTargets(ctx: CommandContextState): CommandTargetInfo[] {
   if (ctx.scope === 'trash') {
     const rows = Array.from({ length: ctx.selectionCount }, (): TrashTargetInfo => TRASH_TARGET);
-    split.set(rows, { items: [], collections: [], tags: [], trash: rows });
+    split.set(rows, { items: [], collections: [], tags: [], trash: rows, sessions: [] });
     return rows;
   }
   const available = Math.min(ctx.selectionAvailable, ctx.selectionCount);
   const relinkable = Math.min(ctx.selectionRelinkable, ctx.selectionCount - available);
   const targets = Array.from({ length: ctx.selectionCount }, (_, i) => (i < available ? AVAILABLE : i < available + relinkable ? RELINKABLE : MISSING));
-  split.set(targets, { items: targets, collections: [], tags: [], trash: [] }); // items only: no pass over a selection of the whole library
+  split.set(targets, { items: targets, collections: [], tags: [], trash: [], sessions: [] }); // items only: no pass over a selection of the whole library
   return targets;
 }
 
@@ -925,6 +954,9 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'reader.findSelection': pdfOpen,
   'reader.showThumbnails': pdfOpen,
   'reader.showOutline': pdfOpen,
+  'reader.showSessions': pdfOpen,
+  // A session row's (its menu, a focused row), or the session the tutor shows once it has a question (the palette).
+  'session.rename': (c, t) => t.sessions.length > 0 || c.tutorHasMessages === true,
   // Only with a search to keep, and only from a view that narrows it (spec 7.1).
   'library.findEverywhere': (c) => c.searchActive && c.scope !== 'all',
   // An empty library has no panel (design-spec 2.4).
@@ -969,8 +1001,9 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'collection.addItems': (c) => c.view === 'library',
   // Takes the selection out of the collection viewed and what is below it: nothing to take out of anywhere else.
   'collection.removeItems': (c) => c.view === 'library' && c.scope === 'collection',
-  // ⌘⌫ (P-11): the library view's selection — live items, or the trash view's rows there (neededTargets).
-  'item.trash': (c) => c.view === 'library',
+  // ⌘⌫ (P-11): the library view's selection — live items, or the trash view's rows there (neededTargets); a focused session row in
+  // any view, and in the reader only that.
+  'item.trash': (c) => c.sessionFocused === true || c.view === 'library',
   // 복원: the trash view's rows only.
   'item.restore': (c) => c.view === 'library' && c.scope === 'trash',
   // 휴지통 비우기…: while the trash has something.
@@ -1032,11 +1065,13 @@ const RULES: Partial<Record<CommandId, Rule>> = {
 };
 
 /**
- * The targets a command needs, by the first kind it lists — except that a command of the trash rows takes those in the trash
- * view (⌘⌫ is 영구 삭제… there, P-11) and its other kind elsewhere. Null: it needs none (app or view context).
+ * The targets a command needs, by the first kind it lists — except that a command of session rows takes those while a row has the
+ * focus or one is handed in (its menu), in any view, and a command of the trash rows takes those in the trash view (⌘⌫ is 영구
+ * 삭제… there, P-11) and its other kind elsewhere. Null: it needs none (app or view context).
  */
 function neededTargets(spec: CommandSpec, ctx: CommandContextState, t: Targets): readonly CommandTargetInfo[] | null {
   const c = spec.contexts;
+  if (c.includes('session') && (ctx.sessionFocused === true || t.sessions.length > 0)) return t.sessions;
   if (c.includes('trash') && ctx.scope === 'trash') return t.trash;
   if (c.includes('item')) return t.items;
   if (c.includes('collection')) return t.collections;
@@ -1075,8 +1110,15 @@ export function isCommandAvailable(id: CommandId, ctx: CommandContextState, targ
  * variants (availability is the same predicate).
  */
 export function availableMenuCommands(ctx: CommandContextState, commands: readonly CommandSpec[] = COMMANDS, submenus: readonly SubmenuSpec[] = SUBMENUS): CommandId[] {
-  // Spec 6: the menu bar's item commands act on the library table's selection, so the reader has none.
-  const targets = ctx.view === 'library' ? selectionTargets(ctx) : [];
+  // Spec 6: the menu bar's item commands act on the library table's selection, so the reader has none. A focused session row is
+  // the target of its commands in either view (⌘⌫ is 세션 삭제 then).
+  let targets: readonly CommandTargetInfo[] = ctx.view === 'library' ? selectionTargets(ctx) : [];
+  if (ctx.sessionFocused === true) {
+    // The selection's split with the session added: no pass over a selection of the whole library.
+    const sessions: SessionTargetInfo[] = [SESSION_TARGET];
+    split.set(sessions, { ...targetsByKind(targets), sessions });
+    targets = sessions;
+  }
   const grouped = new Set<CommandId>(submenus.flatMap((s) => (s.menu ? s.commands : [])));
   return commands.filter((c) => (c.menu !== undefined || grouped.has(c.id)) && commandAvailable(c, ctx, targets)).map((c) => c.id);
 }

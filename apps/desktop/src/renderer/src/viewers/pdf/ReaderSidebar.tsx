@@ -2,6 +2,7 @@ import { FileX, Image, Lock, Trash2 } from 'lucide-react';
 import { acceleratorLabel, commandById, type ReaderNav } from '@learn/domain';
 import { saveSetting } from '../../data/saveSetting';
 import { t } from '../../strings';
+import { SessionsPane } from '../../tutor/sessions/SessionsPane';
 import { currentPlatform } from '../../ui/platform';
 import { PaneEmpty } from '../../ui/PaneEmpty';
 import { Segmented } from '../../ui/Segmented';
@@ -20,8 +21,8 @@ const EMPTY: Record<NoPages, { icon: typeof FileX; title: string }> = {
 };
 
 /**
- * The sidebar while an item is read (spec 4.7): thumbnails or the outline under a segment, in the library sidebar's place and
- * of its width. Without pages to list (trash, password, nothing to show) it says why instead.
+ * The sidebar while an item is read (spec 4.7): thumbnails, the outline or the item's tutor sessions (T1a spec 8.9) under a segment, in
+ * the library sidebar's place and of its width. Without pages to list (trash, password, nothing to show) it says why instead.
  */
 export function ReaderSidebar() {
   const nav = useReaderNav();
@@ -29,6 +30,7 @@ export function ReaderSidebar() {
   const ready = useReader((s) => s.pdf?.ready === true);
   const thumbnails = commandById('reader.showThumbnails');
   const outline = commandById('reader.showOutline');
+  const sessions = commandById('reader.showSessions');
   const empty = noPages ? EMPTY[noPages] : null;
   // Without pages there is nothing to choose between: the message alone (reader-pdf.html ?state=locked|trashed). While the
   // document opens the segment stays, disabled (?state=loading).
@@ -51,10 +53,11 @@ export function ReaderSidebar() {
           options={[
             { value: 'thumbnails', label: t.reader.thumbnails, title: `${thumbnails.label} ${hint(thumbnails.accelerator)}`, testId: 'reader-nav-thumbnails' },
             { value: 'outline', label: t.reader.outline, title: `${outline.label} ${hint(outline.accelerator)}`, testId: 'reader-nav-outline' },
+            { value: 'sessions', label: t.tutor.sessions.segment, title: `${sessions.label} ${hint(sessions.accelerator)}`, testId: 'reader-nav-sessions' },
           ]}
         />
       </div>
-      {nav === 'outline' ? <OutlineTree /> : nav === 'thumbnails' ? <ThumbnailList /> : null}
+      {nav === 'outline' ? <OutlineTree /> : nav === 'thumbnails' ? <ThumbnailList /> : nav === 'sessions' ? <SessionsPane /> : null}
     </div>
   );
 }

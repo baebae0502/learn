@@ -12,8 +12,9 @@ import type { LearnPdfProbe } from '../../apps/desktop/src/renderer/src/viewers/
 import type { PdfAnchor } from '../../packages/domain/src/anchors';
 import type { TutorAskInput } from '../../packages/domain/src/tutor';
 import {
-  FIXTURES, backFromReader, expectDisabledReason, expectTooltipText, hoverLikeUser, importPaths, ipcCalls, launch, mainWindow, openItem, readClipboard, readerTab, runMenuCommand, runPalette,
-  setPdfZoom, textExtraction, textIdle, tutorFailAgents, tutorFakeLog, tutorFakeScript, tutorProcesses, type Session,
+  FIXTURES, backFromReader, clickToCloseSheet, closeSheet, expectDisabledReason, expectTooltipText, expectWindow, hoverLikeUser, importPaths, ipcCalls, launch, mainWindow, menuItemEnabled,
+  menuSnapshot, openItem, readClipboard, readerTab, recordedPopups, rowByTitle, runMenuAccelerator, runMenuCommand, runPalette, seedSessions, setPdfZoom, specialRow, stubContextMenu,
+  stubFolderPicker, stubFolderPicks, textExtraction, textIdle, trashItems, tutorFailAgents, tutorFakeLog, tutorFakeScript, tutorProcesses, type MenuNode, type Session,
 } from './helpers';
 import { READER_100, askViaApi, consentAndChoose, installFakeAgents, turnEnded } from './tutor-helpers';
 
@@ -1973,3 +1974,354 @@ test('the tutor\'s first showing resolves the outline for its questions without 
     await app.close();
   }
 });
+
+// ---- The session list (Task 21) ----
+
+const Q_A = '이 장은 무엇을 다루나요?';
+const Q_B = '증폭 배율은 어떻게 커지나요?';
+/** The application menu's label for a registry command now (main relabels ⌘⌫ by what has the focus). */
+async function menuLabel(app: ElectronApplication, id: string): Promise<string | null> {
+  const flat = (nodes: MenuNode[]): MenuNode[] => nodes.flatMap((n) => [n, ...flat(n.submenu ?? [])]);
+  return flat(await menuSnapshot(app)).find((n) => n.id === id)?.label ?? null;
+}
+const readerRows = (page: Page) => page.getByTestId('reader-sessions').getByTestId('session-row');
+const rowOf = (page: Page, conversationId: string) => page.locator(`[data-testid="session-row"][data-conversation-id="${conversationId}"]`);
+/** The question the tutor's conversation starts with: which session it shows. */
+const shownQuestion = (page: Page) => page.getByTestId('tutor-question').first().locator('.bubble');
+
+/** Two sessions of paper-100 made by questions — A, then B in a new session, B the tab's — each answer ended. */
+async function twoSessions(s: Session & { itemId: string }): Promise<{ a: string; b: string }> {
+  const a = await ask(s.page, { itemId: s.itemId, conversationId: null, text: Q_A, selection: null, reader: READER_41 });
+  await turnEnded(s.page, a.conversationId, a.tutorMessageId);
+  await expect(shownQuestion(s.page)).toHaveText(Q_A);
+  await s.page.getByTestId('tutor-new-session').click();
+  await expect(s.page.getByTestId('tutor-empty')).toBeVisible();
+  const b = await ask(s.page, { itemId: s.itemId, conversationId: null, text: Q_B, selection: null, reader: READER_41 });
+  await turnEnded(s.page, b.conversationId, b.tutorMessageId);
+  await expect(shownQuestion(s.page)).toHaveText(Q_B);
+  return { a: a.conversationId, b: b.conversationId };
+}
+
+test('the reader\'s 세션 pane (⌥⌘5): the item\'s sessions by day, the tab\'s selected; a row shows its session in the tutor and starts no agent; ↩ names it in place, esc leaves it, and the head shows the name; ⌘⌫ is 세션 삭제 and 실행 취소 brings it back', async ({}, testInfo) => {
+  const s = await atSession(testInfo);
+  const { app, page } = s;
+  try {
+    const { a, b } = await twoSessions(s);
+    // The answers are in: the idle fake is closed, and the high-water mark starts again from none.
+    await tutorFakeScript(app, 'answer');
+    await expect.poll(async () => (await tutorProcesses(app)).count).toBe(0);
+    await tutorProcesses(app, { resetMax: true });
+
+    // ⌥⌘5, the 보기 menu's 세션 보기 after 목차 보기: the third segment and this item's two sessions, under 오늘, newest first.
+    const view = (await menuSnapshot(app)).find((m) => m.id === 'menu.view')!.submenu!.filter((n) => n.id !== null).map((n) => n.id);
+    expect(view.indexOf('reader.showSessions')).toBe(view.indexOf('reader.showOutline') + 1);
+    expect((await menuSnapshot(app)).flatMap((m) => m.submenu ?? []).find((n) => n.id === 'reader.showSessions')).toMatchObject({ label: '세션 보기', accelerator: 'Alt+CmdOrCtrl+5' });
+    await runMenuAccelerator(app, 'reader.showSessions');
+    await expect(page.getByTestId('reader-nav-sessions')).toHaveAttribute('data-selected', 'true');
+    await expect(page.getByTestId('reader-nav').locator('.seg')).toHaveText(['썸네일', '목차', '세션']);
+    await expect(page.getByTestId('reader-sessions').getByTestId('session-group')).toHaveCount(1);
+    await expect(page.getByTestId('reader-sessions').getByTestId('session-group')).toHaveAttribute('data-label', '오늘');
+    await expect(readerRows(page)).toHaveText([Q_B, Q_A]);
+    await expect(page.getByTestId('reader-sessions')).toHaveAttribute('role', 'tree');
+    await expect(page.getByTestId('reader-sessions')).toHaveAccessibleName('세션');
+    // The session the tab's tutor shows is the selected row; no time on a row; the fake agent's sessions say so with their glyph.
+    await expect(rowOf(page, b)).toHaveAttribute('aria-selected', 'true');
+    await expect(rowOf(page, a)).toHaveAttribute('aria-selected', 'false');
+    await expect(readerRows(page).locator('.lucide-flask-conical')).toHaveCount(2);
+    await hoverOver(page, rowOf(page, a));
+    await expectTooltipText(page, new RegExp(`^${Q_A.replace('?', '\\?')}\\s·\\s오늘\\s오[전후]\\s\\d{1,2}:\\d{2}\\s·\\s가짜\\s에이전트$`), 'session-row');
+    await expectNoSeriousA11y(page, 'session pane');
+
+    // A click on a row: the tab's tutor shows that session; the row is selected; no agent starts.
+    await rowOf(page, a).click();
+    await expect(rowOf(page, a)).toHaveAttribute('aria-selected', 'true');
+    await expect(shownQuestion(page)).toHaveText(Q_A);
+    await expect(rowOf(page, a)).toBeFocused();
+    // ↑ selects the row above it, and the tutor follows.
+    await page.keyboard.press('ArrowUp');
+    await expect(rowOf(page, b)).toBeFocused();
+    await expect(rowOf(page, b)).toHaveAttribute('aria-selected', 'true');
+    await expect(shownQuestion(page)).toHaveText(Q_B);
+
+    // ↩ names the row in place: its name, selected; esc leaves the name as it was and gives the row the focus back.
+    await page.keyboard.press('Enter');
+    const field = page.getByTestId('session-name-input');
+    await expect(field).toBeFocused();
+    await expect(field).toHaveValue(Q_B);
+    await expect(field).toHaveAccessibleName('세션 이름');
+    expect(await field.evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd])).toEqual([0, Q_B.length]);
+    await expectNoSeriousA11y(page, 'session pane, a row named in place');
+    await page.keyboard.press('Escape');
+    await expect(field).toHaveCount(0);
+    await expect(rowOf(page, b)).toBeFocused();
+    await expect(rowOf(page, b)).toHaveText(Q_B);
+    // ↩, a new name, ↩: the row and the tutor's head say it, the head over the time it started.
+    await page.keyboard.press('Enter');
+    await expect(field).toBeFocused();
+    await page.keyboard.insertText('증폭 배율 정리');
+    await page.keyboard.press('Enter');
+    await expect(field).toHaveCount(0);
+    await expect(rowOf(page, b)).toHaveText('증폭 배율 정리');
+    await expect(rowOf(page, b)).toBeFocused();
+    const head = page.getByTestId('tutor-session-head');
+    await expect(head.locator('.t')).toHaveText('증폭 배율 정리');
+    await expect(head.locator('.m')).toHaveText(/^오늘 오[전후] \d{1,2}:\d{2}$/);
+    const list = await page.evaluate((id) => window.learn.sessions.list({ itemId: id }), s.itemId);
+    expect(list.ok && list.data.map((x) => [x.id, x.title, x.renamed])).toEqual([[b, '증폭 배율 정리', true], [a, Q_A, false]]);
+
+    // Selecting, naming: no agent ran. The composer's focus starts one (the count is live).
+    expect((await tutorProcesses(app)).max).toBe(0);
+    await composerInput(page).focus();
+    await expect.poll(async () => (await tutorProcesses(app)).count).toBe(1);
+    await expect.poll(() => menuLabel(app, 'item.trash')).toBe('휴지통으로 이동');
+    expect(await menuItemEnabled(app, 'item.trash')).toBe(false); // the reader's ⌘⌫ needs a session row with the focus
+
+    // ⌘⌫ on the focused row is 세션 삭제: it goes at once; the tab's tutor is on a new empty session, the focus on the next row.
+    await rowOf(page, b).click();
+    await expect.poll(() => menuLabel(app, 'item.trash')).toBe('세션 삭제');
+    await runMenuAccelerator(app, 'item.trash');
+    const toast = page.getByTestId('session-undo');
+    await expect(toast).toContainText('세션을 삭제했습니다');
+    await expect(toast.getByTestId('undo-action')).toHaveText('실행 취소');
+    await expect(rowOf(page, b)).toHaveCount(0);
+    await expect(readerRows(page)).toHaveText([Q_A]);
+    await expect(page.getByTestId('tutor-empty')).toBeVisible();
+    await expect(rowOf(page, a)).toBeFocused();
+    await expect(rowOf(page, a)).toHaveAttribute('aria-selected', 'false');
+    // 실행 취소: the session is back in the list and in the tab that showed it.
+    await toast.getByTestId('undo-action').click();
+    await expect(readerRows(page)).toHaveText(['증폭 배율 정리', Q_A]);
+    await expect(rowOf(page, b)).toHaveAttribute('aria-selected', 'true');
+    await expect(shownQuestion(page)).toHaveText(Q_B);
+  } finally {
+    await app.close();
+  }
+});
+
+/** The sessions of the library as main lists them (sessions.recent), each with the cites its answers carry: what a backup must keep. */
+async function sessionFacts(page: Page): Promise<Array<{ item: string; title: string; renamed: boolean; messages: number; cites: number }>> {
+  return page.evaluate(async () => {
+    const recent = await window.learn.sessions.recent();
+    if (!recent.ok) throw new Error(`sessions.recent: ${recent.code}`);
+    const out: Array<{ item: string; title: string; renamed: boolean; messages: number; cites: number }> = [];
+    for (const g of recent.data.groups) {
+      for (const s of g.sessions) {
+        const thread = await window.learn.sessions.get({ conversationId: s.id });
+        if (!thread.ok) throw new Error(`sessions.get: ${thread.code}`);
+        out.push({ item: g.item.title, title: s.title, renamed: s.renamed, messages: thread.data.messages.length, cites: thread.data.messages.reduce((n, m) => n + m.sources.length, 0) });
+      }
+    }
+    return out;
+  });
+}
+
+test('the library\'s 세션 section: the items talked about last, each with its newest sessions; a row\'s menu names it and deletes it; a row opens its item\'s tab on that session; a new run keeps them, and a backup restored holds the same sessions and cites (AC15)', async ({}, testInfo) => {
+  const s = await atSession(testInfo);
+  const { app, page } = s;
+  let before: Awaited<ReturnType<typeof sessionFacts>> = [];
+  try {
+    const { a, b } = await twoSessions(s);
+    await runMenuCommand(app, 'view.inspectorInfo');
+    await backFromReader(page);
+    // Under the collections (none here: under their hint), its own label, the item a label line, its sessions under it, newest first.
+    const section = page.getByTestId('library-sessions');
+    await expect(section.locator('.section-label')).toHaveText('세션');
+    await expect(section.getByTestId('session-item-line')).toHaveText(['paper-100']);
+    await expect(section.getByTestId('session-item-line')).toHaveAttribute('aria-hidden', 'true');
+    await expect(section.getByTestId('session-group')).toHaveAccessibleName('paper-100');
+    await expect(section.getByTestId('session-row')).toHaveText([Q_B, Q_A]);
+    expect((await section.boundingBox())!.y).toBeGreaterThanOrEqual((await page.getByTestId('sidebar-hint').boundingBox())!.y);
+    await expectNoSeriousA11y(page, 'library session section');
+
+    // A row's menu: 이름 바꾸기 · — · 세션 삭제 with its ⌘⌫; 이름 바꾸기 names the row in place, here in the library.
+    await stubContextMenu(app, '이름 바꾸기');
+    await rowOf(page, a).click({ button: 'right' });
+    const field = section.getByTestId('session-name-input');
+    await expect(field).toBeFocused();
+    const [lines] = await recordedPopups(app);
+    expect(lines!.map((l) => [l.label, l.type, l.enabled])).toEqual([['이름 바꾸기', 'normal', true], ['', 'separator', true], ['세션 삭제', 'normal', true]]);
+    await page.keyboard.insertText('6장 요약');
+    await page.keyboard.press('Enter');
+    await expect(rowOf(page, a)).toHaveText('6장 요약');
+    await expect(section.getByTestId('session-row')).toHaveText(['6장 요약', Q_B]); // a renamed session is the newest
+    // 세션 삭제 from its menu: at once, with 실행 취소.
+    await stubContextMenu(app, '세션 삭제');
+    await rowOf(page, b).click({ button: 'right' });
+    await expect(page.getByTestId('session-undo')).toContainText('세션을 삭제했습니다');
+    await expect(section.getByTestId('session-row')).toHaveText(['6장 요약']);
+    await page.getByTestId('session-undo').getByTestId('undo-action').click();
+    await expect(section.getByTestId('session-row')).toHaveText(['6장 요약', Q_B]);
+
+    // A row opens its item's tab on that session: the right panel in its tutor mode.
+    await rowOf(page, b).click();
+    await expect(page.getByTestId('pdf-viewer')).toBeVisible();
+    await expect(page.getByTestId('inspector')).toHaveAttribute('data-mode', 'tutor');
+    await expect(shownQuestion(page)).toHaveText(Q_B);
+    await runMenuCommand(app, 'reader.showSessions');
+    await expect(rowOf(page, b)).toHaveAttribute('aria-selected', 'true');
+    before = await sessionFacts(page);
+    expect(before).toEqual([
+      { item: 'paper-100', title: '6장 요약', renamed: true, messages: 2, cites: 2 },
+      { item: 'paper-100', title: Q_B, renamed: false, messages: 2, cites: 2 },
+    ]);
+  } finally {
+    await app.close();
+  }
+
+  // A new run: the tab is on a new empty session; the pane still lists both, with their names and cites.
+  const next = await launch(...dirs(testInfo), UNSET);
+  const backups = testInfo.outputPath('backups');
+  fs.mkdirSync(backups, { recursive: true });
+  let restored = '';
+  try {
+    await expect(next.page.getByTestId('item-row').or(next.page.getByTestId('pdf-viewer')).first()).toBeVisible();
+    if ((await next.page.getByTestId('pdf-viewer').count()) === 0) await openItem(next.page, 'paper-100');
+    await expect(next.page.getByTestId('tutor-empty')).toBeVisible();
+    await expect(next.page.getByTestId('reader-sessions').getByTestId('session-row')).toHaveText(['6장 요약', Q_B]);
+    expect(await sessionFacts(next.page)).toEqual(before);
+    // 백업 만들기…, then 백업에서 복원… into a folder of its own: the restored library's counts are the backup's (its sheet has no issue).
+    await backFromReader(next.page);
+    await stubFolderPicker(next.app, backups);
+    await closeSheet(await expectWindow(next.app, 'sheet', () => runMenuCommand(next.app, 'file.backup')), 'Enter');
+    const [backup] = fs.readdirSync(backups).filter((n) => n.startsWith('Learn 백업'));
+    const into = testInfo.outputPath('restored');
+    fs.mkdirSync(into, { recursive: true });
+    await stubFolderPicks(next.app, [path.join(backups, backup!), into]);
+    const sheet = await expectWindow(next.app, 'sheet', () => runMenuCommand(next.app, 'file.restore'));
+    await expect(sheet.getByTestId('restore-badge')).toHaveAttribute('data-tone', 'success');
+    await expect(sheet.getByTestId('restore-issues')).toHaveCount(0);
+    const [made] = fs.readdirSync(into).filter((n) => n.startsWith('Learn 복원'));
+    restored = path.join(into, made!);
+    await closeSheet(sheet, 'Escape');
+  } finally {
+    await next.app.close();
+  }
+  const third = await launch(restored, testInfo.outputPath('userdata-restored'), UNSET);
+  try {
+    await expect(third.page.getByTestId('app-ready')).toBeAttached();
+    expect(await sessionFacts(third.page)).toEqual(before);
+  } finally {
+    await third.app.close();
+  }
+});
+
+test('영구 삭제… says how many tutor sessions go with the items, as main counts them: one item\'s, several items\', the emptied trash\'s; a deleted session is none of them', async ({}, testInfo) => {
+  const s = await atSession(testInfo);
+  const { app, page, itemId } = s;
+  const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
+  try {
+    const asked = await ask(page, { itemId, conversationId: null, text: Q_A, selection: null, reader: READER_41 });
+    await turnEnded(page, asked.conversationId, asked.tutorMessageId);
+    const [outline] = await importPaths(page, [path.join(FIXTURES, 'long-outline.pdf')]);
+    const seeded = await seedSessions(app, { itemId: outline!.id, sessions: 3, messagesPerSession: 2, citationsPerAnswer: 1 });
+    expect(await page.evaluate((id) => window.learn.sessions.delete({ conversationId: id }), seeded.conversationIds[0]!)).toMatchObject({ ok: true });
+    await backFromReader(page);
+    await trashItems(page, [itemId, outline!.id]);
+    await specialRow(page, 'trash').click();
+    // One item: its sessions.
+    await rowByTitle(page, 'paper-100').click();
+    const one = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'item.trash'));
+    await expect(one.getByTestId('purge-text')).toHaveText('되돌릴 수 없습니다. 라이브러리 안의 사본도 지웁니다. 외부 연결 원본은 지우지 않습니다. 이 자료의 세션 1개도 함께 지웁니다.');
+    await closeSheet(one, 'Escape');
+    // Several: the items that have sessions, and their live sessions (the deleted one is gone already).
+    await rowByTitle(page, 'long-outline').click({ modifiers: [MOD] });
+    const several = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'item.trash'));
+    await expect(several.getByTestId('purge-title')).toHaveText('자료 2개를 영구히 삭제하겠습니까?');
+    await expect(several.getByTestId('purge-text')).toContainText('자료 2개의 세션 3개도 함께 지웁니다.');
+    await closeSheet(several, 'Escape');
+    // 휴지통 비우기…: the trash's items' sessions; once it is emptied there are none left, and the library has no 세션 section.
+    const empty = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'trash.empty'));
+    await expect(empty.getByTestId('purge-text')).toHaveText('자료 2개를 영구히 지웁니다. 되돌릴 수 없습니다. 외부 연결 원본은 지우지 않습니다. 휴지통에 있는 자료의 세션 3개도 함께 지웁니다.');
+    await clickToCloseSheet(empty, empty.getByTestId('purge-confirm'));
+    await expect(page.getByTestId('purge-done').last()).toHaveText('휴지통을 비웠습니다');
+    expect(await page.evaluate(async () => (await window.learn.sessions.recent()).ok)).toBe(true);
+    await expect.poll(() => page.evaluate(async () => {
+      const r = await window.learn.sessions.recent();
+      return r.ok ? r.data.groups.length : -1;
+    })).toBe(0);
+    await expect(page.getByTestId('library-sessions')).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the 세션 pane with no session says where they come from; older sessions are under their own day, newest first; a long name keeps one line and ends in an ellipsis', async ({}, testInfo) => {
+  const s = await atSession(testInfo);
+  const { app, page, itemId } = s;
+  try {
+    await runMenuCommand(app, 'reader.showSessions');
+    const empty = page.getByTestId('reader-sessions-empty');
+    await expect(empty.locator('.pe-title')).toHaveText('이 자료의 세션이 없습니다');
+    await expect(empty.locator('.pe-text')).toHaveText('튜터에게 질문하면 여기에 생깁니다.');
+    await expect(empty.locator('.lucide-message-square')).toHaveCount(1);
+    await expectNoSeriousA11y(page, 'session pane, empty');
+    // Three days: today (a long question), yesterday, 2026. 10. 12.
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setHours(16, 52, 0, 0);
+    const LONG = '‘각 단계 배율의 곱’이 무슨 뜻인지 예를 들어 설명해 주시고, 그 곱이 실제 세포에서는 왜 그보다 작게 나오는지도 함께 설명해 주세요';
+    const OLD = ['그림 6-2는 어떻게 읽나요?', '연습 문제 3번 풀이가 맞는지 봐 주세요'];
+    await seedSessions(app, { itemId, sessions: 2, messagesPerSession: 2, citationsPerAnswer: 1, startedAt: new Date(2026, 9, 12, 9, 0).toISOString(), questions: OLD });
+    // The hook's notice of one session reads as a question's: the tab, on a new empty session, takes the first such one.
+    await seedSessions(app, { itemId, sessions: 1, messagesPerSession: 2, citationsPerAnswer: 1, startedAt: yesterday.toISOString(), questions: ['6.3절을 다섯 줄로 요약해 주세요'] });
+    await expect(shownQuestion(page)).toHaveText('6.3절을 다섯 줄로 요약해 주세요');
+    await seedSessions(app, { itemId, sessions: 1, messagesPerSession: 2, citationsPerAnswer: 1, questions: [LONG] });
+    const groups = page.getByTestId('reader-sessions').getByTestId('session-group');
+    await expect(groups).toHaveCount(3);
+    expect(await groups.evaluateAll((els) => els.map((e) => e.getAttribute('data-label')))).toEqual(['오늘', '어제', '2026. 10. 12.']);
+    await expect(groups.nth(0).locator('.section-label')).toHaveText('오늘');
+    await expect(readerRows(page)).toHaveText([LONG, '6.3절을 다섯 줄로 요약해 주세요', OLD[1]!, OLD[0]!]);
+    // The tab's session is the one row selected.
+    await expect(page.getByTestId('reader-sessions').locator('[aria-selected="true"]')).toHaveText(['6.3절을 다섯 줄로 요약해 주세요']);
+    const label = readerRows(page).first().locator('.label');
+    expect(await label.evaluate((el) => [el.scrollWidth > el.clientWidth, getComputedStyle(el).textOverflow, getComputedStyle(el).whiteSpace])).toEqual([true, 'ellipsis', 'nowrap']);
+    const row = (await readerRows(page).first().boundingBox())!;
+    expect(row.height).toBeLessThanOrEqual(32);
+    await hoverOver(page, readerRows(page).nth(3));
+    await expectTooltipText(page, '그림 6-2는 어떻게 읽나요? · 2026. 10. 12. · 가짜 에이전트', 'session-row');
+    // A double-click names a row in place too (the collection rows' grammar); a click elsewhere keeps what was typed.
+    await readerRows(page).nth(3).dblclick();
+    const field = page.getByTestId('session-name-input');
+    await expect(field).toBeFocused();
+    await expect(field).toHaveValue(OLD[0]!);
+    await page.keyboard.insertText('그림 읽기');
+    await page.getByTestId('pdf-stage').click();
+    await expect(field).toHaveCount(0);
+    await expect(readerRows(page).first()).toHaveText('그림 읽기'); // renamed: the newest
+  } finally {
+    await app.close();
+  }
+});
+
+test('a session deleted while its answer comes: main stops the answer first, so no answer is left coming — the next question goes at once — and 실행 취소 brings the session back with its answer stopped', async ({}, testInfo) => {
+  const s = await atSession(testInfo);
+  const { app, page, itemId } = s;
+  try {
+    await tutorFakeScript(app, 'slow');
+    const asked = await ask(page, { itemId, conversationId: null, text: Q_A, selection: null, reader: READER_41 });
+    await expect(page.getByTestId('tutor-answering')).toBeVisible();
+    await runMenuCommand(app, 'reader.showSessions');
+    await rowOf(page, asked.conversationId).click();
+    await expect.poll(() => menuLabel(app, 'item.trash')).toBe('세션 삭제');
+    await runMenuAccelerator(app, 'item.trash');
+    await expect(page.getByTestId('session-undo')).toContainText('세션을 삭제했습니다');
+    await expect(page.getByTestId('tutor-empty')).toBeVisible();
+    await expect(page.getByTestId('tutor-answering')).toHaveCount(0);
+    // Nothing is left answering: a question in the new session is not held for another answer.
+    await tutorFakeScript(app, 'answer');
+    const next = await askViaApi(page, { itemId, conversationId: null, text: Q_B, selection: null, reader: READER_41 });
+    expect('busyWith' in next, 'the next question waited for the deleted session\'s answer').toBe(false);
+    if ('busyWith' in next) return;
+    await turnEnded(page, next.conversationId, next.tutorMessageId);
+    // 실행 취소: the session is back, its answer stopped as 중지 stops one.
+    await page.getByTestId('session-undo').getByTestId('undo-action').click();
+    await expect(rowOf(page, asked.conversationId)).toHaveCount(1);
+    expect((await turnEnded(page, asked.conversationId, asked.tutorMessageId)).status).toBe('stopped');
+    await rowOf(page, asked.conversationId).click();
+    await expect(shownQuestion(page)).toHaveText(Q_A);
+    await expect(page.getByTestId('tutor-ended')).toHaveText('중지함');
+  } finally {
+    await app.close();
+  }
+});
+

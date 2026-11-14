@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { acceleratorKeys, acceleratorLabel } from '../src/accelerator';
 import {
   ACCELERATOR_SYNTAX, COMMANDS, IMAGE_BACKGROUNDS, COMMAND_IDS, CONTEXT_MENU_KINDS, MAIN_OWNED_COMMANDS, NO_LIBRARY_VIEW, SUBMENUS, availableMenuCommands, commandById, commandLabel, commandMention, inPalette, isCommandAvailable, paletteLabel,
-  sameCommandContext, selectionTargets, submenuProblems, type CommandContextState, type CommandId, type CommandSpec, type CommandTargetInfo, type ItemTargetInfo,
+  READER_NAVS, SESSION_TARGET, TRASH_TARGET, sameCommandContext, selectionTargets, submenuProblems, type CommandContextState, type CommandId, type CommandSpec, type CommandTargetInfo, type ItemTargetInfo,
 } from '../src/commands';
 import { Channels } from '../src/ipc-channels';
 import { EventChannels } from '../src/event-channels';
@@ -161,8 +161,8 @@ describe('command registry', () => {
     expect(COMMANDS.map((c) => c.id).sort()).toEqual([
       'app.palette', 'app.settings', 'app.shortcuts', 'collection.addItems', 'collection.delete', 'collection.importInto', 'collection.new', 'collection.newChild', 'collection.removeItems', 'collection.rename', 'duplicates.keepOne', 'duplicates.keepOneAll', 'file.backup', 'file.cancelImport', 'file.checkLibrary', 'file.importLinked', 'file.importManaged',
       'file.restore', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.openInBackground', 'item.relink', 'item.restore', 'item.showInFolder', 'item.trash', 'library.find', 'library.findEverywhere', 'library.sortBy', 'nav.back', 'nav.historyBack', 'nav.historyForward',
-      'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.goToPage', 'reader.imageBackgroundChecker', 'reader.imageBackgroundDark', 'reader.imageBackgroundLight', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.scrollHorizontal', 'reader.scrollPage', 'reader.scrollVertical', 'reader.showOutline', 'reader.showThumbnails', 'reader.spreadEven', 'reader.spreadNone', 'reader.spreadOdd', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
-      'tab.close', 'tab.closeOthers', 'tab.goTo2', 'tab.goTo3', 'tab.goTo4', 'tab.goTo5', 'tab.goTo6', 'tab.goTo7', 'tab.goTo8', 'tab.last', 'tab.moveLeft', 'tab.moveRight', 'tab.next', 'tab.previous', 'tab.reopenClosed', 'tab.revealInLibrary',
+      'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.goToPage', 'reader.imageBackgroundChecker', 'reader.imageBackgroundDark', 'reader.imageBackgroundLight', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.scrollHorizontal', 'reader.scrollPage', 'reader.scrollVertical', 'reader.showOutline', 'reader.showSessions', 'reader.showThumbnails', 'reader.spreadEven', 'reader.spreadNone', 'reader.spreadOdd', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
+      'session.rename', 'tab.close', 'tab.closeOthers', 'tab.goTo2', 'tab.goTo3', 'tab.goTo4', 'tab.goTo5', 'tab.goTo6', 'tab.goTo7', 'tab.goTo8', 'tab.last', 'tab.moveLeft', 'tab.moveRight', 'tab.next', 'tab.previous', 'tab.reopenClosed', 'tab.revealInLibrary',
       'tag.clearColor', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'tag.delete', 'tag.rename', 'tag.setColor', 'tags.clearFilter', 'translation.translateSelection', 'trash.empty', 'tutor.chooseAgent', 'tutor.newSession', 'tutor.stop',
       'view.inspectorInfo', 'view.inspectorTutor', 'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
     ]);
@@ -419,8 +419,8 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(commandLabel(commandById('nav.back'), 'darwin', { sidebar: 'hidden' })).toBe('라이브러리');
   });
 
-  it('names a toggle after its own pane: exactly one state-label key per command (P-3)', () => {
-    for (const c of COMMANDS) if (c.stateLabels) expect(Object.keys(c.stateLabels), c.id).toHaveLength(1);
+  it('names a toggle after its own pane: one state-label key per command besides `focus` (P-3)', () => {
+    for (const c of COMMANDS) if (c.stateLabels) expect(Object.keys(c.stateLabels).filter((k) => k !== 'focus'), c.id).toHaveLength(1);
     // The item panel's toggle follows `inspector`; the sidebar's follows `sidebar`. Neither reads the other.
     const panel: CommandSpec = { ...commandById('view.toggleSidebar'), label: '항목 패널 보기/가리기', stateLabels: { inspector: { shown: '항목 패널 가리기', hidden: '항목 패널 보기' } } };
     const sidebar = commandById('view.toggleSidebar');
@@ -647,7 +647,7 @@ describe('the reader commands (P-9, P-14)', () => {
   });
   it('every reader.* command needs pdfOpen in the viewer, and exists nowhere else', () => {
     expect(READER.map((c) => c.id).sort()).toEqual([
-      'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.goToPage', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.scrollHorizontal', 'reader.scrollPage', 'reader.scrollVertical', 'reader.showOutline', 'reader.showThumbnails', 'reader.spreadEven', 'reader.spreadNone', 'reader.spreadOdd', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
+      'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.goToPage', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.scrollHorizontal', 'reader.scrollPage', 'reader.scrollVertical', 'reader.showOutline', 'reader.showSessions', 'reader.showThumbnails', 'reader.spreadEven', 'reader.spreadNone', 'reader.spreadOdd', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
     ]);
     for (const c of READER) {
       expect(c.contexts, c.id).toEqual(['viewer']);
@@ -888,5 +888,91 @@ describe('tab commands (M7b spec 3.4, 9)', () => {
   it('lists the tab commands for the palette with Korean words, except the numbered ones', () => {
     for (const id of ['tab.close', 'tab.reopenClosed', 'tab.next', 'tab.previous', 'tab.moveLeft', 'tab.moveRight'] as const) expect(inPalette(commandById(id)), id).toBe(true);
     for (const id of ['tab.goTo2', 'tab.last', 'tab.closeOthers', 'tab.revealInLibrary'] as const) expect(inPalette(commandById(id)), id).toBe(false);
+  });
+});
+
+describe('the session list (T1a spec 8.9, 11)', () => {
+  const PDF: CommandContextState = { ...VIEWER, pdfOpen: true };
+  it('the reader\'s sidebar lists thumbnails, the outline or sessions; ⌥⌘5 is 세션 보기, after 목차 보기 in 보기, with a PDF open', () => {
+    expect(READER_NAVS).toEqual(['thumbnails', 'outline', 'sessions']);
+    const c = commandById('reader.showSessions');
+    expect(c).toMatchObject({ label: '세션 보기', accelerator: 'Alt+CmdOrCtrl+5', menu: { menu: 'view', group: 2, order: 5.1 }, contexts: ['viewer'] });
+    expect(acceleratorLabel(c.accelerator!, 'darwin')).toBe('⌥⌘5');
+    expect(inPalette(c)).toBe(true);
+    expect(c.keywords).toEqual(expect.arrayContaining(['세션', '튜터']));
+    expect(isCommandAvailable('reader.showSessions', PDF)).toBe(true);
+    expect(isCommandAvailable('reader.showSessions', VIEWER)).toBe(false);
+    expect(isCommandAvailable('reader.showSessions', { ...LIB, libraryCount: 3 })).toBe(false);
+    const menu = availableMenuCommands(PDF);
+    expect(menu.indexOf('reader.showSessions')).toBe(menu.indexOf('reader.showOutline') + 1);
+  });
+  it('⌥⌘5 is one command\'s; ⌥⌘1 and ⌥⌘4 are no command\'s (필기 comes in M9)', () => {
+    for (const platform of ['darwin', 'linux', 'win32']) {
+      const holders = (a: string) => COMMANDS.filter((c) => c.accelerator && acceleratorLabel(c.accelerator, platform) === acceleratorLabel(a, platform)).map((c) => c.id);
+      expect(holders('Alt+CmdOrCtrl+5'), platform).toEqual(['reader.showSessions']);
+      expect(holders('Alt+CmdOrCtrl+1'), platform).toEqual([]);
+      expect(holders('Alt+CmdOrCtrl+4'), platform).toEqual([]);
+    }
+  });
+  it('a session row has its own context menu: 이름 바꾸기, then 세션 삭제 — the one ⌘⌫ command, item.trash', () => {
+    expect(CONTEXT_MENU_KINDS).toContain('session');
+    expect(commandById('session.rename')).toMatchObject({
+      label: '이름 바꾸기', paletteLabel: '세션 이름 바꾸기', contexts: ['viewer', 'session'], contextMenu: { kinds: ['session'], group: 1, order: 1 },
+    });
+    const trash = commandById('item.trash');
+    expect(trash.contexts).toContain('session');
+    expect(trash.contextMenu).toMatchObject({ kinds: expect.arrayContaining(['item', 'trash', 'session']), group: 4 });
+    expect(trash.accelerator).toBe('CmdOrCtrl+Backspace');
+    const menu = COMMANDS.filter((c) => c.contextMenu?.kinds.includes('session')).sort((a, b) => a.contextMenu!.group - b.contextMenu!.group || a.contextMenu!.order - b.contextMenu!.order);
+    expect(menu.map((c) => c.id)).toEqual(['session.rename', 'item.trash']);
+    // A session is no palette target of its own: 세션 이름 바꾸기 is listed (it falls back on the tutor's session).
+    expect(inPalette(commandById('session.rename'))).toBe(true);
+  });
+  it('⌘⌫ is named 세션 삭제 while a session row has the focus — before the trash view\'s 영구 삭제…', () => {
+    const c = commandById('item.trash');
+    expect(c.stateLabels).toEqual({ scope: { trash: '영구 삭제…' }, focus: { session: '세션 삭제' } });
+    for (const platform of ['darwin', 'linux', 'win32']) {
+      expect(commandLabel(c, platform, { sessionFocused: true, scope: 'trash' }), platform).toBe('세션 삭제');
+      expect(commandLabel(c, platform, { sessionFocused: true, view: 'viewer' }), platform).toBe('세션 삭제');
+      expect(commandLabel(c, platform, { scope: 'trash' }), platform).toBe('영구 삭제…');
+      expect(commandLabel(c, platform, { sessionFocused: false, scope: 'all' }), platform).toBe('휴지통으로 이동');
+    }
+    // A focused session row names no other command.
+    expect(commandLabel(commandById('view.toggleSidebar'), 'darwin', { sessionFocused: true, sidebar: 'shown' })).toBe('사이드바 가리기');
+    expect(paletteLabel(commandById('item.trash'), 'darwin', { sessionFocused: true })).toBe('세션 삭제');
+  });
+  it('item.trash takes the focused session in any view, and only then in the reader', () => {
+    expect(isCommandAvailable('item.trash', { ...PDF, sessionFocused: true }, [SESSION_TARGET])).toBe(true);
+    expect(isCommandAvailable('item.trash', PDF, [SESSION_TARGET])).toBe(false);
+    expect(isCommandAvailable('item.trash', PDF)).toBe(false);
+    expect(isCommandAvailable('item.trash', { ...PDF, sessionFocused: true })).toBe(false); // no session to delete
+    expect(isCommandAvailable('item.trash', { ...PDF, sessionFocused: true, blocked: true }, [SESSION_TARGET])).toBe(false);
+    // In the library a focused session row is the target, not the table's selection.
+    const lib: CommandContextState = { ...selecting(1, 1), sessionFocused: true };
+    expect(isCommandAvailable('item.trash', lib, [managedOk])).toBe(false);
+    expect(isCommandAvailable('item.trash', lib, [SESSION_TARGET])).toBe(true);
+    expect(isCommandAvailable('item.trash', selecting(1, 1), [managedOk])).toBe(true); // unfocused: the selection as before
+    const trashView: CommandContextState = { ...lib, scope: 'trash' };
+    expect(isCommandAvailable('item.trash', trashView, [TRASH_TARGET])).toBe(false);
+    expect(isCommandAvailable('item.trash', trashView, [SESSION_TARGET])).toBe(true);
+    expect(isCommandAvailable('item.trash', { ...trashView, sessionFocused: undefined }, [TRASH_TARGET])).toBe(true);
+  });
+  it('the menu bar turns ⌘⌫ on for a focused session row, in the reader and in the library', () => {
+    expect(availableMenuCommands({ ...PDF, sessionFocused: true })).toContain('item.trash');
+    expect(availableMenuCommands(PDF)).not.toContain('item.trash');
+    expect(availableMenuCommands({ ...LIB, libraryCount: 3, sessionFocused: true })).toContain('item.trash'); // nothing selected in the table
+    expect(availableMenuCommands({ ...LIB, libraryCount: 3 })).not.toContain('item.trash');
+    expect(availableMenuCommands({ ...PDF, sessionFocused: true, blocked: true })).not.toContain('item.trash');
+  });
+  it('세션 이름 바꾸기: a session row\'s (its menu or the focused row), or from the palette the tutor\'s session that has a question', () => {
+    expect(isCommandAvailable('session.rename', { ...PDF, sessionFocused: true }, [SESSION_TARGET])).toBe(true);
+    expect(isCommandAvailable('session.rename', { ...LIB, libraryCount: 3, sessionFocused: true }, [SESSION_TARGET])).toBe(true); // the library's section
+    expect(isCommandAvailable('session.rename', { ...PDF, inspectorMode: 'tutor', tutorHasMessages: true })).toBe(true); // the palette
+    expect(isCommandAvailable('session.rename', { ...PDF, inspectorMode: 'tutor' })).toBe(false); // a new empty session
+    expect(isCommandAvailable('session.rename', { ...LIB, libraryCount: 3 })).toBe(false);
+    expect(isCommandAvailable('session.rename', { ...PDF, tutorHasMessages: true, blocked: true })).toBe(false);
+  });
+  it('the reported focus is part of the context and renames the menu bar\'s ⌘⌫ line', () => {
+    expect(sameCommandContext(PDF, { ...PDF, sessionFocused: true })).toBe(false);
   });
 });

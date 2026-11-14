@@ -60,13 +60,19 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
     expect(where('library')).toMatchObject({ 라이브러리: 3, 리더: 0 });
     expect(where()).toMatchObject({ 라이브러리: 3, 리더: 0 });
   });
-  it('keeps the sheet within the 770 px bound in both views, and under 743 (the ⌃⌘1 / ⌃⌘2 line took the headroom the 740 line kept for one more pair line; the natural height is the taller column plus 136 px of title, foot and padding)', () => {
+  it('keeps the sheet within a real 1440 × 900 room (774) in both views: 772 from the library since the ⌥⌘5 line, over the 770 it kept to, so a smaller room scrolls its list (sheets.spec); the natural height is the taller column plus 136 px of title, foot and padding', () => {
     const height = (view?: 'library' | 'viewer') => Math.max(...shortcutColumns(shortcutGroups('darwin', view)).map((c) => c.reduce((h, g, i) => h + 31 + 29 * g.rows.length + (i > 0 ? 16 : 0), 0)));
     expect(height()).toBe(height('library'));
-    for (const view of ['library', 'viewer'] as const) {
-      expect(height(view) + 136, view).toBeLessThanOrEqual(743);
-      expect(height(view) + 136, view).toBeLessThanOrEqual(770);
-    }
+    expect(height('library') + 136).toBe(772);
+    expect(height('viewer') + 136).toBe(754);
+    for (const view of ['library', 'viewer'] as const) expect(height(view) + 136, view).toBeLessThanOrEqual(774);
+  });
+  it('lists 세션 보기 ⌥⌘5 under 리더, after the thumbnails / outline line', () => {
+    const rows = shortcutGroups('darwin', 'viewer').find((g) => g.title === '리더')!.rows;
+    const at = rows.findIndex((r) => r.label === '세션 보기');
+    expect(rows[at]).toEqual({ label: '세션 보기', keys: ['⌥', '⌘', '5'], spoken: '⌥⌘5' });
+    expect(rows[at - 1]!.label).toBe('썸네일 / 목차 보기');
+    expect(shortcutGroups('linux', 'viewer').flatMap((g) => g.rows).find((r) => r.label === '세션 보기')?.keys).toEqual(['Ctrl', 'Alt', '5']);
   });
   it('lists ⌃⌘1 / ⌃⌘2 as one line, the reader\'s right panel modes, under 리더', () => {
     const viewer = shortcutGroups('darwin', 'viewer').find((g) => g.title === '리더')!;

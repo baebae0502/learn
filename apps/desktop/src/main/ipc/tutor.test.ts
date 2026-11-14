@@ -30,6 +30,7 @@ function fakeService() {
     warm: vi.fn(async () => {}),
     ask: vi.fn(async (): Promise<Awaited<ReturnType<TutorService['ask']>>> => ROWS),
     stop: vi.fn(() => {}),
+    stopConversation: vi.fn(() => {}),
     resend: vi.fn(async () => ({ tutorMessageId: MSG })),
     reground: vi.fn(async () => ({ userMessageId: MSG, tutorMessageId: ITEM })),
     removeWorkFolders: vi.fn(async () => {}),

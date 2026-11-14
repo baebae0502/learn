@@ -4,14 +4,15 @@
 // in at 60 pieces a second with 20 citations — from the turn's first text notice to its last, counted in whole frames — and the long
 // tasks among them, with what they were; the redraw at the answer's end, reported apart and not gated; the fake agent's start to its
 // initialize answer, tutor:ask in main up to its rows, and read_pdf_pages of 5 pages × 4,000 characters in main (__learnLastMs); the
-// fake agent's RSS. Linux CI fails beyond twice each budget (budget.ts); every other run reports.
+// fake agent's RSS; a session row pressed to its conversation drawn (two sessions of 100 messages, 4 cites an answer, in turn), and the
+// 세션 pane opened on 200 sessions. Linux CI fails beyond twice each budget (budget.ts); every other run reports.
 //
 // Ends are states of the page: the first animation frame in which the DOM holds what the action leads to. Starts are the ↩'s own
 // keydown timeStamp in the page, or the app's own marks.
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { FIXTURES, backFromReader, importPaths, launch, mainWindow, openItem, readerTab, seedBodyText, textExtraction, textIdle, tutorFakeLog, tutorFakeScript, tutorProcesses } from '../e2e/helpers';
+import { FIXTURES, backFromReader, importPaths, launch, mainWindow, openItem, readerTab, seedBodyText, seedSessions, textExtraction, textIdle, tutorFakeLog, tutorFakeScript, tutorProcesses } from '../e2e/helpers';
 import { askViaApi, consentAndChoose, turnEnded } from '../e2e/tutor-helpers';
 import { limitFailures, type Limit } from './budget';
 import { writeJson } from './capture';
@@ -29,6 +30,8 @@ const BUDGET = {
   initializeP95: 800,
   askMainP95: 20,
   readPagesMainP95: 20,
+  sessionSwitchP95: 150,
+  sessionsPaneP95: 100,
 } as const;
 const RUNS = 20;
 /** One frame at 60 Hz. A rAF gap is a whole number of frames; timer jitter can make two frames read as 33.4 ms against a 2 × 16.7 limit. */
@@ -36,6 +39,9 @@ const FRAME_MS = 1000 / 60;
 /** A gap in whole frames, at least one. */
 const framesOf = (gapMs: number): number => Math.max(1, Math.round(gapMs / FRAME_MS));
 const STREAMS = 3;
+/** The session switch's sessions (spec 15): two, each 100 messages, each answer citing 4 pages; and the 세션 pane's 200 sessions. */
+const SWITCH_MESSAGES = 100;
+const PANE_SESSIONS = 200;
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const LONG_OUTLINE = path.join(FIXTURES, 'long-outline.pdf');
 
@@ -88,6 +94,33 @@ async function sendAndTime(page: Page, text: string): Promise<{ bubbleMs: number
   });
   const firstTextMs = marks.sent === null || marks.painted === null ? null : marks.painted - marks.sent;
   return { bubbleMs, firstTextMs };
+}
+
+/** What a press leads to: a session's conversation drawn with its questions, or the 세션 pane with its rows. */
+type PressEnd = { conversationId: string; questions: number } | { rows: number };
+
+/** From a press (its pointerdown's timeStamp) to the first frame in which the page shows what it leads to; then the press itself. */
+async function pressToFrame(page: Page, end: PressEnd, press: () => Promise<void>): Promise<number> {
+  await page.evaluate((e) => {
+    const done = (): boolean => {
+      if ('rows' in e) return document.querySelectorAll('[data-testid="reader-sessions"] [data-testid="session-row"]').length === e.rows;
+      const c = document.querySelector(`[data-testid="tutor-conversation"][data-conversation-id="${e.conversationId}"][data-drawn]`);
+      return c !== null && c.querySelectorAll('[data-testid="tutor-question"]').length === e.questions;
+    };
+    const w = window as unknown as { __pressed: Promise<number> };
+    w.__pressed = new Promise<number>((resolve) => {
+      let pressedAt = 0;
+      addEventListener('pointerdown', (ev) => void (pressedAt = ev.timeStamp), { capture: true, once: true });
+      const watch = new MutationObserver(() => {
+        if (pressedAt === 0 || !done()) return;
+        watch.disconnect();
+        requestAnimationFrame(() => resolve(performance.now() - pressedAt));
+      });
+      watch.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+    });
+  }, end);
+  await press();
+  return page.evaluate(() => (window as unknown as { __pressed: Promise<number> }).__pressed);
 }
 
 /** A long task (over 50 ms) and what it was: the browser's attribution, and the scripts of the long frames it falls in. */
@@ -190,7 +223,7 @@ async function streamFrames(page: Page): Promise<Stream> {
   return page.evaluate(() => (window as unknown as { __tutorStream: Promise<Stream> }).__tutorStream);
 }
 
-test('the tutor with the fake agent: send → bubble and first text, streaming frames, the agent\'s start, main\'s ask and page reads, its RSS', { tag: '@perf' }, async ({}, testInfo) => {
+test('the tutor with the fake agent: send → bubble and first text, streaming frames, the agent\'s start, main\'s ask and page reads, its RSS, a session switch and the 세션 pane', { tag: '@perf' }, async ({}, testInfo) => {
   test.setTimeout(900_000);
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { env: { LEARN_E2E_SETTINGS: '' } });
   const { app, page } = s;
@@ -281,6 +314,31 @@ test('the tutor with the fake agent: send → bubble and first text, streaming f
       readPages.push(await newest(app, 'tutorReadPages'));
     }
 
+    // ---- A session row pressed → its conversation drawn: two seeded sessions of 100 messages (4 cites an answer), in turn ----
+    await readerTab(page, paper!.id).click();
+    await expect(page.getByTestId('tutor-log')).toBeVisible();
+    const pair = await seedSessions(app, { itemId: paper!.id, sessions: 2, messagesPerSession: SWITCH_MESSAGES, citationsPerAnswer: 4 });
+    await page.getByTestId('reader-nav-sessions').click();
+    const switchMs: number[] = [];
+    for (let i = 0; i < RUNS; i++) {
+      const id = pair.conversationIds[i % 2]!;
+      switchMs.push(await pressToFrame(page, { conversationId: id, questions: SWITCH_MESSAGES / 2 }, () => page.locator(`[data-testid="session-row"][data-conversation-id="${id}"]`).click()));
+    }
+    await expect(page.locator(`[data-testid="session-row"][data-conversation-id="${pair.conversationIds[(RUNS - 1) % 2]}"]`)).toHaveAttribute('aria-selected', 'true');
+
+    // ---- The 세션 pane opened from the thumbnails: 200 sessions of long-outline.pdf (its 20 questions above and 180 seeded) ----
+    await readerTab(page, outline!.id).click();
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', '6');
+    await seedSessions(app, { itemId: outline!.id, sessions: PANE_SESSIONS - RUNS, messagesPerSession: 2, citationsPerAnswer: 1 });
+    const paneMs: number[] = [];
+    for (let i = 0; i < RUNS; i++) {
+      await page.getByTestId('reader-nav-thumbnails').click();
+      await expect(page.getByTestId('reader-sessions')).toHaveCount(0);
+      paneMs.push(await pressToFrame(page, { rows: PANE_SESSIONS }, () => page.getByTestId('reader-nav-sessions').click()));
+    }
+    await page.getByTestId('reader-nav-thumbnails').click();
+    await readerTab(page, paper!.id).click();
+
     // ---- The fake agent's start → its initialize answer: the idle one closed, the composer's focus starts the next ----
     await tutorFakeScript(app, 'answer');
     const initialize: number[] = [];
@@ -314,6 +372,8 @@ test('the tutor with the fake agent: send → bubble and first text, streaming f
       initializeP95: p95(initialize),
       askMainP95: p95(askMain),
       readPagesMainP95: p95(readPages),
+      sessionSwitchP95: p95(switchMs),
+      sessionsPaneP95: p95(paneMs),
     };
     const result = {
       budgetMs: BUDGET,
@@ -330,12 +390,14 @@ test('the tutor with the fake agent: send → bubble and first text, streaming f
       initializeMs: spread(initialize),
       askMainMs: spread(askMain),
       readPagesMainMs: spread(readPages),
+      sessionSwitchMs: { ...spread(switchMs), sessions: 2, messages: SWITCH_MESSAGES, citesPerAnswer: 4 },
+      sessionsPaneMs: { ...spread(paneMs), sessions: PANE_SESSIONS },
       fakeAgentRssMB: rssKB === null ? null : tenth(rssKB / 1024),
       overBudget: Object.entries(values).filter(([k, v]) => v > BUDGET[k as keyof typeof BUDGET]).map(([k]) => k),
       platform: `${process.platform}-${process.arch}`,
       ci: process.env['CI'] ?? null,
     };
-    writeJson('tutor-perf.json', result, 'T1a tutor (fake agent): send → bubble (paper-100; long-outline, each a new session), send → first text, the frames and long tasks while an answer streams (first to last text notice) and the end redraw apart, the agent\'s start → initialize, tutor:ask and read_pdf_pages in main, the fake agent\'s RSS');
+    writeJson('tutor-perf.json', result, 'T1a tutor (fake agent): send → bubble (paper-100; long-outline, each a new session), send → first text, the frames and long tasks while an answer streams (first to last text notice) and the end redraw apart, the agent\'s start → initialize, tutor:ask and read_pdf_pages in main, the fake agent\'s RSS, a session row pressed → its conversation drawn, the 세션 pane opened on 200 sessions');
     console.log('[measure] tutor-perf', JSON.stringify({ values, endRedraw: { longestTaskMs: result.endRedraw.longestTaskMs, longestGapMs: result.endRedraw.longestGapMs }, newSessionFirstTextP95: result.sendToFirstTextNewSessionMs.p95, fakeAgentRssMB: result.fakeAgentRssMB, outlineResolvedAtFirstSend: resolvedAtFirstSend }));
 
     if (process.platform === 'linux' && process.env['CI']) {
@@ -348,6 +410,8 @@ test('the tutor with the fake agent: send → bubble and first text, streaming f
         { what: 'fake agent start → initialize answer p95', value: values.initializeP95, budget: BUDGET.initializeP95 },
         { what: 'tutor:ask in main up to its rows p95', value: values.askMainP95, budget: BUDGET.askMainP95 },
         { what: 'read_pdf_pages of 5 pages × 4,000 characters in main p95', value: values.readPagesMainP95, budget: BUDGET.readPagesMainP95 },
+        { what: 'session row pressed → its conversation drawn p95 (2 sessions × 100 messages, 4 cites an answer)', value: values.sessionSwitchP95, budget: BUDGET.sessionSwitchP95 },
+        { what: '세션 pane opened → 200 session rows drawn p95', value: values.sessionsPaneP95, budget: BUDGET.sessionsPaneP95 },
       ];
       expect(limitFailures(limits)).toEqual([]);
     }

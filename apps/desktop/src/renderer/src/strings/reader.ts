@@ -63,7 +63,7 @@ export const reader = {
   findNext: '다음 찾기',
   findClose: '찾기 닫기',
   /** The sidebar while a PDF is read (spec 4.7). */
-  navLabel: '썸네일과 목차',
+  navLabel: '썸네일·목차·세션',
   thumbnails: '썸네일',
   outline: '목차',
   thumbnailList: '쪽 썸네일',

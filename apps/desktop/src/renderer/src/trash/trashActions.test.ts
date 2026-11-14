@@ -105,11 +105,12 @@ describe('영구 삭제… and 휴지통 비우기… (spec 4.5, P-25)', () => {
   it('asks in the sheet first with its variant; 취소 deletes nothing; the toast counts what went', async () => {
     const no = setup({ confirmPurge: vi.fn(async () => false) });
     await no.actions.purge({ itemIds: ['t0'], collectionIds: [] });
-    expect(no.deps.confirmPurge).toHaveBeenCalledExactlyOnceWith({ variant: 'items', items: 1, collections: 0, name: 't0' });
+    // The items go with the question, so main can count their tutor sessions (T1a spec 6.2).
+    expect(no.deps.confirmPurge).toHaveBeenCalledExactlyOnceWith({ variant: 'items', items: 1, collections: 0, name: 't0', itemIds: ['t0'] });
     expect(no.deps.purge).not.toHaveBeenCalled();
     const yes = setup();
     await yes.actions.purge({ itemIds: ['t0', 't1'], collectionIds: ['c0'] });
-    expect(yes.deps.confirmPurge).toHaveBeenCalledExactlyOnceWith({ variant: 'mixed', items: 2, collections: 1 });
+    expect(yes.deps.confirmPurge).toHaveBeenCalledExactlyOnceWith({ variant: 'mixed', items: 2, collections: 1, itemIds: ['t0', 't1'] });
     expect(yes.deps.purge).toHaveBeenCalledExactlyOnceWith({ itemIds: ['t0', 't1'], collectionIds: ['c0'] });
     expect(yes.deps.toast).toHaveBeenCalledExactlyOnceWith('자료 2개와 컬렉션 1개를 영구히 삭제했습니다', 'purge-done');
     expect([purgeVariant(0, 2), purgeVariant(3, 0), purgeVariant(1, 1)]).toEqual(['collections', 'items', 'mixed']);
@@ -119,17 +120,17 @@ describe('영구 삭제… and 휴지통 비우기… (spec 4.5, P-25)', () => {
     await a.actions.purge({ itemIds: ['x'], collectionIds: [] });
     await a.actions.purge({ itemIds: [], collectionIds: ['y'] });
     expect(vi.mocked(a.deps.confirmPurge).mock.calls.map((c) => c[0])).toEqual([
-      { variant: 'items', items: 1, collections: 0, name: '통계' },
-      { variant: 'collections', items: 0, collections: 1, name: '학회 준비' },
+      { variant: 'items', items: 1, collections: 0, name: '통계', itemIds: ['x'] },
+      { variant: 'collections', items: 0, collections: 1, name: '학회 준비' }, // no items: nothing for main to count
     ]);
     const broken = setup({ readTrash: vi.fn(async () => Promise.reject(new Error('x'))) });
     await broken.actions.purge({ itemIds: ['x'], collectionIds: [] });
-    expect(broken.deps.confirmPurge).toHaveBeenCalledExactlyOnceWith({ variant: 'items', items: 1, collections: 0 });
+    expect(broken.deps.confirmPurge).toHaveBeenCalledExactlyOnceWith({ variant: 'items', items: 1, collections: 0, itemIds: ['x'] });
   });
   it('휴지통 비우기… counts the trash as it is now; an empty trash asks nothing', async () => {
     const { deps, actions } = setup();
     await actions.emptyTrash();
-    expect(deps.confirmPurge).toHaveBeenCalledExactlyOnceWith({ variant: 'empty', items: 2, collections: 1 });
+    expect(deps.confirmPurge).toHaveBeenCalledExactlyOnceWith({ variant: 'empty', items: 2, collections: 1 }); // main counts the trash's sessions itself
     expect(deps.purge).toHaveBeenCalledExactlyOnceWith({ itemIds: ['t0', 't1'], collectionIds: ['c0'] });
     expect(deps.toast).toHaveBeenCalledExactlyOnceWith('휴지통을 비웠습니다', 'purge-done');
     const none = setup({ readTrash: vi.fn(async () => view(0, 0)) });

@@ -67,7 +67,7 @@ const SEP: Item = { type: 'separator' };
 
 /**
  * The reported state that state labels follow (design-spec 7.4): the pane states, the library's scope for ⌘⌫ (P-11), the view for
- * ⌘+ ⌘− ⌘0 (P-9) and a drawn picture for the fit's name.
+ * ⌘+ ⌘− ⌘0 (P-9), a drawn picture for the fit's name and a focused session row for ⌘⌫'s.
  */
 export type MenuLabelState = LabelState;
 
@@ -77,18 +77,18 @@ export function menuLabelState<T extends LabelState>(ctx: T): MenuLabelState {
   const several = ctx.selectionCount !== undefined && ctx.selectionCount > 1 && ctx.scope !== 'trash';
   return {
     ...(ctx.sidebar ? { sidebar: ctx.sidebar } : {}), ...(ctx.inspector ? { inspector: ctx.inspector } : {}), ...(ctx.scope ? { scope: ctx.scope } : {}), ...(ctx.view ? { view: ctx.view } : {}),
-    ...(several ? { selectionCount: ctx.selectionCount } : {}), ...(ctx.imageOpen ? { imageOpen: true } : {}),
+    ...(several ? { selectionCount: ctx.selectionCount } : {}), ...(ctx.imageOpen ? { imageOpen: true } : {}), ...(ctx.sessionFocused ? { sessionFocused: true } : {}),
   };
 }
 
 /** The selected-item count a label names: only several count (a report works for a raw context and for a label state alike). */
 const manyOf = (s: MenuLabelState): number | undefined => (s.selectionCount !== undefined && s.selectionCount > 1 && s.scope !== 'trash' ? s.selectionCount : undefined);
 
-/** Whether a new report renames a menu item: a pane state, the view or the drawn picture that a state label follows has changed. */
+/** Whether a new report renames a menu item: a pane state, the view, the drawn picture or the focused session row that a state label follows has changed. */
 export function menuLabelsChanged(before: MenuLabelState, after: MenuLabelState): boolean {
   return (
     before.sidebar !== after.sidebar || before.inspector !== after.inspector || before.scope !== after.scope || before.view !== after.view || manyOf(before) !== manyOf(after) ||
-    (before.imageOpen === true) !== (after.imageOpen === true)
+    (before.imageOpen === true) !== (after.imageOpen === true) || (before.sessionFocused === true) !== (after.sessionFocused === true)
   );
 }
 

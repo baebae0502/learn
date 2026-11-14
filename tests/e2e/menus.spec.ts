@@ -1,11 +1,14 @@
 // The menu machinery of M5 (spec 9.1) end to end: 보기 › 정렬 기준 ▸ in the real menu bar (the keyboard-only sort), the
 // menu bar's rebuild that waits for an open menu, the row menu opened from the keyboard, and the kinds of context menu
-// that have no commands yet.
+// that have no commands yet; ⌘⌫'s line named by a focused tutor session row (T1a).
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { FIXTURES, assignTag, createTag, importPaths, launch, mainWindow, menuSnapshot, openItem, quietLibraryCalls, recordedPopupPoints, recordedPopups, rowByTitle, runMenuCommand, selectRows, stubContextMenu, type MenuNode } from './helpers';
+import {
+  FIXTURES, assignTag, createTag, importPaths, launch, mainWindow, menuItemEnabled, menuSnapshot, openItem, quietLibraryCalls, recordedPopupPoints, recordedPopups, rowByTitle, runMenuCommand, seedSessions,
+  selectRows, specialRow, stubContextMenu, trashItems, type MenuNode,
+} from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const dirs = (i: { outputPath(...p: string[]): string }) => [i.outputPath('library'), i.outputPath('userdata')] as const;
@@ -209,3 +212,46 @@ test('the menu bar is rebuilt for a new tag, not for tagging items (m-1)', async
     await app.close();
   }
 });
+
+test('⌘⌫\'s menu-bar line is 세션 삭제 while a tutor session row has the focus — in the trash view too — and the view\'s own name again once it leaves; ⇧F10 opens the row\'s menu under it', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  const label = async (id: string) => flatten(await menuSnapshot(app)).find((n) => n.id === id)?.label ?? null;
+  try {
+    await importInOrder(page, testInfo.outputPath('src'), ['alpha', 'beta']);
+    const ids = await page.evaluate(async () => {
+      const r = await window.learn.library.list();
+      return r.ok ? Object.fromEntries(r.data.map((i) => [i.title, i.id])) : {};
+    });
+    await seedSessions(app, { itemId: ids['alpha']!, sessions: 2, messagesPerSession: 2, citationsPerAnswer: 1, questions: ['첫 질문', '둘째 질문'] });
+    const rows = page.getByTestId('library-sessions').getByTestId('session-row');
+    await expect(rows).toHaveText(['둘째 질문', '첫 질문']);
+    // Nothing selected in the table: ⌘⌫ is off and named for the view; a focused session row makes it 세션 삭제, on.
+    await expect.poll(() => label('item.trash')).toBe('휴지통으로 이동');
+    expect(await menuItemEnabled(app, 'item.trash')).toBe(false);
+    await rows.first().focus();
+    await expect.poll(() => label('item.trash')).toBe('세션 삭제');
+    await expect.poll(() => menuItemEnabled(app, 'item.trash')).toBe(true);
+    // ⇧F10: the row's own menu, under it.
+    await stubContextMenu(app, null);
+    await page.keyboard.press('Shift+F10');
+    await expect.poll(async () => (await recordedPopups(app)).length).toBe(1);
+    expect((await recordedPopups(app))[0]!.map((i) => [i.label, i.type])).toEqual([['이름 바꾸기', 'normal'], ['', 'separator'], ['세션 삭제', 'normal']]);
+    const box = (await rows.first().boundingBox())!;
+    const [at] = await recordedPopupPoints(app);
+    expect(Math.abs(at!.y - (box.y + box.height))).toBeLessThanOrEqual(1);
+    // The table takes the focus: the view's name again.
+    await rowByTitle(page, 'alpha').click();
+    await expect.poll(() => label('item.trash')).toBe('휴지통으로 이동');
+    // In the trash view ⌘⌫ is 영구 삭제…, and 세션 삭제 while a session row has the focus.
+    await trashItems(page, [ids['beta']!]);
+    await specialRow(page, 'trash').click();
+    await expect.poll(() => label('item.trash')).toBe('영구 삭제…');
+    await rows.first().focus();
+    await expect.poll(() => label('item.trash')).toBe('세션 삭제');
+    await rowByTitle(page, 'beta').click();
+    await expect.poll(() => label('item.trash')).toBe('영구 삭제…');
+  } finally {
+    await app.close();
+  }
+});
+

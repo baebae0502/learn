@@ -61,6 +61,9 @@ import { useTurnEvents } from '../tutor/useTurnEvents';
 import { stopAnswer, useWaitingSends } from '../tutor/useSend';
 import { useAnswerComing } from '../tutor/useSessionThread';
 import { useTutorView } from '../tutor/useTutorView';
+import { deleteSession, startRename } from '../tutor/sessions/sessionActions';
+import { focusedSessionRow, neighborRow } from '../tutor/sessions/SessionRow';
+import { useSessionRowFocused } from '../tutor/sessions/useSessionFocus';
 import { useTabsPersistence } from './useTabsPersistence';
 import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell/useSidebar';
 import { useWindowState } from '../shell/useWindowState';
@@ -417,6 +420,8 @@ export function MainWindow(_props: { info: AppInfo }) {
   useWaitingSends();
   // The consent main recorded: 에이전트 고르기… needs it.
   const tutorConsented = useTutorPrefs().consent !== null;
+  // A session row of the sidebar has the focus: ⌘⌫ is 세션 삭제 and deletes it.
+  const sessionFocused = useSessionRowFocused();
   // A turn that failed on the login or the lockdown makes the agents report of this run stale, whatever the panel shows.
   useAgentsReread();
   // Text of the page is selected: 선택한 글 번역 is on (translation/useSelectionText.ts).
@@ -491,6 +496,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     ...(tutorConsented ? { tutorConsented: true } : {}),
     ...(tutorHasMessages ? { tutorHasMessages: true } : {}),
     ...(tutorStreaming ? { tutorStreaming: true } : {}),
+    ...(sessionFocused ? { sessionFocused: true } : {}),
     // ⌘+ / ⌘− stop at 15 / 12 and ⌘0 is off at 13 (prefs.fontSize; the default until prefs are read).
     textSize,
     libraryCount: count,
@@ -584,6 +590,15 @@ export function MainWindow(_props: { info: AppInfo }) {
     newSession: () => currentScope().tutor.getState().setConversation(null),
     // The answer the shown tab's session receives stops (the panel's esc and 중지 do the same).
     stopAnswer: () => stopAnswer(currentScope()),
+    // A session's row becomes its name field: in the reader the 세션 pane shows first (the palette names the tutor's session).
+    renameSession: (conversationId) => {
+      if (viewKind === 'reader') readerActions.showReaderNav('sessions');
+      startRename(conversationId);
+    },
+    // At once, with 실행 취소; the focus goes on to the next row when it was on this one.
+    deleteSession: (conversationId) => void deleteSession(conversationId, focusedSessionRow() === conversationId ? neighborRow(conversationId) : null),
+    currentSession: () => (viewKind === 'reader' ? currentScope().tutor.getState().conversationId : null),
+    focusedSession: focusedSessionRow,
     showShortcuts: () => void showShortcuts(),
     checkLibrary: () => checkLibrary(false),
     openPalette,
@@ -608,7 +623,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, pdfOpen, imageDrawn, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, inspectorMode, tutorConsented, tutorHasMessages, tutorStreaming, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAtPage, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, pdfOpen, imageDrawn, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, inspectorMode, tutorConsented, tutorHasMessages, tutorStreaming, sessionFocused, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAtPage, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);

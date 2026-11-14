@@ -19,11 +19,15 @@ const { registerSessionsIpc } = await import('./sessions');
 
 let db: Db;
 let ctx: LibraryContext | null;
+/** The tutor's own stop of a session's answer, with whether the session was still live when it was asked. */
+const stopped: Array<{ conversationId: string; live: boolean }> = [];
+const stopConversation = (conversationId: string) => void stopped.push({ conversationId, live: ctx!.conversations.conversation(conversationId)?.deleted === false });
 registerSessionsIpc(createHandle(null), stubDeps({
   getContext: () => {
     if (!ctx) throw new LearnError('LIBRARY_UNAVAILABLE', 'no library');
     return ctx;
   },
+  tutor: { stopConversation } as never,
 }));
 const MAIN_PAGE = fakeSender(51, 'main');
 const SETTINGS_PAGE = fakeSender(52, 'settings');
@@ -50,6 +54,7 @@ beforeEach(() => {
   db = freshDb();
   ctx = { db, repo: new LibraryRepository(db), conversations: new ConversationsRepository(db) } as unknown as LibraryContext;
   sent.length = 0;
+  stopped.length = 0;
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'debug').mockImplementation(() => {});
 });
@@ -135,6 +140,15 @@ describe('sessions:* (spec 12)', () => {
       { reason: 'deleted', itemIds: [s.itemId], conversationIds: [s.conversationId] },
       { reason: 'restored', itemIds: [s.itemId], conversationIds: [s.conversationId] },
     ]);
+  });
+
+  it('delete stops the session\'s answer first: no answer goes on coming in a deleted session (T1a spec 8.9)', async () => {
+    const s = session();
+    expect(await call('sessions:delete', { conversationId: s.conversationId })).toMatchObject({ ok: true });
+    expect(stopped).toEqual([{ conversationId: s.conversationId, live: true }]);
+    // Restoring brings nothing back to life: it starts nothing.
+    expect(await call('sessions:restore', { conversationId: s.conversationId })).toMatchObject({ ok: true });
+    expect(stopped).toHaveLength(1);
   });
 
   it('nothing is announced when nothing changed: an unknown session, a second delete, a restore of a live one', async () => {

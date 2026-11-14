@@ -1956,8 +1956,22 @@ export const tutorProcesses = (app: ElectronApplication, input?: { resetMax?: tr
 export const tutorKillAgent = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithTutorHooks).__learnTest.tutorKillAgent());
 /** The next `n` tutor:agents calls fail, as a detection that threw. */
 export const tutorFailAgents = (app: ElectronApplication, n: number) => app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.tutorFailAgents(arg), n);
-/** Finished sessions of one PDF (the performance fixture), announced once. */
-export const seedSessions = (app: ElectronApplication, input: SeedSessionsInput) => app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.seedSessions(arg), input);
+/**
+ * Finished sessions of one PDF (the performance fixture, the session list's days), announced once. The hook runs in main through the
+ * inspector, which can land it inside a query the window is running; better-sqlite3 then refuses it before anything is written (one
+ * transaction), and it is asked again.
+ */
+export async function seedSessions(app: ElectronApplication, input: SeedSessionsInput): Promise<{ conversationIds: string[] }> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.seedSessions(arg), input);
+    } catch (e) {
+      if (attempt >= 5 || !/busy executing a query/.test(String(e))) throw e;
+      // The window's query ends within its task: a moment later the hook finds the connection free.
+      await new Promise((resolve) => setTimeout(resolve, 50 * attempt));
+    }
+  }
+}
 /** The tool reads recorded on an answer, in order. */
 export const toolReads = (app: ElectronApplication, messageId: string) => app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.toolReads(arg), messageId);
 

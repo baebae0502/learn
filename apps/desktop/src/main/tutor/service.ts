@@ -36,6 +36,8 @@ export interface TutorService {
   warm(i: TutorWarmInput): Promise<void>;
   ask(i: TutorAskInput): Promise<TutorAskAnswer>;
   stop(messageId: string): void;
+  /** The answer of this session, if one is coming, stops as stop() stops it: a session deleted meanwhile keeps no answer coming. */
+  stopConversation(conversationId: string): void;
   resend(i: TutorRetryInput): Promise<{ tutorMessageId: string }>;
   reground(i: TutorRetryInput): Promise<{ userMessageId: string; tutorMessageId: string }>;
   removeWorkFolders(conversationIds: readonly string[]): Promise<void>;
@@ -373,6 +375,12 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
     return { conversationId: b.conversationId, userMessageId: b.userMessageId, tutorMessageId: b.tutorMessageId };
   };
 
+  /** The running turn stops: before its session is known there is no prompt to cancel, and the turn sends none. */
+  const stopTurn = (t: Turn) => {
+    t.stopped = true;
+    if (t.session !== null) d.backend.interrupt(t.session, 'if-not-ended');
+  };
+
   return {
     consent() {
       d.prefs.set({ tutor: { ...tutorPrefs(), consent: { version: CONSENT_VERSION, at: d.now() } } });
@@ -433,11 +441,11 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
     },
 
     stop(messageId) {
-      const t = active;
-      if (t === null || t.tutorMessageId !== messageId) return;
-      t.stopped = true;
-      // Before the session is known there is no prompt to cancel: the turn sends none.
-      if (t.session !== null) d.backend.interrupt(t.session, 'if-not-ended');
+      if (active?.tutorMessageId === messageId) stopTurn(active);
+    },
+
+    stopConversation(conversationId) {
+      if (active?.conversationId === conversationId) stopTurn(active);
     },
 
     async resend(i) {

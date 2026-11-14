@@ -34,6 +34,15 @@ import { callTool, type ToolDeps } from './tools';
 const FAKE = fileURLToPath(new URL('./fake-agent/fake-agent.ts', import.meta.url));
 const PAGES = 100;
 const SEED = 13;
+/**
+ * Pages 5 and 6 as Learn stores the demo document's first two (one line: a heading runs into the sentence after it), the rest the
+ * seeded text.
+ */
+const DEMO_PAGES = (p: number): string =>
+  [
+    '세포생물학 강의 노트 · 4주차 세포 신호 전달 개요 1. 신호는 어떻게 세포 안으로 들어오는가 세포는 주변 환경의 변화를 화학 신호로 받아들인다. 호르몬, 성장 인자, 신경 전달 물질 같은 신호 분자는 대부분 세포막을 통과하지 못하므로, 세포 표면의 수용체 단백질에 결합하여 정보를 전달한다. 수용체에 신호 분자가 결합하면 수용체의 입체 구조가 바뀐다.',
+    '세포 신호 전달 개요 2. G 단백질 연결 수용체와 cAMP 수용체 (GPCR) → G 단백질 → cAMP 그림 1. GPCR–cAMP 경로의 신호 증폭 G 단백질 연결 수용체(GPCR)는 세포막을 일곱 번 가로지르는 단백질이다. 리간드가 결합하면 수용체가 G 단백질의 α 소단위에 붙어 있던 GDP를 GTP로 바꾸게 한다.',
+  ][p - 4] ?? bodyTextPage(SEED, 0, p, 1500);
 const OTHER_ITEM_ID = '00000000-0000-4000-8000-000000000000';
 const OTHER_TITLE = 'Unrelated Notes Title';
 const OTHER_WORD = 'xylophoneother';
@@ -302,6 +311,20 @@ async function makeRig(o: RigOptions = {}) {
 }
 type Rig = Awaited<ReturnType<typeof makeRig>>;
 
+/** A demo-paced answer, watched: the gaps between its three tools' reads, and how long its text took from the first piece to the end. */
+async function demoPace(r: Rig, tutorMessageId: string): Promise<{ end: Done; gaps: number[]; streamedMs: number }> {
+  const started: number[] = [];
+  await until('three tool reads', () => {
+    const n = r.reads(tutorMessageId).length;
+    while (started.length < n) started.push(Date.now());
+    return n >= 3;
+  }, 10_000);
+  await r.firstText(tutorMessageId);
+  const firstText = Date.now();
+  const end = (await r.ended(tutorMessageId)) as Done;
+  return { end, gaps: [started[1]! - started[0]!, started[2]! - started[1]!], streamedMs: Date.now() - firstText };
+}
+
 /** R1: Claude's MCP order, server side — discover and initialize open, every request after carries the session it opened. */
 function expectBoundMcp(r: Rig, firstOfSession = 0) {
   const reqs = r.requests.slice(firstOfSession);
@@ -520,30 +543,25 @@ const CASES: Record<FakeScript, { name: string; run: () => Promise<void> }> = {
   demo: {
     name: 'the demo\'s pace: the tools half a second apart, then a short answer citing the two pages it read, streamed over about 3 s',
     async run() {
-      const r = await makeRig({ script: 'demo' });
+      const r = await makeRig({ script: 'demo', pages: DEMO_PAGES });
       const asked = await r.ask('어텐션이 뭐야?', { selection: 4 });
-      // When each of the three tools' reads was recorded, then when the first text came and when the answer ended.
-      const started: number[] = [];
-      await until('three tool reads', () => {
-        const n = r.reads(asked.tutorMessageId).length;
-        while (started.length < n) started.push(Date.now());
-        return n >= 3;
-      }, 10_000);
-      await r.firstText(asked.tutorMessageId);
-      const firstText = Date.now();
-      const end = (await r.ended(asked.tutorMessageId)) as Done;
-      const ended = Date.now();
+      const { end, gaps, streamedMs } = await demoPace(r, asked.tutorMessageId);
       expect(end).toMatchObject({ kind: 'done', status: 'complete', stopReason: 'end_turn' });
-      expect(started[1]! - started[0]!).toBeGreaterThanOrEqual(400);
-      expect(started[2]! - started[1]!).toBeGreaterThanOrEqual(400);
-      expect(ended - firstText).toBeGreaterThanOrEqual(2_500);
+      expect(gaps[0]).toBeGreaterThanOrEqual(400);
+      expect(gaps[1]).toBeGreaterThanOrEqual(400);
+      expect(streamedMs).toBeGreaterThanOrEqual(2_500);
       expect(r.reads(asked.tutorMessageId).map((x) => x.tool)).toEqual(['get_context', 'get_outline', 'read_pdf_pages']);
       expect(end.sources.map((s) => s.pageIndex)).toEqual([4, 5]);
       const text = r.message(asked.tutorMessageId).text;
       expect(text.length).toBeGreaterThanOrEqual(150);
       expect(text.length).toBeLessThanOrEqual(400);
-      expect(text).toContain('[[p5]]');
-      expect(text).toContain('[[p6]]');
+      // Each page quoted by a whole sentence of it, one that ends in 다. — never the heading run into the sentence after it, nor a
+      // quote cut at a section number's period.
+      expect(text).toContain('5쪽은 “호르몬, 성장 인자, 신경 전달 물질 같은 신호 분자는 대부분 세포막을 통과하지 못하므로, 세포 표면의 수용체 단백질에 결합하여 정보를 전달한다.”라고 설명합니다 [[p5]].');
+      expect(text).toContain('6쪽은 “리간드가 결합하면 수용체가 G 단백질의 α 소단위에 붙어 있던 GDP를 GTP로 바꾸게 한다.”라고 설명합니다 [[p6]].');
+      const quotes = text.match(/“[^”]*”/gu) ?? [];
+      expect(quotes).toHaveLength(2);
+      for (const q of quotes) expect(q.endsWith('다.”')).toBe(true);
       expect(text.endsWith('이 답은 가짜 에이전트가 정해 둔 표본 답입니다.')).toBe(true);
       expect(r.streamed(asked.tutorMessageId)).toBe(text);
       await r.finish();
@@ -555,11 +573,21 @@ const CASES: Record<FakeScript, { name: string; run: () => Promise<void> }> = {
     async run() {
       const r = await makeRig({ script: 'demo-unverified' });
       const asked = await r.ask('이 구간을 설명해 줘', { selection: 4 });
-      const end = (await r.ended(asked.tutorMessageId)) as Done;
-      expect(end).toMatchObject({ kind: 'done', status: 'complete' });
+      const { end, gaps, streamedMs } = await demoPace(r, asked.tutorMessageId);
+      expect(end).toMatchObject({ kind: 'done', status: 'complete', stopReason: 'end_turn' });
+      expect(gaps[0]).toBeGreaterThanOrEqual(400);
+      expect(gaps[1]).toBeGreaterThanOrEqual(400);
+      expect(streamedMs).toBeGreaterThanOrEqual(2_500);
       expect(r.reads(asked.tutorMessageId).filter((x) => x.tool === 'read_pdf_pages')).toEqual([{ tool: 'read_pdf_pages', outcome: 'ok', from: 5, to: 6, code: null }]);
       const text = r.message(asked.tutorMessageId).text;
+      expect(text.length).toBeGreaterThanOrEqual(150);
       expect(text.length).toBeLessThanOrEqual(450);
+      // The seeded pages have no sentence that ends in 다.: each is quoted by its opening words, as they are on the page.
+      for (const [page, index] of [[6, 5], [7, 6]] as const) {
+        const words = new RegExp(`${page}쪽은 “([^”]+)”로 시작합니다 \\[\\[p${page}\\]\\]\\.`, 'u').exec(text)?.[1];
+        expect(words, `${page}쪽's opening words`).toBeDefined();
+        expect(bodyTextPage(SEED, 0, index, 1500).startsWith(words!)).toBe(true);
+      }
       expect(text).toContain('[[p5]]');
       expect(text).toContain('[[p999]]');
       expect(end.sources.map((s) => s.pageIndex)).toEqual([5, 6]);
@@ -598,7 +626,7 @@ const CASES: Record<FakeScript, { name: string; run: () => Promise<void> }> = {
       expect(end).toMatchObject({ kind: 'done', status: 'complete', stopReason: 'end_turn' });
       const text = r.message(asked.tutorMessageId).text;
       // The line written before the page read and the answer after it are two paragraphs (Learn puts the break in).
-      expect(text.startsWith('I will read the pages first.\n\n## 요점\n')).toBe(true);
+      expect(text.startsWith('먼저 쪽을 읽겠습니다.\n\n## 요점\n')).toBe(true);
       expect(text).toContain('1. ');
       expect(text).toContain('   ```\n   score = softmax(q · k) [[p1]] <b>\n   ```');
       expect(end.sources.map((s) => s.pageIndex)).toEqual([2, 3]);

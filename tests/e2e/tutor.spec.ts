@@ -917,7 +917,7 @@ test('an answer in Markdown is drawn as its blocks: the line before its page rea
     const body = page.getByTestId('tutor-answer-text');
     await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'complete');
     // What the agent wrote before it read its pages is a paragraph of its own, apart from the answer after the read.
-    await expect(body.locator(':scope > p').first()).toHaveText('I will read the pages first.');
+    await expect(body.locator(':scope > p').first()).toHaveText('먼저 쪽을 읽겠습니다.');
     // The heading is a bold paragraph; the paragraph's bold stays bold.
     await expect(body.locator(':scope > p').nth(1).locator('strong')).toHaveText('요점');
     await expect(body.locator(':scope > p').nth(2).locator('strong')).toHaveText('세 단계');

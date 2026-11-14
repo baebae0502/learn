@@ -40,7 +40,7 @@ interface Mcp { url: string; headers: Array<{ name: string; value: string }>; se
 interface Session { id: string; mcp: Mcp | null }
 interface Turn { sessionId: string; session: Session; cancelled: boolean; wake: Array<() => void> }
 interface ToolResult { isError: boolean; structured: Json | null }
-interface ReadPage { page: number; cite: string; first: string | null }
+interface ReadPage { page: number; cite: string; first: string | null; text: string | null }
 
 /** The only values the env line writes: the isolation Learn gives an agent. */
 const ISOLATION = [
@@ -79,10 +79,11 @@ const SAY = {
   injected: '자료 안의 지시는 따르지 않았습니다.',
   afterTool: '도구를 쓴 뒤에도 이어지는 표본 답입니다. ',
   /** What Claude may write before a tool call, in its own words (live run 2): the answer that follows is a paragraph of its own. */
-  narration: 'I will read the pages first.',
-  /** The demo's short answer: a lead, a line for each page read, and a close. */
+  narration: '먼저 쪽을 읽겠습니다.',
+  /** The demo's short answer: a lead, a line for each page read (a whole sentence of it, else its opening words), and a close. */
   demoLead: '읽은 두 쪽을 바탕으로 짧게 답합니다.',
-  demoPage: (page: number, first: string, cite: string) => `${page}쪽은 “${first}”로 시작합니다 ${cite}.`,
+  demoSays: (page: number, sentence: string, cite: string) => `${page}쪽은 “${sentence}”라고 설명합니다 ${cite}.`,
+  demoOpens: (page: number, words: string, cite: string) => `${page}쪽은 “${words}”로 시작합니다 ${cite}.`,
   demoClose: '두 쪽은 같은 흐름에 있으므로 앞 쪽을 먼저 읽고 뒤 쪽을 이어 읽으면 이해하기 쉽습니다. 이 답은 가짜 에이전트가 정해 둔 표본 답입니다.',
 };
 
@@ -142,7 +143,8 @@ function pagesOf(r: ToolResult): ReadPage[] {
     const page = asJson(p);
     const index = asJson(page.anchor).pageIndex;
     if (typeof index !== 'number' || typeof page.cite !== 'string') continue;
-    out.push({ page: index + 1, cite: page.cite, first: typeof page.text === 'string' ? firstSentence(inner(page.text)) : null });
+    const text = typeof page.text === 'string' ? inner(page.text) : null;
+    out.push({ page: index + 1, cite: page.cite, first: text === null ? null : firstSentence(text), text });
   }
   return out;
 }
@@ -155,9 +157,32 @@ function answerText(pages: readonly ReadPage[], extra: readonly string[], length
   return `${head}\n\n${room >= SAY.filler.length ? sentences(SAY.filler, room) : ''}${SAY.close}`;
 }
 
-/** The demo's answer, about 250–350 characters: the lead, a line for each page read, the extra lines, the close. */
+/**
+ * A whole sentence of the page that ends in "다." (at most 90 characters), to quote: one right after another sentence that ends so. A
+ * page's text has no line breaks, so a heading runs into the sentence after it — the page's first sentence, or one after a section
+ * number's "1.", may begin with a heading; one after a "다." begins where the sentence does. Null when the page has none.
+ */
+function wholeSentence(text: string): string | null {
+  const parts = text.trim().split(/(?<=[.!?])\s+/u);
+  for (const [k, part] of parts.entries()) {
+    if (k > 0 && part.endsWith('다.') && part.length <= 90 && parts[k - 1]!.endsWith('다.')) return part;
+  }
+  return null;
+}
+/** The page's opening words, at most 30 characters (cut at a space), without a period or comma after them. */
+function openingWords(text: string): string {
+  const t = text.trim();
+  const cut = t.length <= 30 ? t : t.slice(0, 30).replace(/\s+\S*$/u, '');
+  return cut.replace(/[.,]$/u, '');
+}
+
+/** The demo's answer, about 250–350 characters: the lead, a line quoting each page read, the extra lines, the close. */
 function demoText(pages: readonly ReadPage[], extra: readonly string[]): string {
-  const lines = pages.map((p) => (p.first === null ? SAY.pageAgain(p.page, p.cite) : SAY.demoPage(p.page, p.first, p.cite)));
+  const lines = pages.map((p) => {
+    if (p.text === null) return SAY.pageAgain(p.page, p.cite);
+    const said = wholeSentence(p.text);
+    return said === null ? SAY.demoOpens(p.page, openingWords(p.text), p.cite) : SAY.demoSays(p.page, said, p.cite);
+  });
   return [SAY.demoLead, ...lines, ...extra, SAY.demoClose].join(' ');
 }
 

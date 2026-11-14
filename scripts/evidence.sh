@@ -10,7 +10,7 @@
 #   packaged  false (default) | true   (also build and exercise an unsigned electron-builder --dir app)
 #
 # Output: evidence/<label>/<run_id>/{evidence,demo}/ plus run.json (timings, download speed); a demo recording is
-# also trimmed and given its chapters (demo/**/m7c-demo.final.mov, scripts/finish-demo.sh).
+# also trimmed and given its chapters (demo/**/t1a-demo.final.mov, scripts/finish-demo.sh).
 # EVIDENCE_RUN_ID=<id> skips the dispatch and attaches to (or re-downloads) an existing run.
 # Exit status: the run's (gh run watch --exit-status); 3 if the run passed but its evidence could not be downloaded.
 # Every macOS run costs billed minutes (x10 on a private repo): log it in docs/mac-verification.md.
@@ -125,7 +125,7 @@ if command -v ffmpeg >/dev/null && [[ -d $DEST/demo ]]; then
       continue
     fi
     "$ROOT/scripts/finish-demo.sh" "$mov" "$json" "${mov%.*}.final.${mov##*.}" || echo "finish-demo: $mov kept untrimmed (see above)" >&2
-  done < <(find "$DEST/demo" -name 'm[0-9]*-demo.mov' -print0)
+  done < <(find "$DEST/demo" -name '*-demo.mov' -print0)
 fi
 
 python3 -I - "$DEST" "$RUN_ID" "$URL" "$BRANCH" "$SUITE" "$LABEL" "$RUNNER" "$PACKAGED" "$CONCLUSION" \

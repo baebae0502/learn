@@ -228,6 +228,26 @@ async function atChooser(testInfo: { outputPath(...p: string[]): string }, layou
 const claudeRow = (page: Page) => page.getByTestId('agent-row').and(page.locator('[data-agent="claude"]'));
 const flagOf = (page: Page) => claudeRow(page).getByTestId('agent-flag');
 
+/**
+ * From now on, the glyphs the button at `selector` draws, each change in order (a MutationObserver sees one that lasts less than a poll,
+ * so a loaded run cannot miss the 1.5 s of a copy's ✓).
+ */
+async function recordGlyphs(page: Page, selector: string): Promise<() => Promise<string[]>> {
+  const key = `__glyphs_${selector.replace(/\W+/g, '_')}`;
+  await page.evaluate(([sel, key]) => {
+    const seen: string[] = [];
+    (window as unknown as Record<string, string[]>)[key] = seen;
+    const look = () => {
+      const svg = document.querySelector(`${sel} svg`);
+      const glyph = svg ? [...svg.classList].find((c) => /^lucide-(?!icon$)/.test(c)) : undefined;
+      if (glyph !== undefined && seen.at(-1) !== glyph) seen.push(glyph);
+    };
+    look();
+    new MutationObserver(look).observe(document.body, { subtree: true, childList: true, attributes: true });
+  }, [selector, key] as const);
+  return () => page.evaluate((key) => (window as unknown as Record<string, string[]>)[key]!, key);
+}
+
 test('Claude Code\'s row in its five states: what to run in a terminal, copied as shown, and 다시 확인 and 다시 찾기 to see the change', async ({}, testInfo) => {
   const s = await atChooser(testInfo, { cli: '2.1.318', adapter: null });
   const { app, page } = s;
@@ -243,9 +263,12 @@ test('Claude Code\'s row in its five states: what to run in a terminal, copied a
     await expect(flagOf(page)).toHaveText('연결 도구 필요');
     await expect(claudeRow(page).getByTestId('agent-description')).toHaveText(/설치할 때 약 350 MB를 내려받습니다\.$/);
     await expect(claudeRow(page).getByTestId('agent-copy-text')).toHaveText(ADAPTER_CMD);
+    const glyphs = await recordGlyphs(page, '[data-testid="agent-row"][data-agent="claude"] [data-testid="agent-copy"]');
     await claudeRow(page).getByTestId('agent-copy').click();
     await expect.poll(() => readClipboard(app)).toBe(ADAPTER_CMD); // the copy lands a moment after the click
     await expectTooltipText(page, '복사했습니다', 'agent-copy');
+    // The glyph says it too, as 답 복사's does: ✓ while the tooltip says it, then the copy glyph again.
+    await expect.poll(glyphs).toEqual(['lucide-copy', 'lucide-check', 'lucide-copy']);
     await expect(claudeRow(page).getByRole('radio')).toBeDisabled();
     await expect(page.getByTestId('agent-start')).toHaveAttribute('aria-disabled', 'true');
     await expectNoSeriousA11y(page, 'tutor chooser, connection tool needed');
@@ -746,13 +769,15 @@ test('a conversation: the empty session, then a question\'s tool chips and its a
     await runMenuCommand(app, 'nav.historyBack');
     await expect(field).toHaveValue('1');
 
-    // 답 복사: the answer's text with its cites as "(41쪽)", "(42쪽)"; the tooltip says it is copied.
+    // 답 복사: the answer's text with its cites as "(41쪽)", "(42쪽)"; the tooltip says it is copied, and the glyph is ✓ meanwhile.
+    const glyphs = await recordGlyphs(page, '[data-testid="tutor-answer"] [data-testid="tutor-copy"]');
     await answer.getByTestId('tutor-copy').click();
     await expect.poll(() => readClipboard(app)).toContain('(42쪽)');
     const copied = await readClipboard(app);
     expect(copied).toContain('(41쪽)');
     expect(copied).not.toContain('[[p');
     await expectTooltipText(page, '복사했습니다', 'tutor-copy');
+    await expect.poll(glyphs).toEqual(['lucide-copy', 'lucide-check', 'lucide-copy']);
 
     // The sent-scope line under the question, and its list.
     const scope = page.getByTestId('tutor-question').getByTestId('sent-scope');

@@ -2,14 +2,26 @@
 // piece). T1a has one real agent and one company: the card says Claude Code and Anthropic, as the approved mockup does.
 // Rows join this file with the task that draws them: the mode segment, the consent card, the off state, the agent chooser, the
 // conversation (Task 17: the empty session, the chips, the sent-scope line and list, the lines under an answer, 최신으로), the
-// composer with its agent button and menu (Task 18), and the passage attached to a question.
+// composer with its agent button and menu (Task 18), the passage attached to a question, and what a failed turn, an answer with
+// unverified cites and a PDF without readable text say.
 import { SPIKE_FACTS, type AgentId } from '@learn/domain';
-import { euroRo } from './josa';
+import { eulReul, euroRo, iGa, waGwa } from './josa';
 
 /** A run of pages as the chips write it: "42" or "41–42" (1-based). */
 const pages = (from: number, to: number): string => (from === to ? `${from}` : `${from}–${to}`);
 
 const AGENT_NAMES: Readonly<Record<AgentId, string>> = { claude: 'Claude Code', fake: '가짜 에이전트' };
+
+/** An agent's name with 이/가 after it ("Claude Code가", "가짜 에이전트가"). */
+const subject = (agent: string): string => `${agent}${iGa(agent)}`;
+
+/** Pages as a list says them: "57쪽", "57쪽과 61쪽", "2쪽, 3쪽과 9쪽" (1-based). */
+function pageList(pages: readonly number[]): string {
+  const words = pages.map((p) => `${p}쪽`);
+  if (words.length < 2) return words[0] ?? '';
+  const before = words.slice(0, -1).join(', ');
+  return `${before}${waGwa(before)} ${words.at(-1)!}`;
+}
 
 /** The "Learn 전용 설정" line: its second sentence only while the spike found the separate login, its third while it found the records. */
 export const consentConfigText = (facts: { separateLogin: boolean; historyLine: boolean }): string =>
@@ -77,8 +89,23 @@ export const tutor = {
   },
   /** The panel head's 새 세션 (spec 8.2): disabled with its reason while the session has no question. */
   newSession: { label: '새\u00a0세션', empty: '지금 세션이 비어 있습니다' },
-  /** The new empty session (spec 8.2, 13): its title is the item's; Task 20 adds the texts of a PDF without readable body text. */
-  empty: { readable: '이\u00a0자료에 대해 물어보세요. 본문에서 구간을 선택하면 질문에 붙고, 답에는 근거가 된 쪽이 함께 표시됩니다.' },
+  /**
+   * The new empty session (spec 8.2, 13): its title is the item's, over what the tutor can do with it — with readable body text, or
+   * without (the reassurance only where it is true): no text at all, or a text Learn could not read (locked, damaged, given
+   * up, too large).
+   */
+  empty: {
+    readable: '이\u00a0자료에 대해 물어보세요. 본문에서 구간을 선택하면 질문에 붙고, 답에는 근거가 된 쪽이 함께 표시됩니다.',
+    noText: '이\u00a0자료에 대해 물어보세요. 튜터는 일반\u00a0지식으로 답하고, 답의 쪽은 확인되지 않습니다.',
+    unread: '이\u00a0자료에 대해 물어보세요. 본문에서 구간을 선택하면 질문에 붙지만, 답의 쪽은 확인되지 않습니다.',
+  },
+  /** The line over the session when the PDF's body text cannot be read (spec 8.2, 13; mockup ?state=4&text=…). */
+  noText: {
+    empty: '이\u00a0PDF에서 글자를 찾지 못해 튜터가 쪽을 읽을 수 없습니다. 스캔한 PDF일 수 있습니다.',
+    locked: '암호로 보호된 PDF라 튜터가 본문을 읽을 수 없습니다.',
+    failed: '본문을 읽지 못해 튜터가 쪽을 인용할 수 없습니다.',
+    large: '파일이 너무 커서 튜터가 본문을 읽을 수 없습니다.',
+  },
   /** The conversation column (spec 8.3): its name, 최신으로, and what the hidden status says once at a turn's end. */
   conversation: { label: '대화', latest: '최신으로', received: '답을 받았습니다', stopped: '답을 중지했습니다' },
   /** Citation chips (spec 7, 8.3, 13; the approved "42쪽"). */
@@ -132,6 +159,8 @@ export const tutor = {
     cut: '답이 길이 한도에서 끊겼습니다.',
     steps: '에이전트가 한 답에서 할 수 있는 단계를 다 썼습니다.',
     refused: '에이전트가 이\u00a0질문에 답하지 않았습니다.',
+    /** After the last line of an answer that failed midway: the part that came, cut off (mockup .tu-cut). */
+    cutMark: '\u00a0…',
   },
   /**
    * The composer (spec 8.4, 13; the approved mockup's .tu-composer and its tooltips). A disabled 보내기 says its name and then why,
@@ -179,6 +208,53 @@ export const tutor = {
       missing: '설치한 뒤 에이전트 고르기에서 다시 찾으세요',
     },
     fakeRowTip: '개발·데모 빌드에서만 보입니다',
+  },
+  /**
+   * What a failed turn says (spec 8.8, 13; the approved mockup ?state=8&fail=…): before any answer the question is back in the composer;
+   * during one the part that came stays, with 다시 보내기. A resend that could not go, or whose turn failed before its answer, says its
+   * code's fact over the failed answer and keeps 다시 보내기.
+   */
+  failure: {
+    offline: '인터넷에 연결되어 있지 않습니다',
+    offlineBody: '질문을 보내지 못했습니다. 연결을 확인한 뒤 입력창에서 ↩로 보내세요. 질문은 입력창에 그대로 있습니다.',
+    login: (agent: string) => `${agent} 로그인이 필요합니다`,
+    loginBody: '질문을 보내지 못했습니다. 터미널에서 아래 명령으로 로그인한 뒤 입력창에서 ↩로 보내세요. 질문은 입력창에 그대로 있습니다.',
+    notReady: (agent: string) => `${subject(agent)} 준비되지 않았습니다`,
+    startFailed: (agent: string) => `${subject(agent)} 시작하지 못했습니다`,
+    chooseBody: '질문을 보내지 못했습니다. 에이전트 고르기에서 상태를 확인한 뒤 다시 보내세요. 질문은 입력창에 그대로 있습니다.',
+    timeout: (agent: string) => `${subject(agent)} 답하지 않습니다`,
+    stoppedBefore: (agent: string) => `${subject(agent)} 답하기 전에 멈췄습니다`,
+    againBody: '답을 받지 못했습니다. 잠시 뒤 입력창에서 ↩로 다시 보내세요. 질문은 입력창에 그대로 있습니다.',
+    stoppedDuring: (agent: string) => `${subject(agent)} 답하는 도중 멈췄습니다`,
+    stoppedDuringBody: '에이전트 프로그램이 예기치 않게 종료되어 답이 중간에 끊겼습니다. 다시 보내면 에이전트를 다시 시작하고 같은 질문을 처음부터 묻습니다.',
+    timeoutDuring: (agent: string) => `${agent}의 답이 멈췄습니다`,
+    timeoutDuringBody: '한동안 새\u00a0글이 오지 않아 답을 멈췄습니다. 다시 보내면 같은 질문을 처음부터 묻습니다.',
+    lockdown: '꺼 둔 도구를 쓰려 해 답을 멈췄습니다',
+    lockdownBody: (agent: string) => `${subject(agent)} Learn이 꺼 둔 도구를 쓰려 했습니다. 에이전트를 업데이트한 뒤 다시 확인하세요.`,
+    interrupted: '답을 받는 도중 Learn이 종료되었습니다',
+    resendBody: '다시 보내면 같은 질문을 처음부터 묻습니다.',
+    busy: '다른\u00a0세션이 답을 받는 중입니다',
+    notResent: {
+      offline: '질문을 다시 보내지 못했습니다. 연결을 확인한 뒤 다시 보내세요.',
+      login: '질문을 다시 보내지 못했습니다. 터미널에서 아래 명령으로 로그인한 뒤 다시 보내세요.',
+      choose: '질문을 다시 보내지 못했습니다. 에이전트 고르기에서 상태를 확인한 뒤 다시 보내세요.',
+      busy: '그\u00a0답이 끝난 뒤 다시 보내세요.',
+    },
+    resend: '다시 보내기',
+    resendTip: '같은 질문을 처음부터 다시 묻습니다',
+    /** A session whose thread could not be read: its notice in the column, with 다시 시도 (the app's retry). */
+    thread: '세션을 열지 못했습니다',
+  },
+  /** Under an answer that cited pages it did not read in its turn (spec 7, 8.3, 13; mockup ?state=6), and the reground turn's bubble. */
+  unverified: {
+    title: (n: number) => `인용 ${n}개를 확인하지 못했습니다`,
+    body: '튜터가 이번 답에서 읽지 않은 쪽을 가리켰습니다. 원문 근거로 다시 물으면 튜터가 먼저 그\u00a0쪽을 읽고 답하게 합니다. 이번에도 읽지 않은 쪽을 가리키면 다시 표시합니다.',
+    reground: '원문 근거로 다시 묻기',
+    /** "57쪽을 먼저 읽고 다시 답해 주세요." — the pages 1-based, in the order the answer cited them. */
+    ask: (first: number, ...more: number[]) => {
+      const list = pageList([first, ...more]);
+      return `${list}${eulReul(list)} 먼저 읽고 다시 답해 주세요.`;
+    },
   },
   /** The copied answer's cites (citationCopyText): "(42쪽)", "(출처 없음)". */
   copy: { page: (n: number) => `(${n}쪽)`, none: '(출처 없음)' },

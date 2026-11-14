@@ -8,7 +8,8 @@ import type { LearnPdfProbe } from '../../apps/desktop/src/renderer/src/viewers/
 import type { PdfAnchor } from '../../packages/domain/src/anchors';
 import type { TutorAskInput, TutorTurnEvent } from '../../packages/domain/src/tutor';
 import {
-  FIXTURES, hardKill, importPaths, launch, openItem, pageTextCount, textExtraction, textIdle, toolReads, tutorFakeLog, tutorFakeScript, tutorProcesses, type Session,
+  FIXTURES, expectTooltipText, hardKill, importPaths, launch, mainWindow, openItem, pageTextCount, runMenuCommand, textExtraction, textIdle, toolReads, tutorFakeLog,
+  tutorFakeScript, tutorProcesses, type Session,
 } from './helpers';
 import { READER_100, askViaApi, consentAndChoose, installFakeAgents, turnEnded } from './tutor-helpers';
 
@@ -171,6 +172,25 @@ test('the injection fixture triggers nothing: another material refused, no file 
     const handed = JSON.stringify([pick(log, 'prompt'), pick(log, 'mcp').map((m) => m.result)]);
     expect(handed).toContain('Ignore all previous instructions');
     for (const other of [paper!.title, 'Attention study', 'Footnote of page']) expect(handed, other).not.toContain(other);
+
+    // On screen (튜터 shown), the refused read is a chip of its own over the answer, in the warning colour, its reason in the tooltip. (The
+    // tab is put on that session as a reload of the window keeps it: the question was asked through the API before the item was open.)
+    await (await mainWindow(app)).evaluate((w) => w.setContentSize(1440, w.getContentSize()[1]!));
+    await page.evaluate(([k, v]) => sessionStorage.setItem(k!, v!), [`learn.tutor.session.${injection!.id}`, asked.conversationId] as const);
+    await openItem(page, injection!.title);
+    await runMenuCommand(app, 'view.inspectorTutor');
+    const chips = page.getByTestId('tutor-answer').getByTestId('tool-chip');
+    await expect(chips).toHaveText(['1–3쪽 읽음', '범위 밖 요청을 거절함']);
+    const refusedChip = chips.nth(1);
+    await expect(refusedChip).toHaveAttribute('data-tone', 'warning');
+    await expect(refusedChip.locator('.lucide-shield-x')).toHaveCount(1);
+    // The log brought to its top first, so the hover does not scroll it (and show the session's name row, moving the chip).
+    await page.getByTestId('tutor-log').evaluate((el) => void (el.scrollTop = 0));
+    await expect(page.getByTestId('tutor-sticky')).toBeHidden();
+    const [x, y] = await page.evaluate(() => [Math.round(innerWidth / 2), Math.round(innerHeight / 2)] as const);
+    await page.mouse.move(x, y);
+    await refusedChip.hover();
+    await expectTooltipText(page, '이 대화의 범위 밖 자료를 읽으려 해 거절했습니다', 'tool-chip');
     await noAgentLeft(app, page);
   } finally {
     await app.close();

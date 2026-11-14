@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { SessionThread, ToolChip } from '@learn/domain';
 import { api, ApiError, unwrap } from '../api';
@@ -90,9 +90,10 @@ const joinedLate = (thread: SessionThread | undefined, live: LiveTurn | null): b
 /**
  * The tab's session as stored (sessions:get, `['sessions', 'get', id]`) and its answer still coming as the window hears it. The
  * stored thread is read again when an answer ends and when main says a session changed (data/queries.ts); while an answer this window
- * joined late is coming, every 2 s. A session that is gone (deleted, its item in the trash) leaves the tab on a new empty session.
+ * joined late is coming, every 2 s. A session that is gone (deleted, its item in the trash) leaves the tab on a new empty session. A read
+ * that failed otherwise, with nothing read before it, is `failed`; `retry` reads it again.
  */
-export function useSessionThread(conversationId: string | null): { thread: SessionThread | null; live: LiveTurn | null } {
+export function useSessionThread(conversationId: string | null): { thread: SessionThread | null; live: LiveTurn | null; failed: boolean; retry(): void } {
   const stored = useTutorTab((s) => s.live);
   const setLive = useTutorTab((s) => s.setLive);
   const setConversation = useTutorTab((s) => s.setConversation);
@@ -111,5 +112,7 @@ export function useSessionThread(conversationId: string | null): { thread: Sessi
   useEffect(() => {
     if (gone) setConversation(null);
   }, [gone, setConversation]);
-  return { thread, live };
+  const { refetch } = read;
+  const retry = useCallback(() => void refetch(), [refetch]);
+  return { thread, live, failed: conversationId !== null && read.isError && !gone && read.data === undefined, retry };
 }

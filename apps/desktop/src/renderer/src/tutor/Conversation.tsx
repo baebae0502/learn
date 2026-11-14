@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown } from 'lucide-react';
-import type { MessageView } from '@learn/domain';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ArrowDown, CircleAlert } from 'lucide-react';
+import { checkCitations, type MessageView } from '@learn/domain';
 import { useItem } from '../data/queries';
 import { useLearnEvent } from '../events';
 import { t } from '../strings';
@@ -8,15 +8,49 @@ import { Button } from '../ui/Button';
 import { useReader } from '../viewers/pdf/readerStore';
 import { useReaderScope } from '../viewers/readerScope';
 import { TutorBubble, UserBubble, type CiteTarget } from './Bubble';
+import { regroundBubble } from './failureCopy';
 import { nearBottom, nextFollow } from './follow';
 import { SessionHead, StickyName } from './SessionHead';
-import { ringedChip, useTutorTab } from './tutorStore';
+import { ringedChip, useTutorTab, type TurnNotice } from './tutorStore';
+import { TurnFailure, TutorNotice } from './TurnFailure';
 import { useSessionThread } from './useSessionThread';
 
 const { conversation: words } = t.tutor;
 
 /** The answer to the question at `k`: the message after it, when it is the tutor's. */
 const answerTo = (messages: readonly MessageView[], k: number): MessageView | null => (messages[k + 1]?.role === 'tutor' ? messages[k + 1]! : null);
+
+/**
+ * What a 원문 근거 요청's bubble says: the pages the answer before it cited without reading them, inside the document. While the
+ * page count is not known yet no page counts as past the last one.
+ */
+function regroundWords(before: MessageView | undefined, pageCount: number): string {
+  const said = before?.role === 'tutor' ? regroundBubble(checkCitations(before.text, before.tools, pageCount > 0 ? pageCount : Number.MAX_SAFE_INTEGER)) : null;
+  return said ?? t.tutor.scope.reground;
+}
+
+/** Where a failure before the answer stands: after the last message at or before its place (-1: before them all). */
+const noticeIndex = (messages: readonly MessageView[], notice: TurnNotice): number => messages.reduce((at, m, k) => (m.seq <= notice.afterSeq ? k : at), -1);
+
+/** A failure before the answer, where its turn would have been (spec 8.8): the question is back in the composer. */
+export function BeforeNotice({ notice }: { notice: TurnNotice }) {
+  return <TurnFailure code={notice.code} phase="before" agent={notice.agent} brief={notice.reground === true} />;
+}
+
+/** The session's thread could not be read (anything but its being gone): the notice in the column's place, and 다시 시도. */
+function ThreadFailed({ retry }: { retry(): void }) {
+  return (
+    <div className="tutor-convo-failed">
+      <TutorNotice icon={CircleAlert} tone="danger" title={t.tutor.failure.thread} testId="tutor-thread-failed">
+        <div className="nt-actions">
+          <Button size="small" onPress={retry} testId="tutor-thread-retry">
+            {t.common.retry}
+          </Button>
+        </div>
+      </TutorNotice>
+    </div>
+  );
+}
 
 /**
  * The conversation column (spec 8.2, 8.3): the session's head line, then the turns, in a log that is not a live region — it is
@@ -27,7 +61,9 @@ const answerTo = (messages: readonly MessageView[], k: number): MessageView | nu
  * does not follow sizes.
  */
 export function Conversation({ conversationId, visible }: { conversationId: string; visible: boolean }) {
-  const { thread, live } = useSessionThread(conversationId);
+  const { thread, live, failed, retry } = useSessionThread(conversationId);
+  const notice = useTutorTab((s) => s.notice);
+  const refused = useTutorTab((s) => s.retryRefused);
   const scope = useReaderScope();
   const revisionId = useItem(scope.id).data?.revisionId ?? null;
   const pageCount = useReader((s) => s.pdf?.pagesCount ?? 0);
@@ -167,21 +203,42 @@ export function Conversation({ conversationId, visible }: { conversationId: stri
     else if (e.kind === 'text' || e.kind === 'tool') setSaid((s) => (s === '' ? s : ''));
   });
 
-  if (thread === null) return <div className="tutor-convo" data-testid="tutor-conversation" />;
+  if (thread === null) return <div className="tutor-convo" data-testid="tutor-conversation">{failed && <ThreadFailed retry={retry} />}</div>;
   const { messages, session, item } = thread;
+  const at = notice === null ? null : noticeIndex(messages, notice);
+  const before = notice === null ? null : <BeforeNotice notice={notice} />;
   return (
     <div className="tutor-convo" data-testid="tutor-conversation" data-streaming={streaming ? '' : undefined}>
       <StickyName title={session.title} shown={stuck} ref={stickyRef} />
       <div ref={logRef} className="tutor-log" role="log" aria-label={words.label} aria-live="off" tabIndex={0} onScroll={onScroll} data-testid="tutor-log">
         <div ref={contentRef} className="tutor-log-content">
           <SessionHead ref={headRef} session={session} />
-          {messages.map((m, k) =>
-            m.role === 'user' ? (
-              <UserBubble key={m.id} message={m} answer={answerTo(messages, k)} itemTitle={item.title} agent={session.agent} target={target} />
-            ) : (
-              <TutorBubble key={m.id} message={m} live={live?.tutorMessageId === m.id ? live : null} mixed={session.mixedAgents} target={target} />
-            ),
-          )}
+          {at === -1 && before}
+          {messages.map((m, k) => (
+            <Fragment key={m.id}>
+              {m.role === 'user' ? (
+                <UserBubble
+                  message={m}
+                  answer={answerTo(messages, k)}
+                  itemTitle={item.title}
+                  agent={session.agent}
+                  target={target}
+                  shown={m.kind === 'reground' ? regroundWords(messages[k - 1], pageCount) : undefined}
+                />
+              ) : (
+                <TutorBubble
+                  message={m}
+                  live={live?.tutorMessageId === m.id ? live : null}
+                  mixed={session.mixedAgents}
+                  target={target}
+                  agent={session.agent}
+                  reasked={messages[k + 1]?.kind === 'reground'}
+                  refused={refused?.messageId === m.id ? refused.code : null}
+                />
+              )}
+              {k === at && before}
+            </Fragment>
+          ))}
         </div>
       </div>
       {latest && (

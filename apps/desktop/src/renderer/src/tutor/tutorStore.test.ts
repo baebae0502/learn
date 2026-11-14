@@ -24,15 +24,17 @@ describe('the tutor store of one reader tab', () => {
   });
   it('holds nothing but the tab\'s own fields', () => {
     expect(Object.keys(createTutorTabStore().getState()).sort()).toEqual([
-      'attached', 'choosing', 'conversationId', 'currentCite', 'drafts', 'droppedAnswers', 'live', 'noteDropped', 'setAttached', 'setChoosing', 'setConversation',
-      'setCurrentCite', 'setDraft', 'setLive', 'setWaiting', 'waiting',
+      'alert', 'attached', 'choosing', 'composerFocus', 'conversationId', 'currentCite', 'drafts', 'droppedAnswers', 'focusComposer', 'live', 'noteDropped', 'notice',
+      'retryRefused', 'say', 'sent', 'setAttached', 'setChoosing', 'setConversation', 'setCurrentCite', 'setDraft', 'setLive', 'setNotice', 'setRetryRefused', 'setSent',
+      'setWaiting', 'waiting',
     ]);
   });
-  it('remembers the newest few answers that failed before any answer, once each', () => {
+  it('remembers the newest few answers that failed before any answer, once each, with their code', () => {
     const a = createTutorTabStore();
-    for (let i = 0; i < 10; i++) a.getState().noteDropped(`m${i}`);
-    a.getState().noteDropped('m5');
-    expect(a.getState().droppedAnswers).toEqual(['m2', 'm3', 'm4', 'm6', 'm7', 'm8', 'm9', 'm5']);
+    for (let i = 0; i < 10; i++) a.getState().noteDropped(`m${i}`, 'AGENT_EXITED');
+    a.getState().noteDropped('m5', 'AGENT_TIMEOUT');
+    expect(a.getState().droppedAnswers.map((d) => d.messageId)).toEqual(['m2', 'm3', 'm4', 'm6', 'm7', 'm8', 'm9', 'm5']);
+    expect(a.getState().droppedAnswers.at(-1)).toEqual({ messageId: 'm5', code: 'AGENT_TIMEOUT' });
   });
   it('keeps the attached passage per tab, across sessions: only ×, a new selection or the question that took it changes it', () => {
     const a = createTutorTabStore();
@@ -147,6 +149,64 @@ describe('drafts and the question that waits for another session\'s answer', () 
     a.getState().setWaiting(waiting);
     a.getState().setConversation(B);
     expect(a.getState().waiting).toBeNull();
+  });
+});
+
+describe('a failure before the answer, and a resend main refused (spec 8.8)', () => {
+  const A = '3f0d9a0e-6b1e-4c1e-8f6a-1d2f9b7c5e11';
+  const B = '9b1c2d3e-4f50-4a6b-8c7d-0e1f2a3b4c5d';
+  it('stands as a notice of the panel, not a row: kept on its session, gone with another session', () => {
+    const a = createTutorTabStore();
+    expect(a.getState().notice).toBeNull();
+    const notice = { code: 'AGENT_EXITED' as const, afterSeq: 4, agent: 'fake' as const };
+    a.getState().setConversation(A);
+    a.getState().setNotice(notice);
+    a.getState().setConversation(A); // the same session: it stays
+    expect(a.getState().notice).toBe(notice);
+    a.getState().setConversation(B);
+    expect(a.getState().notice).toBeNull();
+    a.getState().setNotice(notice);
+    a.getState().setConversation(null);
+    expect(a.getState().notice).toBeNull();
+    a.getState().setNotice(notice);
+    a.getState().setNotice(null);
+    expect(a.getState().notice).toBeNull();
+  });
+  it('a refused resend says its code over that answer until another session', () => {
+    const a = createTutorTabStore();
+    a.getState().setConversation(A);
+    a.getState().setRetryRefused({ messageId: B, code: 'OFFLINE' });
+    expect(a.getState().retryRefused).toEqual({ messageId: B, code: 'OFFLINE' });
+    a.getState().setConversation(null);
+    expect(a.getState().retryRefused).toBeNull();
+  });
+  it('keeps the turn it sent until its answer begins or ends; another session does not drop it (its text still goes back)', () => {
+    const a = createTutorTabStore();
+    const sent = { kind: 'question' as const, tutorMessageId: B, conversationId: A, from: null, text: '질문', attached: null, afterSeq: 0, agent: 'fake' as const };
+    a.getState().setSent(sent);
+    a.getState().setConversation(A);
+    a.getState().setConversation(null);
+    expect(a.getState().sent).toBe(sent);
+    a.getState().setSent(null);
+    expect(a.getState().sent).toBeNull();
+  });
+  it('says each failure once, a new alert each time (the same words again too), and nothing after another session', () => {
+    const a = createTutorTabStore();
+    expect(a.getState().alert).toBeNull();
+    a.getState().say({ code: 'OFFLINE', phase: 'before', agent: 'fake' });
+    const first = a.getState().alert!;
+    a.getState().say({ code: 'OFFLINE', phase: 'before', agent: 'fake' });
+    expect(a.getState().alert).toMatchObject({ code: 'OFFLINE', phase: 'before', agent: 'fake' });
+    expect(a.getState().alert!.at).toBeGreaterThan(first.at);
+    a.getState().setConversation(A);
+    expect(a.getState().alert).toBeNull();
+  });
+  it('asks the composer for the focus by a count, so every give-back asks again', () => {
+    const a = createTutorTabStore();
+    const before = a.getState().composerFocus;
+    a.getState().focusComposer();
+    a.getState().focusComposer();
+    expect(a.getState().composerFocus).toBe(before + 2);
   });
 });
 

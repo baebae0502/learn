@@ -186,15 +186,16 @@ const StableBlocks = memo(function StableBlocks({ blocks, ordinals, cite }: { bl
  * The answer's text: its small Markdown as React elements only — nothing the model wrote becomes markup, a link or a picture.
  * While it streams, the finished blocks are memoised and only the last one is drawn again on each append, with the caret at its end.
  * `cite` draws a page's chip (CitationChip) by its page and its ordinal in the answer; keep it the same function while the chips'
- * states are the same.
+ * states are the same. `end`: what follows the last line of an answer that ended (the "…" of one that was cut off).
  */
-export function AnswerText({ text, streaming, cite }: { text: string; streaming: boolean; cite: DrawCite }) {
+export function AnswerText({ text, streaming, cite, end }: { text: string; streaming: boolean; cite: DrawCite; end?: ReactNode }) {
   const { stable, tail } = streaming ? splitStable(text) : { stable: text, tail: '' };
   const stableBlocks = useMemo(() => parseAnswer(stable), [stable]);
   const stableCites = useMemo(() => numberCites(stableBlocks, 0), [stableBlocks]);
   const tailBlocks = useMemo(() => parseAnswer(tail), [tail]);
   const tailCites = useMemo(() => numberCites(tailBlocks, stableCites.next), [tailBlocks, stableCites.next]);
   const caret = streaming ? <span className="stream-caret" aria-hidden="true" /> : undefined;
+  if (!streaming && end !== undefined) return <Blocks blocks={stableBlocks} draw={{ cite, ordinals: stableCites.ordinals }} caret={end} />;
   return (
     <>
       {stableBlocks.length > 0 && <StableBlocks blocks={stableBlocks} ordinals={stableCites.ordinals} cite={cite} />}

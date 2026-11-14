@@ -1,15 +1,20 @@
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { Check, Copy } from 'lucide-react';
-import { citationCopyText, verifiedPages, type AgentId, type MessageView, type SourceChip } from '@learn/domain';
+import { checkCitations, citationCopyText, verifiedPages, type AgentId, type ErrorCode, type MessageView, type SourceChip } from '@learn/domain';
 import { t } from '../strings';
 import { IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { perfMarkLatest } from '../ui/perfMarks';
 import { useCopyFeedback } from '../ui/useCopyFeedback';
+import { useReaderScope } from '../viewers/readerScope';
 import { AnswerText } from './AnswerText';
 import { CitationChip, type CiteState } from './CitationChip';
+import { canReground } from './failureCopy';
 import { SentScope } from './SentScope';
 import { ToolChipRow } from './ToolChipRow';
+import { TurnFailure } from './TurnFailure';
+import { UnverifiedNotice } from './UnverifiedNotice';
+import { regroundAnswer, resendAnswer } from './useSend';
 import type { LiveTurn } from './useSessionThread';
 
 const { answer: words } = t.tutor;
@@ -41,9 +46,10 @@ function endLine(m: MessageView): string | null {
 
 /**
  * The user's turn (design-spec 2.6): on the right in the accent wash, the passage it carried on top (two lines, its page's chip), then
- * the sent-scope line at its right end.
+ * the sent-scope line at its right end. `shown`: the words the bubble says when they are not the stored text (a 원문 근거 요청 says
+ * which pages to read first, in the user's words; its stored text is the agent's instruction).
  */
-export function UserBubble({ message, answer, itemTitle, agent, target }: { message: MessageView; answer: MessageView | null; itemTitle: string; agent: AgentId; target: CiteTarget }) {
+export function UserBubble({ message, answer, itemTitle, agent, target, shown }: { message: MessageView; answer: MessageView | null; itemTitle: string; agent: AgentId; target: CiteTarget; shown?: string }) {
   const attached = message.attached;
   return (
     <div className="tutor-msg user" data-testid="tutor-question">
@@ -56,7 +62,7 @@ export function UserBubble({ message, answer, itemTitle, agent, target }: { mess
             )}
           </div>
         )}
-        <p>{message.text}</p>
+        <p>{shown ?? message.text}</p>
       </div>
       <SentScope question={message} answer={answer} itemTitle={itemTitle} agent={agent} />
     </div>
@@ -94,8 +100,20 @@ function useFirstTextPaint(coming: boolean, hasText: boolean): void {
  * The tutor's turn (design-spec 2.6): the tool chips over it, the answer on the left in --fill-hover (full width while it comes), then
  * copy, the line of how it ended and — in a session of several agents — whose answer it is. While `live` (the answer coming, heard from
  * its start) a cite of a page this turn read is a chip at once, any other "확인 중"; once it ended, the stored sources decide.
+ * A failed answer keeps the part that came, cut with "…", and its failure's notice in place of the foot (mockup ?state=8): what
+ * stopped it — or, after a resend main refused (`refused`), that refusal — and 다시 보내기. A finished answer that cited pages it did not
+ * read says so under its foot, with 원문 근거로 다시 묻기 until the turn that asked again follows it (`reasked`). `agent`: the session's.
  */
-export function TutorBubble({ message, live, mixed, target }: { message: MessageView; live: LiveTurn | null; mixed: boolean; target: CiteTarget }) {
+export function TutorBubble({ message, live, mixed, target, agent, reasked = false, refused = null }: {
+  message: MessageView;
+  live: LiveTurn | null;
+  mixed: boolean;
+  target: CiteTarget;
+  agent: AgentId;
+  reasked?: boolean;
+  refused?: ErrorCode | null;
+}) {
+  const scope = useReaderScope();
   const streaming = live !== null || message.status === 'streaming';
   const text = live?.text ?? message.text;
   useFirstTextPaint(live !== null, text !== '');
@@ -114,24 +132,36 @@ export function TutorBubble({ message, live, mixed, target }: { message: Message
   );
   const end = endLine(message);
   const by = mixed && message.agent !== null ? t.tutor.agentName(message.agent) : null;
+  const failed = !streaming && message.status === 'failed';
+  const check = useMemo(() => (streaming || failed ? null : checkCitations(message.text, message.tools, target.pageCount)), [streaming, failed, message.text, message.tools, target.pageCount]);
+  const unverified = check?.unverified.length ?? 0;
+  const failure = failed ? (refused ?? (message.stopReason === 'interrupted' ? 'INTERRUPTED' : (message.errorCode ?? 'INTERNAL'))) : null;
   return (
     <div className={cx('tutor-msg tutor', streaming && 'is-streaming')} data-testid="tutor-answer" data-status={streaming ? 'streaming' : message.status}>
       <ToolChipRow tools={live?.tools ?? message.tools} running={live?.running ?? null} />
       {text !== '' && (
         <div className="body" data-testid="tutor-answer-text">
-          <AnswerText text={text} streaming={streaming} cite={cite} />
+          <AnswerText text={text} streaming={streaming} cite={cite} end={failed ? <span className="tutor-cut" aria-hidden="true">{words.cutMark}</span> : undefined} />
         </div>
       )}
-      {!streaming && (text !== '' || end !== null || by !== null) && (
-        <div className="tutor-foot-row">
-          {text !== '' && <CopyAnswer message={message} />}
-          {end !== null && (
-            <span className="t-footnote c-secondary tutor-ended" data-testid="tutor-ended">
-              {end}
-            </span>
-          )}
-          {by !== null && <span className="t-footnote c-tertiary tutor-by">{by}</span>}
-        </div>
+      {failure !== null ? (
+        <TurnFailure code={failure} phase="during" agent={message.agent ?? agent} onResend={() => void resendAnswer(scope, message.id)} />
+      ) : (
+        !streaming &&
+        (text !== '' || end !== null || by !== null) && (
+          <div className="tutor-foot-row">
+            {text !== '' && <CopyAnswer message={message} />}
+            {end !== null && (
+              <span className="t-footnote c-secondary tutor-ended" data-testid="tutor-ended">
+                {end}
+              </span>
+            )}
+            {by !== null && <span className="t-footnote c-tertiary tutor-by">{by}</span>}
+          </div>
+        )
+      )}
+      {check !== null && unverified > 0 && (
+        <UnverifiedNotice count={unverified} onReground={!reasked && canReground(message.status, check) ? () => void regroundAnswer(scope, message.id) : null} />
       )}
     </div>
   );

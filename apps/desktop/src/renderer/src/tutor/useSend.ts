@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { create } from 'zustand';
-import type { AgentId, AgentsReport, MessageStatus, TutorAskInput } from '@learn/domain';
+import type { AgentId, AgentsReport, ErrorCode, MessageStatus, Prefs, SessionThread, TutorAskInput, TutorTurnEvent } from '@learn/domain';
 import { api } from '../api';
 import { keys } from '../data/queries';
 import { queryClient } from '../data/query-client';
@@ -10,7 +10,7 @@ import { outlineSnapshot } from '../viewers/pdf/outlineCache';
 import { useReader } from '../viewers/pdf/readerStore';
 import { readerScopes, useReaderScope, type ReaderScope } from '../viewers/readerScope';
 import { afterBusy } from './composerKeys';
-import { draftKey, useTutorTab, type WaitingQuestion } from './tutorStore';
+import { draftKey, useTutorTab, type SentTurn, type WaitingQuestion } from './tutorStore';
 import { recheckAgent } from './useAgents';
 import { answerComingIn } from './useSessionThread';
 import { useTutorPrefs } from './useTutorPrefs';
@@ -42,6 +42,82 @@ function readerNow(scope: ReaderScope): TutorAskInput['reader'] | null {
   return { pageIndex: Math.min(Math.max(pdf.pageNumber, 1), pdf.pagesCount) - 1, pageCount: pdf.pagesCount, ...outlineSnapshot(outline) };
 }
 
+/** The highest seq of the session as this window read it (0 for none, or a new session): where a turn that is gone stood after. */
+function lastSeq(conversationId: string | null): number {
+  if (conversationId === null) return 0;
+  const thread = queryClient.getQueryData<SessionThread>(keys.sessionThread(conversationId));
+  return thread?.messages.reduce((top, m) => Math.max(top, m.seq), 0) ?? 0;
+}
+
+/** The agent the next turn of the tab's session goes to: the chosen one, else the session's own. */
+function nextAgent(conversationId: string | null): AgentId {
+  const chosen = queryClient.getQueryData<Prefs>(keys.prefs)?.tutor.agent ?? null;
+  if (chosen !== null) return chosen;
+  const thread = conversationId === null ? undefined : queryClient.getQueryData<SessionThread>(keys.sessionThread(conversationId));
+  return thread?.session.agent ?? 'claude';
+}
+
+/** Refusals that are not a failure to show: another answer still coming (the waiting line's), Learn quitting. */
+const quietRefusal = (code: ErrorCode): boolean => code === 'AGENT_BUSY' || code === 'CANCELLED';
+
+/**
+ * A turn of the tab of `scope` failed before its answer began (or main refused to start it): a question goes back to the composer it
+ * came from — its text into that session's draft (unless something was written there since), its passage onto the chip — and a new
+ * session that question made is gone with it, so the tab is on a new empty session again. Where the tab still shows that session, the
+ * notice stands where the turn would have been, the hidden alert says it once, and the composer takes the focus with its caret at the
+ * end. A 원문 근거 요청 has nothing to give back: its notice only. Nothing is sent again (spec 8.8).
+ */
+function giveBack(scope: ReaderScope, turn: SentTurn, code: ErrorCode): void {
+  const tab = scope.tutor.getState();
+  if (turn.kind === 'question') {
+    const key = draftKey(turn.from, scope.id);
+    if ((tab.drafts[key] ?? '').trim() === '') tab.setDraft(key, turn.text);
+    if (turn.attached !== null) tab.setAttached(turn.attached);
+  }
+  if (turn.from === null && tab.conversationId === turn.conversationId) tab.setConversation(null);
+  const now = scope.tutor.getState();
+  if (now.conversationId !== turn.from) return;
+  now.setNotice({ code, afterSeq: turn.afterSeq, agent: turn.agent, ...(turn.kind === 'reground' ? { reground: true as const } : {}) });
+  now.say({ code, phase: 'before', agent: turn.agent });
+  if (turn.kind === 'question') now.focusComposer();
+}
+
+/**
+ * main's notice that an answer failed: the tab that sent its turn gives it back when it failed before the answer began (giveBack); one
+ * that failed during it is said once by the tab that shows its session (its notice is the failed answer's own).
+ */
+export function turnFailed(e: Extract<TutorTurnEvent, { kind: 'failed' }>): void {
+  let agent: AgentId | null = null;
+  for (const id of readerScopes.ids()) {
+    const scope = readerScopes.peek(id);
+    const turn = scope?.tutor.getState().sent;
+    if (scope === undefined || scope === null || turn?.tutorMessageId !== e.messageId) continue;
+    scope.tutor.getState().setSent(null);
+    if (e.phase === 'before') {
+      giveBack(scope, turn, e.code);
+      return;
+    }
+    agent = turn.agent;
+    break;
+  }
+  if (e.phase !== 'during') return;
+  for (const id of readerScopes.ids()) {
+    const tab = readerScopes.peek(id)?.tutor.getState();
+    if (tab?.conversationId !== e.conversationId) continue;
+    const thread = queryClient.getQueryData<SessionThread>(keys.sessionThread(e.conversationId));
+    tab.say({ code: e.code, phase: 'during', agent: agent ?? thread?.messages.find((m) => m.id === e.messageId)?.agent ?? thread?.session.agent ?? nextAgent(e.conversationId) });
+    return;
+  }
+}
+
+/** An answer ended: the tab that sent its turn lets go of it (a notice of its text may still come before a failure before the answer). */
+export function turnSettled(messageId: string): void {
+  for (const id of readerScopes.ids()) {
+    const tab = readerScopes.peek(id)?.tutor.getState();
+    if (tab?.sent?.tutorMessageId === messageId) tab.setSent(null);
+  }
+}
+
 /** Whether the agents report this window has says the agent is 준비됨 (no report yet: not known to be). */
 function knownReady(agent: AgentId): boolean {
   const report = queryClient.getQueryData<AgentsReport>(keys.tutorAgents);
@@ -71,11 +147,11 @@ async function statusOf(busyWith: WaitingQuestion['busyWith']): Promise<MessageS
 /**
  * tutor:ask for the tab of `scope`, and what its answer means for the tab (the caller carries the tab). The question carries the passage
  * attached in the composer, if any. Rows written: the draft and the chip go, the tab is on the session the question made, and its thread
- * is read again, so the question's bubble shows at once. Another session's answer still coming ({ busyWith }): the question waits in the
- * composer with its chip — and goes at once if that answer has already ended, by the status read now or by its end notice that came
- * while the read was out (main may answer busy just before it ends the turn). Refused before anything was written (offline, the agent
- * not ready or its login): the question and its chip stay in the composer; the failure's notice is the next task's. Answers whether the
- * question is to be sent again now.
+ * is read again, so the question's bubble shows at once; the tab keeps what it sent until the answer ends, to give it back if the answer
+ * fails before it begins. Another session's answer still coming ({ busyWith }): the question waits in the composer with its chip — and
+ * goes at once if that answer has already ended, by the status read now or by its end notice that came while the read was out (main may
+ * answer busy just before it ends the turn). Refused before anything was written (offline, the agent not ready or its login): the
+ * question and its chip stay in the composer, and the refusal's notice stands. Answers whether the question is to be sent again now.
  */
 async function ask(scope: ReaderScope, text: string): Promise<boolean> {
   const reader = readerNow(scope);
@@ -83,6 +159,8 @@ async function ask(scope: ReaderScope, text: string): Promise<boolean> {
   const from = scope.tutor.getState().conversationId;
   const key = draftKey(from, scope.id);
   const attached = scope.tutor.getState().attached;
+  const afterSeq = lastSeq(from);
+  const agent = nextAgent(from);
   let answer: Awaited<ReturnType<ReturnType<typeof api>['tutor']['ask']>>;
   try {
     answer = await api().tutor.ask({ itemId: scope.id, conversationId: from, text, selection: attached === null ? null : { anchor: attached.anchor, text: attached.text }, reader });
@@ -93,6 +171,11 @@ async function ask(scope: ReaderScope, text: string): Promise<boolean> {
   if (!answer.ok) {
     console.warn(`[tutor] ask failed: ${answer.code}`);
     tab.setWaiting(null);
+    if (!quietRefusal(answer.code)) {
+      // The command of a login, or the state of an agent the window still thought ready, is in the report main has now.
+      if (answer.code === 'AGENT_LOGIN' || answer.code === 'AGENT_NOT_READY') void queryClient.invalidateQueries({ queryKey: keys.tutorAgents });
+      giveBack(scope, { kind: 'question', tutorMessageId: '', conversationId: from ?? '', from, text, attached: null, afterSeq, agent }, answer.code);
+    }
     return false;
   }
   if ('busyWith' in answer.data) {
@@ -106,26 +189,35 @@ async function ask(scope: ReaderScope, text: string): Promise<boolean> {
     if (waiting === null || waiting.busyWith.messageId !== busyWith.messageId) return false;
     return waiting.ended === true || afterBusy(status) === 'send-now';
   }
+  const id = answer.data.tutorMessageId;
+  const turn: SentTurn = { kind: 'question', tutorMessageId: id, conversationId: answer.data.conversationId, from, text, attached, afterSeq, agent };
+  void queryClient.invalidateQueries({ queryKey: keys.sessionThread(answer.data.conversationId) });
+  // Its failure before any answer came first: the question never left the composer, and there is nothing left to hear.
+  const dropped = tab.droppedAnswers.find((d) => d.messageId === id);
+  if (dropped !== undefined) {
+    tab.setWaiting(null);
+    if (tab.live?.tutorMessageId === id) tab.setLive(null);
+    giveBack(scope, turn, dropped.code);
+    return false;
+  }
   // Only the text that went: a question let go of while it was on its way may have been edited since. The same for the chip.
   if ((tab.drafts[key] ?? '').trim() === text) tab.setDraft(key, '');
   if (attached !== null && tab.attached === attached) tab.setAttached(null);
   tab.setWaiting(null);
+  tab.setSent(turn);
   if (tab.conversationId === from) tab.setConversation(answer.data.conversationId);
   // This tab's own question, the tab on its session (a new session's first question moved it there already, through main's notice
   // that the session was made): its answer is heard from the start (notices before this one made it already), whatever order main's
-  // notices and the rows a read brings arrive in — a read that came first must not leave the answer to the 2 s re-reads. An answer
-  // already dropped (its failure before any answer came first) has nothing left to hear.
-  const now = scope.tutor.getState();
-  const id = answer.data.tutorMessageId;
-  if (now.conversationId === answer.data.conversationId) {
-    if (now.droppedAnswers.includes(id)) {
-      if (now.live?.tutorMessageId === id) now.setLive(null);
-    } else {
-      now.setLive(now.live?.tutorMessageId === id ? { ...now.live, fromStart: true } : { tutorMessageId: id, text: '', tools: [], running: null, verifiedSoFar: new Set(), fromStart: true });
-    }
-  }
-  void queryClient.invalidateQueries({ queryKey: keys.sessionThread(answer.data.conversationId) });
+  // notices and the rows a read brings arrive in — a read that came first must not leave the answer to the 2 s re-reads.
+  hearFromStart(scope, answer.data.conversationId, id);
   return false;
+}
+
+/** The tab's own turn, the tab on its session: its answer is heard from its start (notices before this one made it already). */
+function hearFromStart(scope: ReaderScope, conversationId: string, id: string): void {
+  const now = scope.tutor.getState();
+  if (now.conversationId !== conversationId) return;
+  now.setLive(now.live?.tutorMessageId === id ? { ...now.live, fromStart: true } : { tutorMessageId: id, text: '', tools: [], running: null, verifiedSoFar: new Set(), fromStart: true });
 }
 
 /**
@@ -195,18 +287,107 @@ export async function sendQuestion(scope: ReaderScope, text: string, agent: Agen
   const question = text.trim();
   const tab = scope.tutor.getState();
   if (question === '' || agent === null || onTheWay(scope.id) || tab.waiting !== null || answerComingIn(scope) !== null || readerNow(scope) === null) return;
+  // The send that goes takes the last failure's notice with it.
+  const going = () => {
+    tab.setNotice(null);
+    tab.setRetryRefused(null);
+  };
   // perfMarkLatest('tutor:send'): where tutor-perf times a send from (to its first text painted, Bubble.tsx) — only a send that goes.
   if (knownReady(agent)) {
+    going();
     perfMarkLatest('tutor:send');
     await carrying(scope.id, () => askAndFollow(scope, question));
     return;
   }
   const check = recheckAgent(agent);
   if (check === null) return;
+  going();
   perfMarkLatest('tutor:send');
   await carrying(scope.id, async () => {
     await check;
     await askAndFollow(scope, question);
+  });
+}
+
+/** Whether a turn of the tab of `scope` can go now: the item open, no answer of its session coming, no question waiting or on its way. */
+const canGo = (scope: ReaderScope): boolean =>
+  !onTheWay(scope.id) && scope.tutor.getState().waiting === null && answerComingIn(scope) === null && readerNow(scope) !== null;
+
+/**
+ * 다시 보내기 under a failed answer (spec 8.8): main deletes it and asks the same question again from the start, in a new agent
+ * process; the new answer is heard from its start. Refused (offline, busy, the agent not ready — nothing changed): the failed answer's
+ * notice says that code, and the composer is as it was. One press at a time.
+ */
+export async function resendAnswer(scope: ReaderScope, messageId: string): Promise<void> {
+  if (!canGo(scope)) return;
+  const tab = scope.tutor.getState();
+  tab.setNotice(null);
+  tab.setRetryRefused(null);
+  const conversationId = tab.conversationId;
+  await carrying(scope.id, async () => {
+    const reader = readerNow(scope);
+    if (reader === null) return;
+    let r: Awaited<ReturnType<ReturnType<typeof api>['tutor']['resend']>>;
+    try {
+      r = await api().tutor.resend({ messageId, reader });
+    } catch {
+      r = { ok: false, code: 'INTERNAL', message: '', retryable: false };
+    }
+    const now = scope.tutor.getState();
+    if (now.conversationId !== conversationId) return;
+    if (!r.ok) {
+      console.warn(`[tutor] resend failed: ${r.code}`);
+      if (r.code === 'CANCELLED') return;
+      if (r.code === 'AGENT_LOGIN' || r.code === 'AGENT_NOT_READY') void queryClient.invalidateQueries({ queryKey: keys.tutorAgents });
+      now.setRetryRefused({ messageId, code: r.code });
+      now.say({ code: r.code, phase: 'during', agent: nextAgent(conversationId) });
+      return;
+    }
+    if (conversationId !== null) {
+      hearFromStart(scope, conversationId, r.data.tutorMessageId);
+      void queryClient.invalidateQueries({ queryKey: keys.sessionThread(conversationId) });
+    }
+  });
+}
+
+/**
+ * 원문 근거로 다시 묻기 under an answer that cited pages it did not read (spec 7): a new visible turn of the session that asks the
+ * agent to read those pages first. It gives nothing back to the composer: a failure before its answer, or main's refusal, leaves only its
+ * notice's title after the answer it doubted (whose own notice then has its button again). One press at a time.
+ */
+export async function regroundAnswer(scope: ReaderScope, messageId: string): Promise<void> {
+  if (!canGo(scope)) return;
+  const tab = scope.tutor.getState();
+  const conversationId = tab.conversationId;
+  if (conversationId === null) return;
+  tab.setNotice(null);
+  tab.setRetryRefused(null);
+  const afterSeq = lastSeq(conversationId);
+  const agent = nextAgent(conversationId);
+  await carrying(scope.id, async () => {
+    const reader = readerNow(scope);
+    if (reader === null) return;
+    let r: Awaited<ReturnType<ReturnType<typeof api>['tutor']['reground']>>;
+    try {
+      r = await api().tutor.reground({ messageId, reader });
+    } catch {
+      r = { ok: false, code: 'INTERNAL', message: '', retryable: false };
+    }
+    const turn: SentTurn = { kind: 'reground', tutorMessageId: r.ok ? r.data.tutorMessageId : '', conversationId, from: conversationId, text: '', attached: null, afterSeq, agent };
+    if (!r.ok) {
+      console.warn(`[tutor] reground failed: ${r.code}`);
+      if (r.code !== 'CANCELLED') giveBack(scope, turn, r.code);
+      return;
+    }
+    void queryClient.invalidateQueries({ queryKey: keys.sessionThread(conversationId) });
+    const now = scope.tutor.getState();
+    const dropped = now.droppedAnswers.find((d) => d.messageId === turn.tutorMessageId);
+    if (dropped !== undefined) {
+      giveBack(scope, turn, dropped.code);
+      return;
+    }
+    now.setSent(turn);
+    hearFromStart(scope, conversationId, turn.tutorMessageId);
   });
 }
 

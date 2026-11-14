@@ -3,6 +3,7 @@ import { keys } from '../data/queries';
 import { queryClient } from '../data/query-client';
 import { useLearnEvent } from '../events';
 import { readerScopes } from '../viewers/readerScope';
+import { turnFailed, turnSettled } from './useSend';
 import { startsLive, type LiveTurn } from './useSessionThread';
 
 /**
@@ -39,15 +40,19 @@ function tabShowing(conversationId: string) {
 
 /**
  * One notice of an answer, for the tab that shows its session (useTurnEvents). An answer that ended has its thread read again. One that
- * failed before any answer is remembered as dropped, and its live turn goes: its rows may be gone, and no stored copy would end it.
+ * failed before any answer is remembered as dropped, with its code, and its live turn goes: its rows may be gone, and no stored copy
+ * would end it. A failure goes to the tab that sent its turn (what it gives back, what it says); an end lets go of the turn sent.
  */
 export function hearTurn(e: TutorTurnEvent): void {
   if (e.kind === 'done' || e.kind === 'failed') {
-    const tab = e.kind === 'failed' && e.phase === 'before' ? tabShowing(e.conversationId) : null;
-    if (tab !== null) {
-      tab.getState().noteDropped(e.messageId);
+    const dropped = e.kind === 'failed' && e.phase === 'before' ? e : null;
+    const tab = dropped === null ? null : tabShowing(dropped.conversationId);
+    if (tab !== null && dropped !== null) {
+      tab.getState().noteDropped(dropped.messageId, dropped.code);
       if (tab.getState().live?.tutorMessageId === e.messageId) tab.getState().setLive(null);
     }
+    if (e.kind === 'failed') turnFailed(e);
+    else turnSettled(e.messageId);
     void queryClient.invalidateQueries({ queryKey: keys.sessionThread(e.conversationId) });
     return;
   }

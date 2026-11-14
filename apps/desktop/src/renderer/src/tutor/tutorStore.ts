@@ -1,5 +1,6 @@
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import type { AgentId, ErrorCode } from '@learn/domain';
 import type { AttachableSelection } from '../viewers/pdf/selectionAnchor';
 import { useReaderScope } from '../viewers/readerScope';
 import type { LiveTurn } from './useSessionThread';
@@ -51,6 +52,41 @@ export interface WaitingQuestion {
 }
 
 /**
+ * A turn that failed before its answer, or a send main refused (spec 8.8): its notice stands in the thread after the message `afterSeq`
+ * (0: before any), where the turn would have been. `agent`: whose turn it was. `reground`: a 원문 근거 요청, which left nothing to give
+ * back to the composer.
+ */
+export interface TurnNotice {
+  code: ErrorCode;
+  afterSeq: number;
+  agent: AgentId;
+  reground?: true;
+}
+
+/**
+ * A turn this tab sent whose answer has not ended: a question from its composer (`from`, the session it was asked in — null for a new
+ * one — with its text and its passage, given back if the answer fails before it begins) or a 원문 근거 요청.
+ */
+export interface SentTurn {
+  kind: 'question' | 'reground';
+  tutorMessageId: string;
+  conversationId: string;
+  from: string | null;
+  text: string;
+  attached: AttachableSelection | null;
+  afterSeq: number;
+  agent: AgentId;
+}
+
+/** A failure for the hidden alert to say once; `at` makes every one a new alert, the same words again too. */
+export interface FailureAlert {
+  code: ErrorCode | 'INTERRUPTED';
+  phase: 'before' | 'during';
+  agent: AgentId;
+  at: number;
+}
+
+/**
  * What one reader tab's tutor panel keeps while the tab is open: in memory, but for the session it shows, which also
  * survives a reload of the window. 나중에 is not one of them: it is the run's (tutorRun.ts).
  */
@@ -91,8 +127,23 @@ export interface TutorTabStore {
    * The answers of this tab's sessions that failed before any answer (their rows may be gone): the newest few, so a question whose
    * failure notice came before tutor:ask's own answer does not start a live answer that nothing would end.
    */
-  droppedAnswers: readonly string[];
-  noteDropped(messageId: string): void;
+  droppedAnswers: ReadonlyArray<{ messageId: string; code: ErrorCode }>;
+  noteDropped(messageId: string, code: ErrorCode): void;
+  /** A failure before the answer, or a send main refused: a state of the panel, not a row — until the next send or another session. */
+  notice: TurnNotice | null;
+  setNotice(n: TurnNotice | null): void;
+  /** A resend main refused (nothing changed): the failed answer's notice says that code, until the next send or another session. */
+  retryRefused: { messageId: string; code: ErrorCode } | null;
+  setRetryRefused(r: { messageId: string; code: ErrorCode } | null): void;
+  /** The turn this tab sent whose answer has not ended (what a failure before it gives back); another session keeps it. */
+  sent: SentTurn | null;
+  setSent(s: SentTurn | null): void;
+  /** The last failure this tab is to say, for the hidden alert; another session ends it. */
+  alert: FailureAlert | null;
+  say(a: Omit<FailureAlert, 'at'>): void;
+  /** Counts the asks for the composer's focus, its caret at the end of the text (a question given back). */
+  composerFocus: number;
+  focusComposer(): void;
 }
 
 /** How many dropped answers a tab remembers: only a question still on its way can meet one. */
@@ -118,7 +169,7 @@ export function createTutorTabStore(tabId = ''): StoreApi<TutorTabStore> {
     setConversation: (conversationId) => {
       if (get().conversationId === conversationId) return;
       keepSession(tabId, conversationId);
-      set({ conversationId, live: null, currentCite: null, waiting: null });
+      set({ conversationId, live: null, currentCite: null, waiting: null, notice: null, retryRefused: null, alert: null });
     },
     choosing: false,
     setChoosing: (choosing) => set({ choosing }),
@@ -138,7 +189,18 @@ export function createTutorTabStore(tabId = ''): StoreApi<TutorTabStore> {
     attached: null,
     setAttached: (attached) => set({ attached }),
     droppedAnswers: [],
-    noteDropped: (messageId) => set(({ droppedAnswers }) => ({ droppedAnswers: [...droppedAnswers.filter((m) => m !== messageId), messageId].slice(-DROPPED_KEPT) })),
+    noteDropped: (messageId, code) =>
+      set(({ droppedAnswers }) => ({ droppedAnswers: [...droppedAnswers.filter((d) => d.messageId !== messageId), { messageId, code }].slice(-DROPPED_KEPT) })),
+    notice: null,
+    setNotice: (notice) => set({ notice }),
+    retryRefused: null,
+    setRetryRefused: (retryRefused) => set({ retryRefused }),
+    sent: null,
+    setSent: (sent) => set({ sent }),
+    alert: null,
+    say: (a) => set(({ alert }) => ({ alert: { ...a, at: (alert?.at ?? 0) + 1 } })),
+    composerFocus: 0,
+    focusComposer: () => set(({ composerFocus }) => ({ composerFocus: composerFocus + 1 })),
   }));
 }
 

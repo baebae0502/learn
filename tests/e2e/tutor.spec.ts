@@ -1242,9 +1242,10 @@ test('the agent not known as ready does not hold the send back: ↩ checks it ag
     await expect(button.locator('.lucide-log-in')).toHaveCount(1);
     // (A question that fails before any answer leaves no session: the tab is on a new empty session again.)
     await expect(page.getByTestId('tutor-empty')).toBeVisible();
-    // Still sendable: 보내기 is on as soon as there is text.
-    await composerInput(page).click();
-    await page.keyboard.insertText('다시 묻습니다.');
+    // The question is back in the composer (spec 8.8), and 보내기 is on: it can go again as it is, or rewritten.
+    await expect(composerInput(page)).toHaveValue('첫 질문입니다.');
+    await expectDisabledReason(page.getByTestId('tutor-send'), null);
+    await composerInput(page).fill('다시 묻습니다.');
     await expectDisabledReason(page.getByTestId('tutor-send'), null);
 
     // Logged in, in a terminal: ↩ checks Claude Code again (the window's one check), then sends; a second ↩ meanwhile does nothing.

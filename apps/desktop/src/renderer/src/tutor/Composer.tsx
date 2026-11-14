@@ -1,4 +1,4 @@
-import { useRef, type KeyboardEvent } from 'react';
+import { useEffect, useRef, type KeyboardEvent } from 'react';
 import { ArrowUp, CircleStop } from 'lucide-react';
 import { Button as AriaButton } from 'react-aria-components';
 import { TUTOR_LIMITS } from '@learn/domain';
@@ -79,6 +79,17 @@ export function Composer({ visible }: { visible: boolean }) {
   useAttachSelection(visible);
   const attached = useTutorTab((s) => s.attached);
   const setAttached = useTutorTab((s) => s.setAttached);
+  // A question given back (its answer failed before it began): the focus comes to it, the caret at its end, where ↩ sends it again.
+  const focusAsked = useTutorTab((s) => s.composerFocus);
+  const focusSeen = useRef(focusAsked);
+  useEffect(() => {
+    if (focusSeen.current === focusAsked) return;
+    focusSeen.current = focusAsked;
+    const el = input.current;
+    if (!visible || el === null) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, [focusAsked, visible]);
 
   const opening = disabledReason === 'opening';
   const held = waiting !== null;

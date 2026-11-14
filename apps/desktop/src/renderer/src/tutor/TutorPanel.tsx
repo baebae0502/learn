@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { TUTOR_LIMITS } from '@learn/domain';
 import { api, unwrap } from '../api';
-import { useItem } from '../data/queries';
+import { useItem, useItemDetail } from '../data/queries';
 import { usePanelFocusRequest } from '../shell/panelFocus';
 import { ensureOutline } from '../viewers/pdf/outlineCache';
 import { useReader } from '../viewers/pdf/readerStore';
@@ -11,9 +11,11 @@ import { Composer } from './Composer';
 import { createComposerFocus } from './composerFocus';
 import { composerKey } from './composerKeys';
 import { ConsentCard } from './ConsentCard';
-import { Conversation } from './Conversation';
+import { BeforeNotice, Conversation } from './Conversation';
 import { EmptySession } from './EmptySession';
+import { failureCopy } from './failureCopy';
 import { FakeBand } from './FakeBand';
+import { NoTextNotice, noTextKind } from './NoTextNotice';
 import { useTutorTab } from './tutorStore';
 import { TutorOff } from './TutorOff';
 import { useTutorRun } from './tutorRun';
@@ -55,16 +57,49 @@ function useEscStops(streaming: boolean): void {
   }, [streaming, scope]);
 }
 
-/** The tab's session: a new empty one (the item's title over what to do) or the conversation, and the composer under it. */
+/**
+ * The title of the tab's last failure, said once by a hidden alert (spec 8.3): emptied first, then filled a frame later, so the same title
+ * again is a new alert too. One that was there before the panel showed is not said again.
+ */
+function FailureAlert() {
+  const alert = useTutorTab((s) => s.alert);
+  const before = useRef(alert);
+  const [said, setSaid] = useState('');
+  useEffect(() => {
+    setSaid('');
+    if (alert === null || alert === before.current) return;
+    const frame = requestAnimationFrame(() => setSaid(failureCopy({ ...alert, loginCommand: null }).title));
+    return () => cancelAnimationFrame(frame);
+  }, [alert]);
+  return (
+    <span className="visually-hidden" role="alert" data-testid="tutor-alert">
+      {said}
+    </span>
+  );
+}
+
+/**
+ * The tab's session: a new empty one (the item's title over what to do) or the conversation, and the composer under it. Over both, one
+ * line when the PDF's body text cannot be read (asking is not held back). A question that failed before its answer in a new session
+ * stands as its notice over the empty session it left.
+ */
 function TabSession({ visible }: { visible: boolean }) {
   const scope = useReaderScope();
   const conversationId = useTutorTab((s) => s.conversationId);
+  const notice = useTutorTab((s) => s.notice);
   const title = useItem(scope.id).data?.title ?? '';
+  const noText = noTextKind(useItemDetail(scope.id).data?.text);
   useEscStops(useAnswerComing(conversationId) !== null);
   return (
     <div className="tutor-session" data-testid="tutor-session">
-      {conversationId === null ? <EmptySession title={title} /> : <Conversation key={conversationId} conversationId={conversationId} visible={visible} />}
+      {noText !== null && <NoTextNotice kind={noText} />}
+      {conversationId === null ? (
+        <EmptySession title={title} noText={noText} notice={notice === null ? null : <BeforeNotice notice={notice} />} />
+      ) : (
+        <Conversation key={conversationId} conversationId={conversationId} visible={visible} />
+      )}
       <Composer visible={visible} />
+      <FailureAlert />
     </div>
   );
 }

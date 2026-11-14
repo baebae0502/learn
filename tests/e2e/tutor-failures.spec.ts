@@ -196,6 +196,29 @@ test('offline: nothing is sent and the question stays; back online nothing goes 
   }
 });
 
+test('a failure before the answer, asked from a column scrolled up to an earlier answer, is brought into view at the column\'s end', async ({}, testInfo) => {
+  const { app, page } = await atSession(testInfo);
+  try {
+    await sendFromComposer(page, '먼저 묻는 질문입니다.');
+    await expect(page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'complete');
+    const log = page.getByTestId('tutor-log');
+    const fromBottom = () => log.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+    await expect.poll(() => log.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeGreaterThan(200);
+    // Read again from the top: the column is away from its end.
+    await log.evaluate((el) => void (el.scrollTop = 0));
+    await expect.poll(fromBottom).toBeGreaterThan(200);
+    await tutorNetwork(app, 'offline');
+    await sendFromComposer(page, '위를 읽다가 묻습니다.');
+    const failure = page.getByTestId('tutor-failure');
+    await expect(failure).toHaveAttribute('data-code', 'OFFLINE');
+    await expect(failure).toBeInViewport();
+    await expect.poll(fromBottom).toBeLessThanOrEqual(24);
+    await expect(composerInput(page)).toHaveValue('위를 읽다가 묻습니다.');
+  } finally {
+    await app.close();
+  }
+});
+
 test('an agent that never answers: past its first-update limit the turn ends, the notice says it does not answer, and the question is back', async ({}, testInfo) => {
   const { app, page } = await atSession(testInfo);
   try {

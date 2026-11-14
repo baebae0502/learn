@@ -6,6 +6,7 @@ import { Kbd } from '../ui/Kbd';
 import { currentPlatform } from '../ui/platform';
 import { useSessionRowFocused } from '../tutor/sessions/useSessionFocus';
 import { commandPill, keyPill, shortcutPill, type DemoPill, type KeyPlace } from './demoPill';
+import { tagSpot } from './demoTag';
 import { useSidebarHidden } from './useSidebar';
 
 /** How long a pill stays (a new one replaces it at once); a held ⌥ stays until released. */
@@ -247,11 +248,13 @@ export function DemoOverlay() {
     const onTag = (e: Event) => {
       const detail = (e as CustomEvent<unknown>).detail;
       if (typeof detail !== 'string' || !detail) return setTag(null);
-      // The content area's top-left, under the table's header band (where the drop overlay the tag comes with lies), with or
-      // without a table: a window-anchored tag sat on the sidebar's launcher and 라이브러리 label (round 2 minor 4).
-      const content = document.querySelector('[data-testid="content"]')?.getBoundingClientRect();
+      // Placed in the content area, not the window (a window-anchored tag sat on the sidebar's launcher, round 2 minor 4), as the view
+      // shown when it is sent: the demo sends it again when the view changes.
+      const content = document.querySelector('[data-testid="content"]')?.getBoundingClientRect() ?? null;
       const band = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--table-header-height')) || 0;
-      setTag(content && content.width > 0 ? { text: detail, left: Math.round(content.left + 16), top: Math.round(content.top + band + 12) } : { text: detail });
+      const rows = document.querySelectorAll('[data-testid="library-table"] [data-testid="item-row"]');
+      const last = rows.length > 0 ? rows[rows.length - 1]!.getBoundingClientRect() : null;
+      setTag({ text: detail, ...tagSpot(content, band, last) });
     };
     const onPointer = (e: Event) => {
       const detail = (e as CustomEvent<{ hidden?: boolean; mode?: PointerMode } | null>).detail ?? {};

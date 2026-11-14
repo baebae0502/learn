@@ -64,6 +64,8 @@ declare global {
 const QUESTIONS = { first: '증폭이 왜 중요한가요?', second: '이 문장을 쉽게 풀어 주세요.', offline: '신호를 끄는 방법도 알려 주세요.' } as const;
 /** Sentences of the note's page 1, each on one line: the passages the demo attaches. */
 const PASSAGES = { first: '신호 전달의 핵심은 증폭과 조절이다.', second: '세포는 주변 환경의 변화를 화학 신호로 받아들인다.' } as const;
+/** The lasting tag while the sessions seeded before the recording are on screen (chapters 9–11). */
+const SEEDED_TAG = '이전 세션은 녹화 전에 넣어 둠';
 const SESSION_NAME = '신호 증폭 정리';
 /** The older sessions written before the recording (never opened on camera): yesterday's and an earlier day's of the note, two of another. */
 const SEEDED = {
@@ -770,10 +772,13 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
         await pause(300);
         // While the system arrow is the pointer it is the drag's only cursor: the overlay's drawn one goes for the drag (as M7c's did).
         if (cursor !== 'synthetic') await drawnCursor(page, false);
-        await page.mouse.down();
-        await dragAlong(page, 'main', at.x0, at.x1, at.y);
-        await page.mouse.up();
-        if (cursor !== 'synthetic') await drawnCursor(page, true);
+        try {
+          await page.mouse.down();
+          await dragAlong(page, 'main', at.x0, at.x1, at.y);
+          await page.mouse.up();
+        } finally {
+          if (cursor !== 'synthetic') await drawnCursor(page, true);
+        }
         attached = await expect(label).toContainText(sentence.slice(0, 8), { timeout: 5000 }).then(() => true, () => false);
       }
       if (!attached) {
@@ -867,6 +872,8 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await pause(1000);
     await selectSentence(PASSAGES.second, 1);
     await glideClick(page, 'main', composer);
+    // Parked before the typing: at the composer's centre the pointer would cover the question's end as it grows.
+    await park(page, 'main');
     await page.keyboard.type(QUESTIONS.second, { delay: Math.round(110 * PACE) });
     await page.keyboard.press('Enter');
     const unverified = answers.nth(1);
@@ -902,6 +909,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await expect.poll(() => log.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight)).toBeLessThanOrEqual(24);
     await pause(1000);
     await glideClick(page, 'main', composer);
+    await park(page, 'main');
     await page.keyboard.type(QUESTIONS.offline, { delay: Math.round(110 * PACE) });
     await page.keyboard.press('Enter');
     const failure = page.getByTestId('tutor-failure');
@@ -927,7 +935,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     const rows = page.getByTestId('reader-sessions').getByTestId('session-row');
     await expect(rows).toHaveCount(3);
     // The older sessions on screen (here, in chapter 10 and in the library) were written before the recording: a lasting tag says so.
-    await scriptedTag('이전 세션은 녹화 전에 넣어 둠');
+    await scriptedTag(SEEDED_TAG);
     const current = page.locator('[data-testid="reader-sessions"] [data-testid="session-row"][aria-selected="true"]');
     await expect(current).toHaveText(QUESTIONS.first);
     await afterKey(shown, 3500);
@@ -968,10 +976,13 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     const library = await press('1', ['command'], 'nav.back', async () => (await shownTab()) === 'library');
     const section = page.getByTestId('library-sessions');
     await expect(section).toBeVisible();
+    // The tag again for the view now shown: over the library table's empty area, clear of its header row (then back in the reader).
+    await scriptedTag(SEEDED_TAG);
     await afterKey(library, 4000);
     await glideClick(page, 'main', section.getByTestId('session-row').filter({ hasText: SESSION_NAME }));
     await expect.poll(() => shownTab()).toBe(readId);
     await expect(page.getByTestId('tutor-session-head').locator('.t')).toHaveText(SESSION_NAME);
+    await scriptedTag(SEEDED_TAG);
     expect(await mode()).toBe('tutor');
     await park(page, 'main');
     await pause(10000);

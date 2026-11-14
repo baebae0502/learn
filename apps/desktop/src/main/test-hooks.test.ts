@@ -708,6 +708,9 @@ describe('seedSessions (spec 15: the sessions fixture)', () => {
     expect(second!.session.title).toBe('Seeded question 1 of session 2'); // a session past the list keeps the seeded words
     expect(Date.parse(second!.session.updatedAt) - Date.parse(startedAt)).toBeLessThan(10);
     expect(() => seedSessions(deps, { itemId, sessions: 1, messagesPerSession: 2, citationsPerAnswer: 0, startedAt: 'x' })).toThrow(/startedAt/);
+    // A real agent's sessions too (the list draws them otherwise than the fake's).
+    const [claude] = seedSessions(deps, { itemId, sessions: 1, messagesPerSession: 2, citationsPerAnswer: 0, agent: 'claude' }).conversationIds;
+    expect(deps.conversations.thread(claude!).session.agent).toBe('claude');
   });
 
   it('writes nothing when the input does not fit (one transaction)', () => {

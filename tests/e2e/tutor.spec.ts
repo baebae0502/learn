@@ -2377,7 +2377,7 @@ test('in a window too narrow for the tutor beside the sidebar, the arrows browse
   }
 });
 
-test('the library sidebar with the tutor\'s sessions scrolls as one region — 라이브러리, 컬렉션 and 세션 together, the tags pinned under it — and the collection tree\'s keyboard still brings its row into view', async ({}, testInfo) => {
+test('the library sidebar with the tutor\'s sessions scrolls as one region — 라이브러리, 컬렉션 and 세션 together, the tags pinned under it — the collection tree still a virtual list whose keyboard brings its row into view', async ({}, testInfo) => {
   const s = await atSession(testInfo);
   const { app, page } = s;
   try {
@@ -2431,6 +2431,22 @@ test('the library sidebar with the tutor\'s sessions scrolls as one region — �
       const [row, box] = await Promise.all([landed.boundingBox(), scroller.boundingBox()]);
       return row!.y >= box!.y - 0.5 && row!.y + row!.height <= box!.y + box!.height + 0.5;
     }).toBe(true);
+    // The tree as tall as its rows is still a virtual list: of 150 more collections it draws those near the window, and the
+    // sidebar's scroll brings the rest in.
+    await page.evaluate(async () => {
+      for (let i = 0; i < 150; i++) {
+        const made = await window.learn.collections.create({ name: `과목 ${String(i).padStart(3, '0')}`, parentId: null });
+        if (!made.ok) throw new Error(made.code);
+      }
+    });
+    const drawn = page.getByTestId('sidebar-tree').locator('[data-testid^="nav-collection-"]');
+    await expect(page.getByTestId('sidebar-tree').getByText('과목 000', { exact: true })).toBeVisible();
+    expect(await drawn.count()).toBeLessThan(80);
+    await scroller.evaluate((el) => el.scrollTo({ top: el.scrollHeight / 2 }));
+    await expect(page.getByTestId('sidebar-tree').getByText('과목 000', { exact: true })).toHaveCount(0);
+    expect(await drawn.count()).toBeLessThan(80);
+    await scroller.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+    await expect(section.getByTestId('session-row').last()).toBeVisible();
   } finally {
     await app.close();
   }

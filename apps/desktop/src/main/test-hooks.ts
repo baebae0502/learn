@@ -4,7 +4,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import {
   TEXT_LIMITS, TUTOR_LIMITS, citeToken, newId, nowIso, type ImportQueueState, type JobProgress, type LibraryCheck, type ImportReport, type LearnEventMap, type StorageMode,
-  type TagColorId,
+  type AgentId, type TagColorId,
 } from '@learn/domain';
 import {
   SqliteError, type CollectionsRepository, type ConversationsRepository, type Db, type LibraryRepository, type TagsRepository, type TextRepository, type ToolReadInput,
@@ -400,6 +400,8 @@ export interface SeedSessionsInput {
   startedAt?: string;
   /** The first question of the first sessions, one each: the names the list shows. */
   questions?: readonly string[];
+  /** Whose answers they are: the fake agent's unless named. */
+  agent?: AgentId;
 }
 export interface SessionSeedDeps {
   db: Db;
@@ -435,7 +437,7 @@ export function seedSessions(deps: SessionSeedDeps, input: SeedSessionsInput): {
       let conversationId: string | null = null;
       for (let k = 0; k < messagesPerSession / 2; k += 1) {
         const b = deps.conversations.beginTurn({
-          conversationId, itemId: item.id, revisionId: item.revisionId, agent: 'fake', openedAtPage: 0,
+          conversationId, itemId: item.id, revisionId: item.revisionId, agent: input.agent ?? 'fake', openedAtPage: 0,
           user: { kind: 'question', text: (k === 0 ? input.questions?.[s] : undefined) ?? `Seeded question ${k + 1} of session ${s + 1}`, sent: { selection: 0, replayedTurns: 0, preamble: k === 0 }, attached: null },
           now: at(),
         });

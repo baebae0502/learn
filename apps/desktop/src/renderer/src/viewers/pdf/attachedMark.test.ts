@@ -57,6 +57,29 @@ describe('the runs of attached lines a bar stands beside (spec 8.4, mockup .atta
     expect(marginOf([line(6, 200, 700)], 0, 0, [glyphs(6, 200, 700)], 0, 0).bars[0]!.gap).toBeCloseTo(3 + 1.5);
   });
 
+  it('measures a gutter to the column beside it, not to the lines on the run\'s own rows', () => {
+    // Two columns of ten lines, 13 pt apart, a 13 pt gutter: column 1's lines end at 291 but for the two short ones beside the run.
+    const page = [
+      ...Array.from({ length: 10 }, (_, i) => line(56, i === 4 || i === 5 ? 200 : 291, 700 - i * 13)),
+      ...Array.from({ length: 10 }, (_, i) => line(304, 539, 700 - i * 13)),
+    ];
+    const bar = marginOf(page, 14, 15, [glyphs(304, 539, 648), glyphs(304, 539, 635)], 0, 0).bars[0]!;
+    expect(bar.gap).toBeCloseTo(13 / 3 + 1.5);
+    // Every run of that column takes the same place: its first two lines, beside full ones, too.
+    expect(marginOf(page, 10, 11, [glyphs(304, 539, 700), glyphs(304, 539, 687)], 0, 0).bars[0]!.gap).toBeCloseTo(bar.gap);
+  });
+
+  it('keeps 12 pt on a page of one column, and lets no one stray long line decide a gutter', () => {
+    const single = Array.from({ length: 8 }, (_, i) => line(72, 520, 700 - i * 13));
+    expect(marginOf(single, 2, 3, [glyphs(72, 520, 674), glyphs(72, 520, 661)], 0, 0).bars[0]!.gap).toBe(12);
+    // Column 1 ends at 250 (54 pt of free space) but for one line that runs to 300.
+    const stray = [
+      ...Array.from({ length: 10 }, (_, i) => line(56, i === 3 ? 300 : 250, 700 - i * 13)),
+      ...Array.from({ length: 10 }, (_, i) => line(304, 539, 700 - i * 13)),
+    ];
+    expect(marginOf(stray, 13, 14, [glyphs(304, 539, 661), glyphs(304, 539, 648)], 0, 0).bars[0]!.gap).toBe(12);
+  });
+
   it('gives each run its own bar, where its lines begin, spanning its washed lines only', () => {
     // From the middle of column 1's second line to the middle of column 2's second line.
     const quads = [glyphs(150, 291, 687), glyphs(56, 291, 674), glyphs(304, 539, 700), glyphs(304, 420, 687)];

@@ -134,10 +134,15 @@ export function marginOf(lines: readonly TextLine[], first: number, last: number
     const [u0, u1] = [Math.min(...run.map((l) => l.start)), Math.max(...run.map((l) => l.end))];
     const mine = boxes.filter((b) => (b.v0 + b.v1) / 2 >= lowBase - h / 2 && (b.v0 + b.v1) / 2 <= highBase + h && b.u0 < u1 && u0 < b.u1);
     if (mine.length === 0) return [];
-    // The free space left of the run: to the nearest text on its lines (another column) or the page's edge. A narrow one puts the bar a
-    // third of the way out from its own lines, so it reads as theirs and not as the right edge of the column beside it.
-    const beside = lines.filter((l) => l.end <= at + 0.5 && l.base >= lowBase - h / 2 && l.base <= highBase + h / 2).map((l) => l.end);
-    const free = at - Math.max(pageStart, ...beside);
+    // The free space left of the run: to the edge of the column beside it — the lines that end before the run's column begins, over the
+    // whole height of that column on the page, at their 90th percentile (one stray long line does not decide it) — or to the page's
+    // edge. Every run of a column measures the same, so its bars stand at one place. A narrow space puts the bar a third of the way out
+    // from its own lines, so it reads as theirs and not as the right edge of the column beside it.
+    const column = lines.filter((l) => l.start >= at - 0.5 && l.start < u1 && u0 < l.end);
+    const [columnTop, columnFoot] = [Math.max(...column.map((l) => l.base + l.h)), Math.min(...column.map((l) => l.base - l.h))];
+    const ends = lines.filter((l) => l.end <= at + 0.5 && l.base <= columnTop && l.base >= columnFoot).map((l) => l.end).sort((a, b) => a - b);
+    const edge = ends.length === 0 ? pageStart : Math.max(pageStart, ends[Math.ceil(0.9 * ends.length) - 1]!);
+    const free = at - edge;
     const gap = free < NARROW_PT ? Math.max(NEAREST_PT, free / 3) + BAR_WIDTH_PT : BAR_GAP_PT;
     return [{ at, gap, top: Math.max(...mine.map((b) => b.v1)), bottom: Math.min(...mine.map((b) => b.v0)) }];
   });

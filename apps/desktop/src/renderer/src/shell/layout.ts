@@ -115,6 +115,13 @@ export function toggledInspector(p: PanesState, viewportWidth: number, contentMi
   return { ...i, collapsed: true, forceShown: false };
 }
 
+/** Showing the folded right panel now (⌥⌘I's way) would fold the shown sidebar: a window too narrow for both, the side shown last winning. */
+export function revealFoldsSidebar(p: PanesState, viewportWidth: number, contentMin: number = CONTENT_MIN, mode: InspectorMode = 'info'): boolean {
+  const now = hiddenPanes(p, viewportWidth, true, contentMin, mode);
+  if (!now.inspector || now.sidebar) return false;
+  return hiddenPanes({ ...p, inspector: toggledInspector(p, viewportWidth, contentMin, mode) }, viewportWidth, true, contentMin, mode).sidebar;
+}
+
 export function afterViewportChange(s: SidebarState, viewportWidth: number): SidebarState {
   return s.forceShown && !autoCollapses(viewportWidth, s.width) ? { ...s, forceShown: false } : s;
 }

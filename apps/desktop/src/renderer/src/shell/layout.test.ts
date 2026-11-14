@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CONTENT_MIN, INSPECTOR, READER_CONTENT_MIN, TUTOR, inspectorContentMin, SIDEBAR, afterViewportChange, autoCollapses, clampInspector, clampSidebar, clampTutor, draggedInspectorWidth, hiddenPanes,
-  inspectorAfterViewportChange, inspectorAutoCollapses, parsePanes, serializePanes, sidebarHidden, sidebarHiddenIn, slotWidthFor, toggledInspector, toggledSidebar, toggledSidebarWithTutor,
+  inspectorAfterViewportChange, inspectorAutoCollapses, parsePanes, revealFoldsSidebar, serializePanes, sidebarHidden, sidebarHiddenIn, slotWidthFor, toggledInspector, toggledSidebar, toggledSidebarWithTutor,
   type PaneState, type PanesState,
 } from './layout';
 
@@ -192,3 +192,19 @@ describe('the tutor mode of the right panel (spec 8.1, 8.10)', () => {
     expect(parsePanes({ sidebar: 240 }).tutorWidth).toBe(380);
   });
 });
+
+describe('revealFoldsSidebar: showing the folded tutor would fold the sidebar (spec 8.10, the session list\'s arrows)', () => {
+  it('in a window too narrow for both, a folded tutor would push a shown sidebar away', () => {
+    expect(revealFoldsSidebar(panes(), 960, READER_CONTENT_MIN, 'tutor')).toBe(true);
+    expect(revealFoldsSidebar(panes(), 999, READER_CONTENT_MIN, 'tutor')).toBe(true);
+  });
+  it('not with room for both, not when the tutor already shows, not when the sidebar is already folded', () => {
+    expect(revealFoldsSidebar(panes(), 1000, READER_CONTENT_MIN, 'tutor')).toBe(false); // 240 + 320 + 440 fits: it only narrows
+    expect(revealFoldsSidebar(panes(), 1440, READER_CONTENT_MIN, 'tutor')).toBe(false);
+    expect(revealFoldsSidebar(panes({}, { collapsed: true }), 1440, READER_CONTENT_MIN, 'tutor')).toBe(false); // a user's fold opens beside it
+    const shown = { ...panes(), inspector: toggledInspector(panes(), 960, READER_CONTENT_MIN, 'tutor') };
+    expect(revealFoldsSidebar(shown, 960, READER_CONTENT_MIN, 'tutor')).toBe(false);
+    expect(revealFoldsSidebar(panes({ collapsed: true }), 960, READER_CONTENT_MIN, 'tutor')).toBe(false);
+  });
+});
+

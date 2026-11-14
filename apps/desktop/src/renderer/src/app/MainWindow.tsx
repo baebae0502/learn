@@ -51,7 +51,7 @@ import { DropOverlay } from '../shell/DropOverlay';
 import { Launcher } from '../shell/Launcher';
 import { focusPane } from '../shell/panes';
 import { Shell } from '../shell/Shell';
-import { showInspectorMode, useInspectorHidden, useToggleInspector } from '../shell/useInspector';
+import { revealInspector, showInspectorMode, useInspectorHidden, useToggleInspector } from '../shell/useInspector';
 import { useInspectorMode } from '../shell/inspectorMode';
 import { useTutorPrefs } from '../tutor/useTutorPrefs';
 import { useAgentsReread } from '../tutor/useAgents';
@@ -61,7 +61,7 @@ import { useTurnEvents } from '../tutor/useTurnEvents';
 import { stopAnswer, useWaitingSends } from '../tutor/useSend';
 import { useAnswerComing } from '../tutor/useSessionThread';
 import { useTutorView } from '../tutor/useTutorView';
-import { deleteSession, startRename } from '../tutor/sessions/sessionActions';
+import { chooseTutorMode, deleteSession, openSessionWith, startRename } from '../tutor/sessions/sessionActions';
 import { focusedSessionRow, neighborRow } from '../tutor/sessions/SessionRow';
 import { useSessionRowFocused } from '../tutor/sessions/useSessionFocus';
 import { useTabsPersistence } from './useTabsPersistence';
@@ -595,8 +595,17 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (viewKind === 'reader') readerActions.showReaderNav('sessions');
       startRename(conversationId);
     },
-    // At once, with 실행 취소; the focus goes on to the next row when it was on this one.
+    // At once, with 실행 취소; the focus goes on to the next row when it was on this one (and is still there once it is done).
     deleteSession: (conversationId) => void deleteSession(conversationId, focusedSessionRow() === conversationId ? neighborRow(conversationId) : null),
+    openSession: openSessionWith({
+      afterEditing,
+      scope: (itemId) => readerScopes.get(itemId),
+      openTab: (itemId) => useShell.getState().openTabs([itemId]),
+      showTutor: () => {
+        chooseTutorMode();
+        revealInspector('tutor');
+      },
+    }),
     currentSession: () => (viewKind === 'reader' ? currentScope().tutor.getState().conversationId : null),
     focusedSession: focusedSessionRow,
     showShortcuts: () => void showShortcuts(),

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { FileText, FlaskConical, MessageSquare } from 'lucide-react';
 import { mergeProps, useFocusRing, useHover } from 'react-aria';
@@ -6,7 +6,7 @@ import type { SessionSummary } from '@learn/domain';
 import { api, unwrap } from '../../api';
 import { useCommands } from '../../commands/CommandProvider';
 import { runPicked } from '../../commands/registry';
-import { formatDate } from '../../format';
+import { formatDayAndTime } from '../../format';
 import { t } from '../../strings';
 import { Icon } from '../../ui/Icon';
 import { isComposingKey } from '../../ui/ime';
@@ -15,19 +15,19 @@ import { showActionFailed } from '../../ui/toasts';
 import { TooltipText } from '../../ui/Tooltip';
 import { useTooltipsBlocked } from '../../ui/tooltipGate';
 import { useNow } from '../../useNow';
-import { cancelRename, finishRename, startRename } from './sessionActions';
+import { cancelRename, finishRename, startRename, type NextRow } from './sessionActions';
 import { titleTooLong, useSessionEdit } from './sessionEdit';
 
 const words = t.tutor.sessions;
 /** The hover before a row's tooltip, as every tooltip of the app waits (ui/Tooltip.tsx). */
 const TIP_DELAY_MS = 600;
-/** The tooltip's distance from the row, and the room it keeps from the window's edges (ui/Tooltip.tsx's offset). */
+/** The tooltip's distance from the sidebar's edge, and the room it keeps from the window's edges (ui/Tooltip.tsx's offset). */
 const TIP_OFFSET = 6;
 const TIP_EDGE = 8;
 
 /**
- * A row's tooltip (the app's tooltip, ui/Tooltip.tsx): under the row and centred on it, kept inside the window, above the row where
- * there is no room below. A row of a list is no trigger of its own, so it is placed here.
+ * A row's tooltip (the app's tooltip, ui/Tooltip.tsx): beside the sidebar, centred on its row's height, so it covers none of the rows
+ * and labels around it; kept inside the window. A row of a list is no trigger of its own, so it is placed here.
  */
 function RowTip({ row, text }: { row: HTMLElement; text: string }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -36,9 +36,9 @@ function RowTip({ row, text }: { row: HTMLElement; text: string }) {
     const tip = ref.current;
     if (!tip) return;
     const r = row.getBoundingClientRect();
-    const below = r.bottom + TIP_OFFSET;
-    const top = below + tip.offsetHeight > innerHeight - TIP_EDGE ? r.top - TIP_OFFSET - tip.offsetHeight : below;
-    const left = Math.max(TIP_EDGE, Math.min(r.left + r.width / 2 - tip.offsetWidth / 2, innerWidth - TIP_EDGE - tip.offsetWidth));
+    const edge = (row.closest('.sidebar') ?? row).getBoundingClientRect().right;
+    const left = Math.max(TIP_EDGE, Math.min(edge + TIP_OFFSET, innerWidth - TIP_EDGE - tip.offsetWidth));
+    const top = Math.max(TIP_EDGE, Math.min(r.top + r.height / 2 - tip.offsetHeight / 2, innerHeight - TIP_EDGE - tip.offsetHeight));
     setAt({ left, top });
   }, [row, text]);
   return createPortal(
@@ -59,14 +59,22 @@ export interface SessionGroupView {
 
 /**
  * The row after the session's own in the tree that holds it (the one before it when it is the last): where the focus goes once the
- * session is deleted.
+ * session is deleted — while the focus is still on that tree, or was dropped to nowhere with the row.
  */
-export function neighborRow(conversationId: string): string | null {
+export function neighborRow(conversationId: string): NextRow | null {
   const row = document.querySelector<HTMLElement>(`[data-session-row][data-conversation-id="${CSS.escape(conversationId)}"]`);
-  const rows = [...(row?.closest('[role="tree"]')?.querySelectorAll<HTMLElement>('[data-session-row]') ?? [])];
+  const tree = row?.closest('[role="tree"]') ?? null;
+  const rows = [...(tree?.querySelectorAll<HTMLElement>('[data-session-row]') ?? [])];
   const at = row ? rows.indexOf(row) : -1;
-  if (at < 0) return null;
-  return (rows[at + 1] ?? rows[at - 1])?.dataset['conversationId'] ?? null;
+  const id = at < 0 ? undefined : (rows[at + 1] ?? rows[at - 1])?.dataset['conversationId'];
+  if (id === undefined || tree === null) return null;
+  return {
+    id,
+    stillHere: () => {
+      const now = document.activeElement;
+      return now === null || now === document.body || tree.contains(now);
+    },
+  };
 }
 
 /** The session row that has the focus (not its name field): what ⌘⌫ deletes. */
@@ -131,6 +139,8 @@ function SessionNameField({ session }: { session: SessionSummary }) {
 
 interface RowProps {
   session: SessionSummary;
+  /** When it was last talked in, and whose agent it was when that is the fake: the row's description and its tooltip's second part. */
+  when: string;
   indent: number;
   /** In the reader: whether it is the session the tab's tutor shows. Undefined in the library, whose rows are actions. */
   selected: boolean | undefined;
@@ -140,18 +150,29 @@ interface RowProps {
   onPress(session: SessionSummary): void;
   onDoubleClick(session: SessionSummary): void;
   onMenu(session: SessionSummary, at: { x: number; y: number }): void;
-  onHover(session: SessionSummary, el: HTMLElement | null): void;
+  /** The pointer, or a keyboard focus, has come to rest on the row (or left it: null). */
+  onRest(session: SessionSummary, el: HTMLElement | null): void;
 }
 
 /**
  * A session row (spec 8.9 — the collection rows' grammar): `message-square` (a fake agent's session `flask-conical`) and the name
  * on one line; no time (the day group says the day), no hover buttons.
  */
-export function SessionRow({ session, indent, selected, tabStop, renaming, register, onPress, onDoubleClick, onMenu, onHover }: RowProps) {
+export function SessionRow({ session, when, indent, selected, tabStop, renaming, register, onPress, onDoubleClick, onMenu, onRest }: RowProps) {
   const fake = session.agent === 'fake';
+  const described = useId();
+  const own = useRef<HTMLDivElement | null>(null);
   const { focusProps, isFocusVisible } = useFocusRing();
-  const { hoverProps, isHovered } = useHover({ onHoverStart: (e) => onHover(session, e.target as HTMLElement), onHoverEnd: () => onHover(session, null) });
-  const own = {
+  const { hoverProps, isHovered } = useHover({ onHoverStart: (e) => onRest(session, e.target as HTMLElement), onHoverEnd: () => onRest(session, null) });
+  // A keyboard cursor that stays on the row gets its tooltip too, after the same rest (an arrow press moves it on first).
+  const focusVisible = isFocusVisible && !renaming;
+  useEffect(() => {
+    if (!focusVisible) return;
+    onRest(session, own.current);
+    return () => onRest(session, null);
+    // The session's identity is the row's: its fields changing do not restart the rest.
+  }, [focusVisible]);
+  const handlers = {
     onClick: (e: MouseEvent) => {
       if (e.button === 0) onPress(session);
     },
@@ -162,39 +183,50 @@ export function SessionRow({ session, indent, selected, tabStop, renaming, regis
     },
   };
   return (
-    <div
-      {...mergeProps(focusProps, hoverProps, own)}
-      ref={(el) => register(session.id, el)}
-      role="treeitem"
-      aria-selected={selected}
-      tabIndex={tabStop ? 0 : -1}
-      className="nav-row session-row"
-      style={{ '--indent': indent } as CSSProperties}
-      data-session-row=""
-      data-conversation-id={session.id}
-      data-selected={selected === true || undefined}
-      data-hovered={(isHovered && !renaming) || undefined}
-      data-focus-visible={isFocusVisible || undefined}
-      data-fake={fake || undefined}
-      data-testid="session-row"
-    >
-      <Icon icon={fake ? FlaskConical : MessageSquare} />
-      {renaming ? <SessionNameField session={session} /> : <span className="label ellipsis">{session.title}</span>}
-    </div>
+    <>
+      <div
+        {...mergeProps(focusProps, hoverProps, handlers)}
+        ref={(el) => {
+          own.current = el;
+          register(session.id, el);
+        }}
+        role="treeitem"
+        aria-selected={selected}
+        aria-describedby={described}
+        tabIndex={tabStop ? 0 : -1}
+        className="nav-row session-row"
+        style={{ '--indent': indent } as CSSProperties}
+        data-session-row=""
+        data-conversation-id={session.id}
+        data-selected={selected === true || undefined}
+        data-hovered={(isHovered && !renaming) || undefined}
+        data-focus-visible={isFocusVisible || undefined}
+        data-fake={fake || undefined}
+        data-testid="session-row"
+      >
+        <Icon icon={fake ? FlaskConical : MessageSquare} />
+        {renaming ? <SessionNameField session={session} /> : <span className="label ellipsis">{session.title}</span>}
+      </div>
+      {/* Beside the row, not in it: the row's text is its name alone. */}
+      <span id={described} hidden>
+        {when}
+      </span>
+    </>
   );
 }
 
 /**
  * A session list as a tree (spec 8.9): its groups — the reader's days, the library's items — and their rows, one Tab stop, ↑ ↓ Home End
  * between the rows, ↩ and a double-click to the row's action, ⇧F10 and the menu key to its native menu, a tooltip of its name and time
- * after a hover. `select` (the reader): a click or an arrow selects the row, which the tab's tutor shows; ↩ and a double-click name it.
+ * once the pointer or the keyboard cursor rests on a row (the time is the row's description too). `select` (the reader): a click or an arrow selects the row, which the tab's tutor shows; ↩ and a double-click name it.
  * `open` (the library): a click or ↩ opens the row's session in its item's tab.
  */
 export function SessionTree(props: {
   groups: readonly SessionGroupView[];
   mode: 'select' | 'open';
   selectedId?: string | null;
-  onSelect?(session: SessionSummary): void;
+  /** `browse`: the arrows, or a right click before its menu — the sidebar is never folded for it; `press`: a click. */
+  onSelect?(session: SessionSummary, how: 'browse' | 'press'): void;
   onOpen?(session: SessionSummary): void;
   className: string;
   testId: string;
@@ -203,6 +235,7 @@ export function SessionTree(props: {
   const { env } = useCommands();
   const now = useNow();
   const rows = groups.flatMap((g) => g.sessions);
+  const when = (s: SessionSummary) => words.when(formatDayAndTime(s.updatedAt, now), s.agent === 'fake');
   const indent = (g: SessionGroupView) => (g.item ? 1 : 0);
   const renaming = useSessionEdit((s) => s.renaming);
   const focusRow = useSessionEdit((s) => s.focusRow);
@@ -211,6 +244,10 @@ export function SessionTree(props: {
     if (el) elements.current.set(id, el);
     else elements.current.delete(id);
   };
+  // A list that goes (another segment, its item's sessions all deleted) takes an open edit of its rows with it.
+  const shown = useRef<string[]>([]);
+  shown.current = rows.map((s) => s.id);
+  useEffect(() => () => useSessionEdit.getState().releaseRows(shown.current), []);
   // The keyboard's place: the row it was last on while that row is listed, else the selected row, else the first.
   const [cursor, setCursor] = useState<string | null>(null);
   const listed = (id: string | null) => id !== null && rows.some((s) => s.id === id);
@@ -230,15 +267,23 @@ export function SessionTree(props: {
   const tipTimer = useRef<number | undefined>(undefined);
   const blocked = useTooltipsBlocked();
   useEffect(() => () => window.clearTimeout(tipTimer.current), []);
-  const onHover = (session: SessionSummary, el: HTMLElement | null) => {
+  const onRest = (session: SessionSummary, el: HTMLElement | null) => {
     window.clearTimeout(tipTimer.current);
-    if (el === null) return setTip(null);
+    if (el === null) return setTip((now) => (now?.session.id === session.id ? null : now));
     tipTimer.current = window.setTimeout(() => setTip({ session, el }), TIP_DELAY_MS);
   };
   const hideTip = () => {
     window.clearTimeout(tipTimer.current);
     setTip(null);
   };
+  // Whatever scrolls under a shown tip (the list, or the sidebar it scrolls in) takes it away.
+  const tipShown = tip !== null;
+  useEffect(() => {
+    if (!tipShown) return;
+    const hide = () => setTip(null);
+    addEventListener('scroll', hide, { capture: true });
+    return () => removeEventListener('scroll', hide, { capture: true });
+  }, [tipShown]);
 
   const menuAt = useRef<number | null>(null);
   const openMenu = async (session: SessionSummary, at: { x: number; y: number }) => {
@@ -253,13 +298,13 @@ export function SessionTree(props: {
   const press = (session: SessionSummary) => {
     hideTip();
     setCursor(session.id);
-    if (mode === 'select') props.onSelect?.(session);
+    if (mode === 'select') props.onSelect?.(session, 'press');
     else props.onOpen?.(session);
   };
   const menu = (session: SessionSummary, at: { x: number; y: number }) => {
     if (isKeyMenuEcho(performance.now(), menuAt.current)) return;
     // A right click selects first in the reader (design-spec 7.1) and takes the focus, as the menu's ⌘⌫ acts on the focused row.
-    if (mode === 'select' && session.id !== selectedId) props.onSelect?.(session);
+    if (mode === 'select' && session.id !== selectedId) props.onSelect?.(session, 'browse');
     focus(session.id);
     void openMenu(session, at);
   };
@@ -282,7 +327,7 @@ export function SessionTree(props: {
       e.preventDefault();
       hideTip();
       focus(s.id);
-      if (mode === 'select' && s.id !== selectedId) props.onSelect?.(s);
+      if (mode === 'select' && s.id !== selectedId) props.onSelect?.(s, 'browse');
     };
     if (e.key === 'ArrowDown') to(at + 1);
     else if (e.key === 'ArrowUp') to(at - 1);
@@ -298,7 +343,7 @@ export function SessionTree(props: {
 
   const tipSession = tip && tip.session.id !== renaming && !blocked && tip.el.isConnected ? tip : null;
   return (
-    <div className={props.className} role="tree" aria-label={words.tree} onKeyDown={onKeyDown} onScroll={hideTip} data-testid={props.testId}>
+    <div className={props.className} role="tree" aria-label={words.tree} onKeyDown={onKeyDown} data-testid={props.testId}>
       {groups.map((g) => (
         <div key={g.key} role="group" aria-label={g.label} className="session-group" data-testid="session-group" data-label={g.label}>
           {g.item ? (
@@ -315,6 +360,7 @@ export function SessionTree(props: {
             <SessionRow
               key={s.id}
               session={s}
+              when={when(s)}
               indent={indent(g)}
               selected={mode === 'select' ? s.id === selectedId : undefined}
               tabStop={s.id === tabStop}
@@ -325,12 +371,12 @@ export function SessionTree(props: {
                 if (mode === 'select') startRename(session.id);
               }}
               onMenu={menu}
-              onHover={onHover}
+              onRest={onRest}
             />
           ))}
         </div>
       ))}
-      {tipSession && <RowTip row={tipSession.el} text={words.tip(tipSession.session.title, formatDate(tipSession.session.updatedAt, now), tipSession.session.agent === 'fake')} />}
+      {tipSession && <RowTip row={tipSession.el} text={words.tip(tipSession.session.title, when(tipSession.session))} />}
     </div>
   );
 }

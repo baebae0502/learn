@@ -234,9 +234,9 @@ describe('ConversationsRepository', () => {
   it('renames, goes back to the first line, deletes with undo, and follows its item into the trash', () => {
     const db = freshDb(); const s = seedItem(db); const repo = new ConversationsRepository(db);
     const t = begin(repo, s);
-    expectLearnError(() => repo.rename(t.conversationId, '  ', NOW), 'VALIDATION_FAILED');
-    expect(repo.rename(t.conversationId, '  내 이름 ', at(40))).toMatchObject({ title: '내 이름', renamed: true, updatedAt: at(40) });
-    expect(repo.rename(t.conversationId, null, at(41))).toMatchObject({ title: '어텐션이 뭐야?', renamed: false });
+    expectLearnError(() => repo.rename(t.conversationId, '  '), 'VALIDATION_FAILED');
+    expect(repo.rename(t.conversationId, '  내 이름 ')).toMatchObject({ title: '내 이름', renamed: true, updatedAt: NOW });
+    expect(repo.rename(t.conversationId, null)).toMatchObject({ title: '어텐션이 뭐야?', renamed: false, updatedAt: NOW });
     repo.remove(t.conversationId, NOW);
     expect(repo.list(s.itemId)).toEqual([]);
     expectLearnError(() => repo.thread(t.conversationId), 'NOT_FOUND');
@@ -250,6 +250,19 @@ describe('ConversationsRepository', () => {
     db.prepare('UPDATE items SET deleted_at = NULL WHERE id = ?').run(s.itemId);
     expect(repo.list(s.itemId)).toHaveLength(1);
     expect(repo.recent().groups).toHaveLength(1);
+  });
+
+  it('a rename is no talk: the session keeps its last turn\'s time and its place in the lists', () => {
+    const db = freshDb(); const s = seedItem(db); const repo = new ConversationsRepository(db);
+    const older = begin(repo, s, { now: at(10) });
+    const newer = begin(repo, s, { now: at(20) });
+    expect(repo.list(s.itemId).map((x) => x.id)).toEqual([newer.conversationId, older.conversationId]);
+    expect(repo.rename(older.conversationId, '이름')).toMatchObject({ renamed: true, updatedAt: at(10) });
+    expect(repo.list(s.itemId).map((x) => [x.id, x.updatedAt])).toEqual([[newer.conversationId, at(20)], [older.conversationId, at(10)]]);
+    expect(repo.recent().groups[0]!.sessions.map((x) => x.id)).toEqual([newer.conversationId, older.conversationId]);
+    // A turn is talk: it moves the session up.
+    begin(repo, s, { conversationId: older.conversationId, now: at(30) });
+    expect(repo.list(s.itemId).map((x) => x.id)).toEqual([older.conversationId, newer.conversationId]);
   });
 
   it('marks a session mixed when its answers came from more than one agent', () => {

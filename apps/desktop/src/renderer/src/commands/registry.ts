@@ -71,6 +71,8 @@ export interface CommandEnv extends CommandContextState {
   renameSession(conversationId: string): void;
   /** 세션 삭제: at once, with 실행 취소; a tab that showed it goes to a new empty session. */
   deleteSession(conversationId: string): void;
+  /** A library session row (spec 8.9): its item's tab the way 열기 opens it (an open edit asked first), on that session, the tutor shown. */
+  openSession(itemId: string, conversationId: string): void;
   /** The session the active tab's tutor shows (null: a new empty one, or no reader). */
   currentSession(): string | null;
   /** The session of the sidebar row that has the focus, if one has. */

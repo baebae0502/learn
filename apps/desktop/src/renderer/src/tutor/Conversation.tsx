@@ -109,6 +109,15 @@ export function Conversation({ conversationId, visible }: { conversationId: stri
   visibleRef.current = visible;
   const [latest, setLatest] = useState(false);
   const [stuck, setStuck] = useState(false);
+  // Owed the focus (a session row's click opened the folded panel and folded its sidebar): taken once the column is drawn and seen.
+  const logFocus = useTutorTab((s) => s.logFocus);
+  const setLogFocus = useTutorTab((s) => s.setLogFocus);
+  const drawn = thread !== null;
+  useEffect(() => {
+    if (!logFocus || !drawn || !visible) return;
+    logRef.current?.focus({ preventScroll: true });
+    setLogFocus(false);
+  }, [logFocus, drawn, visible, setLogFocus]);
   const stickyRef = useRef<HTMLDivElement>(null);
   const stickyHeight = useRef(0);
 

@@ -34,6 +34,8 @@ interface SessionEdit {
   /** `refocus`: the focus goes back to the row (↩, esc); a click elsewhere keeps it where it went. */
   end(refocus: boolean): void;
   focus(conversationId: string | null): void;
+  /** A list that goes ends an edit of one of its rows (no row to give the focus back to). */
+  releaseRows(conversationIds: readonly string[]): void;
 }
 
 export const useSessionEdit = create<SessionEdit>()((set, get) => ({
@@ -46,4 +48,8 @@ export const useSessionEdit = create<SessionEdit>()((set, get) => ({
   setBusy: (busy) => set({ busy }),
   end: (refocus) => set({ renaming: null, text: '', busy: false, focusRow: refocus ? get().renaming : null }),
   focus: (focusRow) => set({ focusRow }),
+  releaseRows: (ids) => {
+    const { renaming } = get();
+    if (renaming !== null && ids.includes(renaming)) set({ renaming: null, text: '', busy: false, focusRow: null });
+  },
 }));

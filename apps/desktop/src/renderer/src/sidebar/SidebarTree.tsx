@@ -166,6 +166,7 @@ function CollectionItem({ node, ctx }: { node: CollectionNode; ctx: RowContext }
  */
 export function SidebarTree(props: SidebarTreeProps) {
   const { model, scope, specials, settled, expanded, rowSize } = props;
+  const scrollsAsOne = props.after !== undefined;
   const { env } = useCommands();
   const editKey = useSidebarEdit((s) => (s.edit === null ? null : s.edit.kind === 'new' ? DRAFT_KEY : s.edit.id));
   const editParent = useSidebarEdit((s) => (s.edit?.kind === 'new' ? s.edit.parentId : undefined));
@@ -476,12 +477,16 @@ export function SidebarTree(props: SidebarTreeProps) {
     if (index < 0) return;
     revealed.current = signature;
     const top = specials.length * rowSize + HEADING_HEIGHT + index * rowSize;
-    if (top < tree.scrollTop || top + rowSize > tree.scrollTop + tree.clientHeight) {
+    // With a section under it the tree is as tall as its rows and the sidebar's scroll area is what scrolls.
+    const outer = scrollsAsOne ? tree.closest<HTMLElement>('.sidebar-scroll') : null;
+    const scroller = outer ?? tree;
+    const at = outer ? tree.getBoundingClientRect().top - outer.getBoundingClientRect().top + outer.scrollTop + top : top;
+    if (at < scroller.scrollTop || at + rowSize > scroller.scrollTop + scroller.clientHeight) {
       ownScroll.current = true;
       requestAnimationFrame(() => void (ownScroll.current = false));
-      tree.scrollTop = Math.max(0, Math.round(top - (tree.clientHeight - rowSize) / 2));
+      scroller.scrollTop = Math.max(0, Math.round(at - (scroller.clientHeight - rowSize) / 2));
     }
-  }, [editKey, editParent, model, expanded, specials.length, rowSize]);
+  }, [editKey, editParent, model, expanded, specials.length, rowSize, scrollsAsOne]);
 
   // A row that scrolled out of the virtual window takes its field along: the edit ends with the text typed so far.
   useEffect(() => {
@@ -547,7 +552,7 @@ export function SidebarTree(props: SidebarTreeProps) {
   return (
     <div
       className="sidebar-body"
-      data-after={props.after !== undefined || undefined}
+      data-after={scrollsAsOne || undefined}
       onPointerDownCapture={onPointerDownCapture}
       onKeyDownCapture={onKeyDownCapture}
       onDragStartCapture={onDragStartCapture}

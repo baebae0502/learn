@@ -29,21 +29,19 @@
   .section-label .icon-btn {
     margin-right: -6px; /* local: the 22 px button's glyph lines up with the rows' counts (mockup) */
   }
-  /* With the tutor's 세션 section under it (T1a spec 8.9, mockup .tu-lib-sessions), the tree takes its rows' height and the section
-     follows right under the collections; when the two are taller than the sidebar each gives up room in proportion and scrolls. */
+  /* With the tutor's 세션 section under it (spec 8.9, mockup .tu-lib-sessions), the sidebar's sections scroll as one: the tree takes
+     its rows' height and the sidebar's own scroll area moves 라이브러리, 컬렉션 and 세션 together, the tag selector pinned under it. */
+  .sidebar-body[data-after] {
+    flex: none;
+  }
   .sidebar-body[data-after] .sidebar-tree:not([data-fit]) {
-    flex: 0 1 auto;
+    flex: none;
   }
   .library-sessions {
-    flex: 0 1 auto;
-    min-height: calc(24px + var(--space-12) + 3 * var(--row-height)); /* local: the label and three rows stay in sight */
-    display: flex;
-    flex-direction: column;
+    flex: none;
   }
-  .library-sessions .session-tree {
-    flex: 0 1 auto;
-    min-height: 0;
-    overflow-y: auto;
+  .library-sessions > .section-label {
+    margin-top: var(--space-12);
   }
   /* An item's line: a label, not a row to press (mockup navRow muted). */
   .session-item-line {
@@ -176,7 +174,11 @@
     flex: 1 1 0;
     min-height: 0;
     overflow-y: auto;
-    padding: var(--space-4) 0;
+    padding: 0 0 var(--space-4);
+  }
+  /* Each day after the first keeps the 12 px a section label stands off what is above it (its label is its group's first child). */
+  .session-group + .session-group > .section-label {
+    margin-top: var(--space-12);
   }
   .reader-sessions .nav-row {
     margin-inline: var(--space-8);

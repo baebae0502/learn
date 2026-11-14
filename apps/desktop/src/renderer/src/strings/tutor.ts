@@ -266,8 +266,12 @@ export const tutor = {
     libraryHeading: '세션',
     emptyTitle: '이\u00a0자료의 세션이 없습니다',
     emptyText: '튜터에게 질문하면 여기에 생깁니다.',
-    /** When a long name wraps, the time (and the fake agent's mark) stays one piece on the line after it, the dot with the name. */
-    tip: (name: string, when: string, fake: boolean) => `${name}\u00a0· ${`${when}${fake ? ' · 가짜 에이전트' : ''}`.replace(/ /g, '\u00a0')}`,
+    /** When it was last talked in, and the fake agent's mark: a row's description, and its tooltip after the name — one piece, so a long name wraps before it. */
+    when: (time: string, fake: boolean) => `${time}${fake ? ' · 가짜 에이전트' : ''}`.replace(/ /g, '\u00a0'),
+    /** The row's tooltip: the name, then `when` (the dot stays with the name when it wraps). */
+    tip: (name: string, when: string) => `${name}\u00a0· ${when}`,
+    /** The pane's read that failed: its title (the library list's own words, for this list). */
+    listFailed: '세션 목록을 불러오지 못했습니다',
     nameLabel: '세션 이름',
     nameTooLong: '세션 이름은 200자까지 쓸 수 있습니다.',
     deleted: '세션을 삭제했습니다',

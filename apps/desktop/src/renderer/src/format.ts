@@ -32,15 +32,31 @@ export function formatTimeOfDay(d: Date): string {
   return `${h < 12 ? '오전' : '오후'} ${h % 12 === 0 ? 12 : h % 12}:${m < 10 ? '0' : ''}${m}`;
 }
 
+/** Whether `d` falls on today or yesterday, the two days named rather than dated. */
+const nearDay = (d: Date, now: Date): 'today' | 'yesterday' | null => {
+  if (dayKey(d) === dayKey(now)) return 'today';
+  return dayKey(d) === dayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)) ? 'yesterday' : null;
+};
+
+/** The day of `d` as design-spec 9 names it: "오늘", "어제", otherwise "2026. 10. 12." (the session list's day groups). */
+export function formatDay(d: Date, now: Date = new Date()): string {
+  const near = nearDay(d, now);
+  if (near !== null) return near === 'today' ? t.common.today : t.common.yesterday;
+  return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()}.`;
+}
+
 /** design-spec 9: "오늘 오전 9:24", "어제 오후 8:40", otherwise "2026. 10. 12.". */
 export function formatDate(iso: string, now: Date = new Date()): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return t.common.noValue;
-  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-  const time = formatTimeOfDay(d);
-  if (dayKey(d) === dayKey(now)) return `${t.common.today} ${time}`;
-  if (dayKey(d) === dayKey(yesterday)) return `${t.common.yesterday} ${time}`;
-  return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()}.`;
+  return nearDay(d, now) === null ? formatDay(d, now) : `${formatDay(d, now)} ${formatTimeOfDay(d)}`;
+}
+
+/** formatDate with the time on an older day too ("2026. 10. 12. 오후 4:52"): where the day alone is already said nearby (a session's group). */
+export function formatDayAndTime(iso: string, now: Date = new Date()): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return t.common.noValue;
+  return `${formatDay(d, now)} ${formatTimeOfDay(d)}`;
 }
 
 /** Milliseconds from `now` to the next local midnight, when "오늘" and "어제" move on (useNow). */

@@ -2,12 +2,10 @@ import { useQuery } from '@tanstack/react-query';
 import type { RecentSessions, SessionSummary } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { useCommands } from '../commands/CommandProvider';
-import { runCommand } from '../commands/registry';
+import { isCommandEnabled } from '../commands/registry';
 import { keys } from '../data/queries';
 import { t } from '../strings';
-import { showSession } from '../tutor/sessions/sessionActions';
 import { SessionTree, type SessionGroupView } from '../tutor/sessions/SessionRow';
-import { readerScopes } from '../viewers/readerScope';
 
 /** sessions:recent: the items talked about last and their newest sessions; main's notices read it again (data/queries.ts). */
 export const useRecentSessions = () => useQuery({ queryKey: keys.sessionsRecent, queryFn: () => unwrap(api().sessions.recent()) });
@@ -23,9 +21,9 @@ export const recentGroups = (recent: RecentSessions | undefined): SessionGroupVi
  */
 export function LibrarySessions({ groups }: { groups: readonly SessionGroupView[] }) {
   const { env } = useCommands();
+  // Only while 열기 could run (a sheet or a panel holding the window refuses it); the rest waits on the edit check (openSession).
   const open = (s: SessionSummary) => {
-    if (!runCommand('item.open', env, { itemIds: [s.itemId] })) return;
-    showSession(readerScopes.get(s.itemId), s.id);
+    if (isCommandEnabled('item.open', env, { itemIds: [s.itemId] })) env.openSession(s.itemId, s.id);
   };
   return (
     <div className="library-sessions" data-testid="library-sessions">

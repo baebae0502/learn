@@ -18,7 +18,7 @@ export function registerSessionsIpc(handle: Handle, deps: IpcDeps): void {
 
   handle(Channels.sessions.rename, sessionsRenameInput, ({ conversationId, title }) => {
     const r = repo();
-    const renamed = r.rename(conversationId, title, nowIso());
+    const renamed = r.rename(conversationId, title);
     announce(r, 'renamed', conversationId);
     return renamed;
   });

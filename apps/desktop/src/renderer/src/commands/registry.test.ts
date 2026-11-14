@@ -85,6 +85,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   cancelImport: vi.fn(),
   renameSession: vi.fn(),
   deleteSession: vi.fn(),
+  openSession: vi.fn(),
   currentSession: () => null,
   focusedSession: () => null,
   modal: false,

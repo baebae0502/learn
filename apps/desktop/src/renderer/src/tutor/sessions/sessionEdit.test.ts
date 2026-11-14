@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionSummary } from '@learn/domain';
-import { renamedTitle } from './sessionEdit';
+import { renamedTitle, useSessionEdit } from './sessionEdit';
 
 const session = (title: string, renamed: boolean): SessionSummary => ({
   id: 's', itemId: 'i', title, renamed, agent: 'fake', mixedAgents: false, createdAt: '2026-11-10T00:00:00.000Z', updatedAt: '2026-11-10T00:00:00.000Z',
@@ -26,3 +26,14 @@ describe('renamedTitle (T1a spec 8.9): what a finished name field asks of sessio
     expect(renamedTitle('가'.repeat(201), session('x', false))).toBe('tooLong');
   });
 });
+
+describe('the edit store: a list that goes takes its open edit with it', () => {
+  it('a rename of a row the list held ends with it, nothing to refocus; another list\'s edit stays', () => {
+    useSessionEdit.getState().begin('a');
+    useSessionEdit.getState().releaseRows(['x', 'y']);
+    expect(useSessionEdit.getState().renaming).toBe('a');
+    useSessionEdit.getState().releaseRows(['a', 'b']);
+    expect(useSessionEdit.getState()).toMatchObject({ renaming: null, busy: false, focusRow: null });
+  });
+});
+

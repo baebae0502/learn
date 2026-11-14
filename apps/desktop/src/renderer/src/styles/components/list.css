@@ -75,6 +75,11 @@
     font: var(--type-body);
     outline: none;
   }
+  /* Off the Mac, Chromium paints the selected name in its own blue; the accent keeps it on the tokens, as the other fields do. */
+  :root:not([data-platform='darwin']) .nav-row .name-field::selection {
+    background: color-mix(in oklch, var(--accent) 35%, transparent);
+    color: inherit;
+  }
   .nav-row .rename-note {
     position: absolute;
     left: calc(var(--space-16) + var(--indent, 0) * 16px + 16px + var(--space-2)); /* local: under the field: past the gutter and the icon */

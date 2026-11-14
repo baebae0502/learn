@@ -10,6 +10,14 @@ describe('the tutor store of one reader tab', () => {
   it('starts on a new empty session', () => {
     expect(createTutorTabStore().getState()).toMatchObject({ conversationId: null });
   });
+  it('owes the conversation column the focus until it takes it, and never across another session', () => {
+    const a = createTutorTabStore();
+    a.getState().setConversation('3f0d9a0e-6b1e-4c1e-8f6a-1d2f9b7c5e11');
+    a.getState().setLogFocus(true);
+    expect(a.getState().logFocus).toBe(true);
+    a.getState().setConversation(null);
+    expect(a.getState().logFocus).toBe(false);
+  });
   it('keeps the session this tab shows apart from every other tab\'s', () => {
     const a = createTutorTabStore();
     const b = createTutorTabStore();
@@ -24,8 +32,8 @@ describe('the tutor store of one reader tab', () => {
   });
   it('holds nothing but the tab\'s own fields', () => {
     expect(Object.keys(createTutorTabStore().getState()).sort()).toEqual([
-      'alert', 'attached', 'choosing', 'composerFocus', 'conversationId', 'currentCite', 'drafts', 'droppedAnswers', 'focusComposer', 'live', 'noteDropped', 'notice',
-      'retryRefused', 'say', 'sent', 'setAttached', 'setChoosing', 'setConversation', 'setCurrentCite', 'setDraft', 'setLive', 'setNotice', 'setRetryRefused', 'setSent',
+      'alert', 'attached', 'choosing', 'composerFocus', 'conversationId', 'currentCite', 'drafts', 'droppedAnswers', 'focusComposer', 'live', 'logFocus', 'noteDropped', 'notice',
+      'retryRefused', 'say', 'sent', 'setAttached', 'setChoosing', 'setConversation', 'setCurrentCite', 'setDraft', 'setLive', 'setLogFocus', 'setNotice', 'setRetryRefused', 'setSent',
       'setWaiting', 'waiting',
     ]);
   });

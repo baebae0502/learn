@@ -353,12 +353,12 @@ export class ConversationsRepository {
     return { session: toSummary(summary), item, messages };
   }
 
-  rename(conversationId: string, title: string | null, now: string): SessionSummary {
+  /** The name alone: a rename is no talk, so the session keeps its last turn's time and its place in the lists. */
+  rename(conversationId: string, title: string | null): SessionSummary {
     const t = parse(titleSchema, title);
     const id = parse(idSchema, conversationId);
-    const at = parse(timeSchema, now);
     return this.db.transaction(() => {
-      const r = this.db.prepare('UPDATE conversations SET title = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL').run(t, at, id);
+      const r = this.db.prepare('UPDATE conversations SET title = ? WHERE id = ? AND deleted_at IS NULL').run(t, id);
       if (r.changes === 0) throw new LearnError('NOT_FOUND', '세션을 찾을 수 없습니다.');
       return toSummary(this.db.prepare(`${SUMMARY} WHERE c.id = ?`).get(id) as SummaryRow);
     })();

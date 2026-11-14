@@ -144,6 +144,12 @@ export interface TutorTabStore {
   /** Counts the asks for the composer's focus, its caret at the end of the text (a question given back). */
   composerFocus: number;
   focusComposer(): void;
+  /**
+   * The conversation column is owed the focus once it is drawn and can be seen: a session row's click that opened the folded panel
+   * and folded the sidebar holding the row. Another session cancels it.
+   */
+  logFocus: boolean;
+  setLogFocus(on: boolean): void;
 }
 
 /** How many dropped answers a tab remembers: only a question still on its way can meet one. */
@@ -169,7 +175,7 @@ export function createTutorTabStore(tabId = ''): StoreApi<TutorTabStore> {
     setConversation: (conversationId) => {
       if (get().conversationId === conversationId) return;
       keepSession(tabId, conversationId);
-      set({ conversationId, live: null, currentCite: null, waiting: null, notice: null, retryRefused: null, alert: null });
+      set({ conversationId, live: null, currentCite: null, waiting: null, notice: null, retryRefused: null, alert: null, logFocus: false });
     },
     choosing: false,
     setChoosing: (choosing) => set({ choosing }),
@@ -201,6 +207,8 @@ export function createTutorTabStore(tabId = ''): StoreApi<TutorTabStore> {
     say: (a) => set(({ alert }) => ({ alert: { ...a, at: (alert?.at ?? 0) + 1 } })),
     composerFocus: 0,
     focusComposer: () => set(({ composerFocus }) => ({ composerFocus: composerFocus + 1 })),
+    logFocus: false,
+    setLogFocus: (logFocus) => set({ logFocus }),
   }));
 }
 

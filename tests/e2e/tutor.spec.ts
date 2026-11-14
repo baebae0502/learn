@@ -685,14 +685,29 @@ async function recordCites(page: Page): Promise<() => Promise<string[]>> {
   return () => page.evaluate(() => (window as unknown as { __cites: string[] }).__cites);
 }
 
+/**
+ * `target` brought into view in the tutor's column, once the column has handled that scroll (its scroll event has run). The browser
+ * runs a scroll's event at the next frame, and the session's name row comes or goes there, moving the column by its height; a pointer
+ * aimed right after a scroll — Playwright aims at the layout just after its own — can land where the target was before that event.
+ */
+async function inViewSettled(target: ReturnType<Page['locator']>): Promise<void> {
+  await target.evaluate(
+    (el) =>
+      new Promise<void>((done) => {
+        const log = el.closest<HTMLElement>('[data-testid="tutor-log"]');
+        const before = log?.scrollTop;
+        el.scrollIntoView({ block: 'nearest' });
+        if (!log || log.scrollTop === before) return done();
+        log.addEventListener('scroll', () => done(), { once: true });
+      }),
+  );
+}
+
 /** The pointer over this element as a person brings it there, for a hover tooltip (hoverLikeUser, for a locator). */
 async function hoverOver(page: Page, target: ReturnType<Page['locator']>): Promise<void> {
   const [x, y] = await page.evaluate(() => [Math.round(innerWidth / 2), Math.round(innerHeight / 2)] as const);
   await page.mouse.move(x, y);
-  // Brought into view first, and let settle: a column scrolled away from its head shows the session's name above it, which moves what
-  // is under the pointer (a short window scrolls the column to reach a chip).
-  await target.scrollIntoViewIfNeeded();
-  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  await inViewSettled(target);
   await target.hover();
 }
 
@@ -1021,6 +1036,60 @@ test('while an answer comes the column keeps to its bottom; scrolled up it stays
     await log.evaluate((el) => void (el.scrollTop = 0));
     await expect(page.getByTestId('tutor-sticky')).toBeHidden();
     await expect(latest).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+/**
+ * The log scrolled to `top` in one step, then, frame by frame, the top of `selector`'s box and whether the session's name row shows:
+ * in the frame of the scroll (its scroll event has run by the frame's callbacks), and 1, 2 and 10 frames later.
+ */
+const framesAfterScroll = (page: Page, top: number, selector: string): Promise<{ y: number[]; row: boolean[] }> =>
+  page.evaluate(
+    ([to, sel]) =>
+      new Promise((done) => {
+        const log = document.querySelector<HTMLElement>('[data-testid="tutor-log"]')!;
+        const row = document.querySelector<HTMLElement>('[data-testid="tutor-sticky"]')!;
+        const out = { y: [] as number[], row: [] as boolean[] };
+        const at = new Set([0, 1, 2, 10]);
+        let frame = 0;
+        const read = () => {
+          if (at.has(frame)) {
+            out.y.push(Math.round(document.querySelector(sel!)!.getBoundingClientRect().top * 10) / 10);
+            out.row.push(!row.hidden);
+          }
+          if (frame === 10) return done(out);
+          frame += 1;
+          requestAnimationFrame(read);
+        };
+        log.scrollTop = Number(to);
+        requestAnimationFrame(read);
+      }),
+    [top, selector] as const,
+  );
+
+test('the session\'s name row comes and goes in the frame of the scroll that crosses the head line, so the text in view never jumps', async ({}, testInfo) => {
+  const { app, page, itemId } = await atSession(testInfo, { height: 800 });
+  try {
+    await tutorFakeScript(app, 'answer');
+    const asked = await ask(page, { itemId, conversationId: null, text: '이 장은 무엇을 다루나요?', selection: null, reader: READER_41 });
+    await turnEnded(page, asked.conversationId, asked.tutorMessageId);
+    const log = page.getByTestId('tutor-log');
+    const row = page.getByTestId('tutor-sticky');
+    await expect.poll(() => log.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeGreaterThan(300);
+    // The column followed the answer to its bottom, past the head line: the name row shows.
+    await expect.poll(() => fromBottom(page)).toBeLessThanOrEqual(24);
+    await expect(row).toBeVisible();
+    // Up to the top in one step (Home, a fling): the row goes in that frame; the question is where the frame put it, and stays.
+    const up = await framesAfterScroll(page, 0, '[data-testid="tutor-question"]');
+    expect(up.y, 'the first question\'s top in the frame of the scroll up, then 1, 2 and 10 frames later').toEqual([up.y[0], up.y[0], up.y[0], up.y[0]]);
+    expect(up.row, 'the row in the frame of the scroll up, and after').toEqual([false, false, false, false]);
+    // Down past the head line from the top: the row comes in that frame, and the text in view stays where the scroll put it.
+    const past = await page.getByTestId('tutor-session-head').evaluate((el) => (el as HTMLElement).offsetTop + (el as HTMLElement).offsetHeight + 40);
+    const down = await framesAfterScroll(page, past, '[data-testid="tutor-answer-text"]');
+    expect(down.y, 'the answer\'s top in the frame of the scroll down, then 1, 2 and 10 frames later').toEqual([down.y[0], down.y[0], down.y[0], down.y[0]]);
+    expect(down.row, 'the row in the frame of the scroll down, and after').toEqual([true, true, true, true]);
   } finally {
     await app.close();
   }
@@ -1682,10 +1751,8 @@ test('every control of the tutor is a 28 px target or a small one with 4 px clea
     await page.waitForFunction(() => window.__learnPdf !== undefined);
     await selectInPage(page, 0, 0, 30);
     await expect(attachedChip(page)).toBeVisible();
-    // The chip's row made the column follow its end, past the first question. Back at the top the session's name row goes a render
-    // after the scroll and moves the column 28 px up: a click must wait for it, or its pointer comes up off the line it went down on.
-    await page.getByTestId('tutor-log').evaluate((el) => el.scrollTo({ top: 0 }));
-    await expect(page.getByTestId('tutor-sticky')).toBeHidden();
+    // The chip's row made the column follow its end, past the first question: back in view, and settled, before the click.
+    await inViewSettled(page.getByTestId('tutor-question').getByTestId('sent-scope'));
     await page.getByTestId('tutor-question').getByTestId('sent-scope').click();
     await expect(page.getByTestId('sent-scope-list')).toBeVisible();
     expect(await smallTargets(page, { inline: true }), 'the positive control: an inline cite chip is under 22').toEqual(expect.arrayContaining([expect.stringMatching(/^cite-chip "\d+쪽" \d+×18$/)]));

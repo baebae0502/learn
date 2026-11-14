@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { ArrowDown, CircleAlert } from 'lucide-react';
 import type { MessageView } from '@learn/domain';
 import { useItem, useItemDetail } from '../data/queries';
@@ -110,6 +111,7 @@ export function Conversation({ conversationId, visible }: { conversationId: stri
   visibleRef.current = visible;
   const [latest, setLatest] = useState(false);
   const [stuck, setStuck] = useState(false);
+  const stuckRef = useRef(false);
   // Owed the focus (a session row's click opened the folded panel and folded its sidebar): taken once the column is drawn and seen,
   // let go when the read fails or the panel is folded again first.
   const logFocus = useTutorTab((s) => s.logFocus);
@@ -124,12 +126,20 @@ export function Conversation({ conversationId, visible }: { conversationId: stri
   const stickyRef = useRef<HTMLDivElement>(null);
   const stickyHeight = useRef(0);
 
-  /** 최신으로 shows while the user is away from the bottom and an answer comes, or text came below that they have not seen. */
-  const settle = useCallback(() => {
+  /**
+   * 최신으로 shows while the user is away from the bottom and an answer comes, or text came below that they have not seen. The name row
+   * shows once the column is scrolled past its head line. `scrolled`: called from a scroll (or the column's own follow), which the
+   * frame being drawn already holds — a row that comes or goes is drawn in that frame too, with its scroll make-up, or the text would
+   * jump by the row's height a frame later (at the top the log cannot scroll to make up for it).
+   */
+  const settle = useCallback((scrolled = false) => {
     const el = logRef.current;
     if (!el) return;
     const head = headRef.current;
-    setStuck(head !== null && el.scrollTop > head.offsetTop + head.offsetHeight);
+    const next = head !== null && el.scrollTop > head.offsetTop + head.offsetHeight;
+    if (scrolled && next !== stuckRef.current) flushSync(() => setStuck(next));
+    else setStuck(next);
+    stuckRef.current = next;
     setLatest(!following.current && !nearBottom(el) && (streamingRef.current || unread.current));
   }, []);
   const toBottom = useCallback(() => {
@@ -146,7 +156,7 @@ export function Conversation({ conversationId, visible }: { conversationId: stri
       unread.current = false;
     } else if (el.scrollTop < lastTop.current) following.current = nextFollow(following.current, 'scrolled-up');
     lastTop.current = el.scrollTop;
-    settle();
+    settle(true);
   };
 
   // The column's content or its own height changed: keep to the bottom while following, else count what came below as unread.
@@ -163,7 +173,7 @@ export function Conversation({ conversationId, visible }: { conversationId: stri
       if (following.current) toBottom();
       // What the answer wrote below, not a list opened above, is unread.
       else if (grew && streamingRef.current) unread.current = true;
-      settle();
+      settle(true);
     });
     watch.observe(el);
     watch.observe(content);

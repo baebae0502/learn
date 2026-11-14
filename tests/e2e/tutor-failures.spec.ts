@@ -9,7 +9,7 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import { expectNoSeriousA11y } from './a11y';
 import type { LearnPdfProbe } from '../../apps/desktop/src/renderer/src/viewers/pdf/anchorProbe';
 import {
-  FIXTURES, expectTooltipText, hardKill, hoverLikeUser, importPaths, launch, mainWindow, openItem, readClipboard, runPalette, textExtraction, textIdle,
+  FIXTURES, expectDisabledReason, expectTooltipText, hardKill, hoverLikeUser, importPaths, launch, mainWindow, openItem, readClipboard, runPalette, textExtraction, textIdle,
   tutorFakeLog, tutorFakeScript, tutorKillAgent, tutorNetwork, tutorTimeouts, type Session,
 } from './helpers';
 import { consentAndChoose, installFakeAgents } from './tutor-helpers';
@@ -23,7 +23,7 @@ declare global {
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const UNSET = { LEARN_E2E_SETTINGS: '' };
 const dirs = (testInfo: { outputPath(...p: string[]): string }) => [testInfo.outputPath('library'), testInfo.outputPath('userdata')] as const;
-const nb = (s: string) => s.replace(/ /g, ' ');
+const nb = (s: string) => s.replace(/\u00a0/g, ' ').replace(/\u2060/g, '');
 
 /** paper-100.pdf with its body text read, open at 1440 wide; the consent given and `agent` chosen: the tutor on a new empty session. */
 async function atSession(testInfo: { outputPath(...p: string[]): string }, env: Record<string, string> = {}, agent: 'fake' | 'claude' = 'fake'): Promise<Session & { itemId: string }> {
@@ -140,6 +140,12 @@ test('during the answer: the part that came stays, cut, with 다시 보내기 �
     await expect(page.getByTestId('tutor-alert')).toHaveText('가짜 에이전트가 답하는 도중 멈췄습니다');
     await hoverLikeUser(page, 'tutor-resend');
     await expectTooltipText(page, '같은 질문을 처음부터 다시 묻습니다', 'tutor-resend');
+    // While the item opens (the reader's own flag) 다시 보내기 waits, soft-disabled with the composer's words for it.
+    const ready = (on: boolean) => page.evaluate((v) => (window as unknown as { __learnReader: { getState(): { setPdf(p: { ready: boolean }): void } } }).__learnReader.getState().setPdf({ ready: v }), on);
+    await ready(false);
+    await expectDisabledReason(answer.getByTestId('tutor-resend'), '자료를 여는 중입니다');
+    await ready(true);
+    await expectDisabledReason(answer.getByTestId('tutor-resend'), null);
     await expectNoSeriousA11y(page, 'tutor failure during the answer');
     const before = await thread(page, itemId);
     expect(before.messages.map(([, role, status]) => [role, status])).toEqual([['user', 'complete'], ['tutor', 'failed']]);
@@ -253,7 +259,7 @@ test('the agent killed mid-answer: "답하는 도중 멈췄습니다" under the 
   }
 });
 
-test('Learn killed mid-answer: on the next start the answer reads as cut off, with 다시 보내기 even with no text, and it asks again', async ({}, testInfo) => {
+test('Learn killed mid-answer: on the next start the answer reads as cut off, with 다시 보내기, and it asks again', async ({}, testInfo) => {
   let s = await atSession(testInfo);
   const { itemId } = s;
   let cut = '';
@@ -357,6 +363,49 @@ test('a session whose thread cannot be read says so in the column, and 다시 �
     await failed.getByRole('button', { name: '다시 시도' }).click();
     await expect.poll(refusals).toBe(reads + 1);
     await expect(failed).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
+test('Learn killed before any text came: on the next start the empty answer reads as cut off, with 다시 보내기', async ({}, testInfo) => {
+  let s = await atSession(testInfo);
+  const { itemId } = s;
+  let cut = '';
+  let killed = false;
+  try {
+    await tutorFakeScript(s.app, 'hang');
+    await sendFromComposer(s.page, '답이 오기 전에 끊길 질문입니다.');
+    // The agent has the question and says nothing: the answer row is there, still coming, with no text.
+    await expect.poll(() => prompts(s.app)).toBe(1);
+    await expect(s.page.getByTestId('tutor-answer')).toHaveAttribute('data-status', 'streaming');
+    await expect(s.page.getByTestId('tutor-answer-text')).toHaveCount(0);
+    cut = (await thread(s.page, itemId)).conversationId;
+    await hardKill(s.app);
+    killed = true;
+  } finally {
+    if (!killed) await s.app.close();
+  }
+  s = Object.assign(await launch(...dirs(testInfo), { env: UNSET }), { itemId });
+  const { app, page } = s;
+  try {
+    await (await mainWindow(app)).evaluate((w) => w.setContentSize(1440, w.getContentSize()[1]!));
+    await expect.poll(async () => (await thread(page, itemId)).messages.map(([, role, status]) => `${role}:${status}`), { message: 'the cut answer mended' }).toEqual(['user:complete', 'tutor:failed']);
+    await expect(page.getByTestId('item-row').or(page.getByTestId('pdf-viewer')).first()).toBeVisible();
+    await page.evaluate(([k, v]) => sessionStorage.setItem(k!, v!), [`learn.tutor.session.${itemId}`, cut] as const);
+    if ((await page.getByTestId('pdf-viewer').count()) > 0) {
+      await page.reload();
+      await expect(page.getByTestId('app-ready')).toBeAttached();
+    } else await openItem(page, 'paper-100');
+    const answer = page.getByTestId('tutor-answer');
+    await expect(answer).toHaveAttribute('data-status', 'failed');
+    await expect(answer.getByTestId('tutor-answer-text')).toHaveCount(0);
+    const failure = answer.getByTestId('tutor-failure');
+    await expect(failure).toHaveAttribute('data-code', 'INTERRUPTED');
+    await expect(failure.getByTestId('tutor-failure-title')).toHaveText('답을 받는 도중 Learn이 종료되었습니다');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
+    await expect(failure.getByTestId('tutor-resend')).toBeVisible();
+    await expectDisabledReason(failure.getByTestId('tutor-resend'), null);
   } finally {
     await app.close();
   }

@@ -7,10 +7,10 @@ import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Icon } from '../ui/Icon';
 import { Tooltip } from '../ui/Tooltip';
-import { useReader } from '../viewers/pdf/readerStore';
 import { CommandText } from './CommandText';
 import { failureCopy, failureTone, type FailureCode } from './failureCopy';
 import { useAgents } from './useAgents';
+import { useTurnHeld } from './useSend';
 
 const { failure: words } = t.tutor;
 
@@ -49,14 +49,14 @@ function useLoginCommand(agent: AgentId): string | null {
 }
 
 /**
- * A button of a notice that sends a turn: off with the composer's reason while the item still opens (a turn carries the reader's
- * numbers), else its own tooltip when it has one.
+ * A button of a notice that sends a turn: off, with the composer's words for the same state, while a turn cannot go (the item still
+ * opens, a question waits or is on its way, an answer of this session comes — useTurnHeld); else its own tooltip when it has one.
  */
 export function SendingButton({ label, tip, onPress, testId }: { label: string; tip?: string; onPress?: (() => void) | undefined; testId: string }) {
-  const opening = useReader((s) => s.pdf?.ready !== true);
-  if (opening) {
+  const held = useTurnHeld();
+  if (held !== null) {
     return (
-      <Button size="small" isDisabled disabledReason={t.tutor.composer.sendOpening} testId={testId}>
+      <Button size="small" isDisabled disabledReason={held} testId={testId}>
         {label}
       </Button>
     );
@@ -69,17 +69,22 @@ export function SendingButton({ label, tip, onPress, testId }: { label: string; 
   return tip === undefined ? button : <Tooltip label={tip}>{button}</Tooltip>;
 }
 
+/** How much of a failure's notice is drawn: all of it; all but its sentence; its title alone. */
+export type NoticeForm = 'full' | 'noBody' | 'title';
+
 /**
  * What a failed turn shows (spec 8.8, 13; mockup ?state=8): before any answer, where its turn would have been — the question is back in
  * the composer; during one, under the part that came — with 다시 보내기 (its tooltip says it asks the same question from the start), never
  * after a lockdown. The login's failure shows the command to run, copied as shown; a not-ready or not-started agent, 에이전트 고르기….
- * `brief`: the title alone (a 원문 근거 요청 that failed has nothing in the composer to point at).
+ * `form`: `noBody` for a 원문 근거 요청 that failed (nothing is in the composer for the sentence to point at; the command and 에이전트
+ * 고르기… stay), `title` under an answer that is no longer the thread's last (nothing can be resent from there).
  */
-export function TurnFailure({ code, phase, agent, brief = false, onResend }: { code: FailureCode; phase: 'before' | 'during'; agent: AgentId; brief?: boolean; onResend?(): void }) {
+export function TurnFailure({ code, phase, agent, form = 'full', onResend }: { code: FailureCode; phase: 'before' | 'during'; agent: AgentId; form?: NoticeForm; onResend?(): void }) {
   const loginCommand = useLoginCommand(agent);
   const { run } = useCommands();
   const view = failureCopy({ code, phase, agent, loginCommand });
   const buttons = view.actions.filter((a) => a !== 'copy-login' && (a !== 'resend' || onResend !== undefined));
+  const brief = form === 'title' || (form === 'noBody' && view.command === null && buttons.length === 0);
   return (
     <TutorNotice
       icon={ICON[code] ?? CircleAlert}
@@ -87,9 +92,9 @@ export function TurnFailure({ code, phase, agent, brief = false, onResend }: { c
       title={view.title}
       brief={brief}
       testId="tutor-failure"
-      data={{ 'data-code': code, 'data-phase': phase }}
+      data={{ 'data-code': code, 'data-phase': phase, 'data-form': form }}
     >
-      <div className="nt-text">{view.body}</div>
+      {form === 'full' && <div className="nt-text">{view.body}</div>}
       {view.command !== null && (
         <div className="nt-cmd">
           <CommandText command={view.command} testId="tutor-failure-copy" />

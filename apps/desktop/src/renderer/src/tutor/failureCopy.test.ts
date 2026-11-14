@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CitationCheck, MessageStatus } from '@learn/domain';
-import { canReground, failureCopy, failureTone, regroundBubble } from './failureCopy';
+import { answerCheck, canReground, failureCopy, failureTone, knownPageCount, regroundBubble, unverifiedForm } from './failureCopy';
+import { t } from '../strings';
 
 const CLAUDE = 'Claude Code';
 const CMD = 'CLAUDE_CONFIG_DIR="$HOME/Library/Application Support/Learn/Tutor/agents/claude" claude auth login';
@@ -10,7 +11,7 @@ describe('what a failed turn says (spec 8.8, 13; the approved mockup ?state=8&fa
   it('before any answer: the agent stopped — the question is back in the composer, ↩ sends it again', () => {
     expect(failureCopy({ code: 'AGENT_EXITED', phase: 'before', ...claude })).toEqual({
       title: `${CLAUDE}가 답하기 전에 멈췄습니다`,
-      body: '답을 받지 못했습니다. 잠시 뒤 입력창에서 ↩로 다시 보내세요. 질문은 입력창에 그대로 있습니다.',
+      body: '답을 받지 못했습니다. 잠시 뒤 입력창에서 ↩\u2060로 다시 보내세요. 질문은 입력창에 그대로 있습니다.',
       actions: [],
       command: null,
     });
@@ -19,13 +20,13 @@ describe('what a failed turn says (spec 8.8, 13; the approved mockup ?state=8&fa
   it('before any answer: offline, not answering in time', () => {
     expect(failureCopy({ code: 'OFFLINE', phase: 'before', ...claude })).toEqual({
       title: '인터넷에 연결되어 있지 않습니다',
-      body: '질문을 보내지 못했습니다. 연결을 확인한 뒤 입력창에서 ↩로 보내세요. 질문은 입력창에 그대로 있습니다.',
+      body: '질문을 보내지 못했습니다. 연결을 확인한 뒤 입력창에서 ↩\u2060로 보내세요. 질문은 입력창에 그대로 있습니다.',
       actions: [],
       command: null,
     });
     expect(failureCopy({ code: 'AGENT_TIMEOUT', phase: 'before', ...claude })).toEqual({
       title: `${CLAUDE}가 답하지 않습니다`,
-      body: '답을 받지 못했습니다. 잠시 뒤 입력창에서 ↩로 다시 보내세요. 질문은 입력창에 그대로 있습니다.',
+      body: '답을 받지 못했습니다. 잠시 뒤 입력창에서 ↩\u2060로 다시 보내세요. 질문은 입력창에 그대로 있습니다.',
       actions: [],
       command: null,
     });
@@ -33,7 +34,7 @@ describe('what a failed turn says (spec 8.8, 13; the approved mockup ?state=8&fa
   it('before any answer: the login, with its command to copy (the chooser\'s own)', () => {
     expect(failureCopy({ code: 'AGENT_LOGIN', phase: 'before', agent: 'claude', loginCommand: CMD })).toEqual({
       title: `${CLAUDE} 로그인이 필요합니다`,
-      body: '질문을 보내지 못했습니다. 터미널에서 아래 명령으로 로그인한 뒤 입력창에서 ↩로 보내세요. 질문은 입력창에 그대로 있습니다.',
+      body: '질문을 보내지 못했습니다. 터미널에서 아래 명령으로 로그인한 뒤 입력창에서 ↩\u2060로 보내세요. 질문은 입력창에 그대로 있습니다.',
       actions: ['copy-login'],
       command: CMD,
     });
@@ -91,7 +92,13 @@ describe('what a failed turn says (spec 8.8, 13; the approved mockup ?state=8&fa
     expect(failureCopy({ code: 'AGENT_LOGIN', phase: 'during', agent: 'claude', loginCommand: CMD })).toMatchObject({ actions: ['copy-login', 'resend'], command: CMD });
   });
   it('another session\'s answer still coming (a 원문 근거 요청 refused for it) says so', () => {
-    expect(failureCopy({ code: 'AGENT_BUSY', phase: 'before', ...claude })).toEqual({ title: '다른\u00a0세션이 답을 받는 중입니다', body: '그\u00a0답이 끝난 뒤 다시 보내세요.', actions: [], command: null });
+    expect(failureCopy({ code: 'AGENT_BUSY', phase: 'before', ...claude })).toEqual({
+      title: '다른\u00a0세션이 답을 받는 중입니다',
+      body: '질문을 다시 보내지 못했습니다. 그\u00a0답이 끝난 뒤 다시 보내세요.',
+      actions: [],
+      command: null,
+    });
+    expect(failureCopy({ code: 'AGENT_BUSY', phase: 'during', ...claude }).body).toBe('질문을 다시 보내지 못했습니다. 그\u00a0답이 끝난 뒤 다시 보내세요.');
   });
   it('a code with no words of its own reads as the agent stopping, before or during', () => {
     expect(failureCopy({ code: 'INTERNAL', phase: 'before', ...claude }).title).toBe(`${CLAUDE}가 답하기 전에 멈췄습니다`);
@@ -130,5 +137,55 @@ describe('원문 근거로 다시 묻기', () => {
     expect(regroundBubble(check([{ pageIndex: 56, outside: false }, { pageIndex: 60, outside: false }]))).toBe('57쪽과 61쪽을 먼저 읽고 다시 답해 주세요.');
     expect(regroundBubble(check([{ pageIndex: 1, outside: false }, { pageIndex: 2, outside: false }, { pageIndex: 8, outside: false }]))).toBe('2쪽, 3쪽과 9쪽을 먼저 읽고 다시 답해 주세요.');
     expect(regroundBubble(check([{ pageIndex: 998, outside: true }]))).toBeNull();
+  });
+});
+
+describe('the page count cites are checked against, and how an answer\'s unverified notice is drawn', () => {
+  const answer = (text: string, read: [number, number] | null) => ({
+    text,
+    tools: read === null ? [] : [{ tool: 'read_pdf_pages', outcome: 'ok' as const, pageFrom: read[0], pageTo: read[1] }],
+  });
+  it('is the reader\'s once pdf.js has the document; before that the body index\'s when it read every page; else not known (0)', () => {
+    expect(knownPageCount(100, { state: 'pending' })).toBe(100);
+    expect(knownPageCount(0, { state: 'done', pages: 100, truncated: false })).toBe(100);
+    expect(knownPageCount(0, { state: 'empty', pages: 3 })).toBe(3);
+    expect(knownPageCount(0, { state: 'done', pages: 5000, truncated: true })).toBe(0);
+    expect(knownPageCount(0, { state: 'pending' })).toBe(0);
+    expect(knownPageCount(0, { state: 'failed', reason: 'locked' })).toBe(0);
+    expect(knownPageCount(0, null)).toBe(0);
+  });
+  it('checks nothing while the page count is not known: no page can be told inside or past the last one', () => {
+    expect(answerCheck(answer('a [[p41]] b [[p43]] c [[p999]]', [40, 41]), 0)).toBeNull();
+    expect(answerCheck(answer('a [[p41]] b [[p43]] c [[p999]]', [40, 41]), 100)).toEqual({
+      verified: [40],
+      unverified: [{ pageIndex: 42, outside: false }, { pageIndex: 998, outside: true }],
+    });
+  });
+  it('a thread drawn before the page count is known shows no notice; once known, the right one', () => {
+    const a = answer('a [[p41]] b [[p43]] c [[p999]]', [40, 41]);
+    expect(unverifiedForm('complete', answerCheck(a, 0), true)).toBe('none');
+    expect(unverifiedForm('complete', answerCheck(a, 100), true)).toBe('full');
+  });
+  it('only the thread\'s last answer offers 원문 근거로 다시 묻기: an older one keeps the title alone (and so after the turn that asked again)', () => {
+    const check = answerCheck(answer('a [[p43]]', [40, 41]), 100);
+    expect(unverifiedForm('complete', check, true)).toBe('full');
+    expect(unverifiedForm('stopped', check, true)).toBe('full');
+    expect(unverifiedForm('complete', check, false)).toBe('title');
+  });
+  it('the title alone where the button cannot go: only cites past the last page', () => {
+    expect(unverifiedForm('complete', answerCheck(answer('a [[p41]] [[p999]]', [40, 41]), 100), true)).toBe('title');
+  });
+  it('none for a failed answer (its failure stands alone, its 출처 없음 chips mark the pages), one still coming, or one with every cite read', () => {
+    const doubted = answerCheck(answer('a [[p43]]', [40, 41]), 100);
+    expect(unverifiedForm('failed', doubted, true)).toBe('none');
+    expect(unverifiedForm('streaming', doubted, true)).toBe('none');
+    expect(unverifiedForm('complete', answerCheck(answer('a [[p41]]', [40, 41]), 100), true)).toBe('none');
+  });
+});
+
+describe('words that must stay on one line', () => {
+  it('↩ keeps its particle (U+2060), and 원문 근거로 is one piece (U+00A0)', () => {
+    for (const body of [t.tutor.failure.offlineBody, t.tutor.failure.loginBody, t.tutor.failure.againBody]) expect(body).toContain('↩\u2060로');
+    expect(t.tutor.unverified.body).toContain('원문\u00a0근거로');
   });
 });

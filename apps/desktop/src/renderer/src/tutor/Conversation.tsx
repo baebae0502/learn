@@ -1,14 +1,14 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, CircleAlert } from 'lucide-react';
-import { checkCitations, type MessageView } from '@learn/domain';
-import { useItem } from '../data/queries';
+import type { MessageView } from '@learn/domain';
+import { useItem, useItemDetail } from '../data/queries';
 import { useLearnEvent } from '../events';
 import { t } from '../strings';
 import { Button } from '../ui/Button';
 import { useReader } from '../viewers/pdf/readerStore';
 import { useReaderScope } from '../viewers/readerScope';
 import { TutorBubble, UserBubble, type CiteTarget } from './Bubble';
-import { regroundBubble } from './failureCopy';
+import { answerCheck, knownPageCount, regroundBubble } from './failureCopy';
 import { nearBottom, nextFollow } from './follow';
 import { SessionHead, StickyName } from './SessionHead';
 import { ringedChip, useTutorTab, type TurnNotice } from './tutorStore';
@@ -21,12 +21,12 @@ const { conversation: words } = t.tutor;
 const answerTo = (messages: readonly MessageView[], k: number): MessageView | null => (messages[k + 1]?.role === 'tutor' ? messages[k + 1]! : null);
 
 /**
- * What a 원문 근거 요청's bubble says: the pages the answer before it cited without reading them, inside the document. While the
- * page count is not known yet no page counts as past the last one.
+ * What a 원문 근거 요청's bubble says: the pages the answer before it cited without reading them, inside the document; while the page
+ * count is not known (no page can be told past the last one), and where no page can be named, what the request is.
  */
 function regroundWords(before: MessageView | undefined, pageCount: number): string {
-  const said = before?.role === 'tutor' ? regroundBubble(checkCitations(before.text, before.tools, pageCount > 0 ? pageCount : Number.MAX_SAFE_INTEGER)) : null;
-  return said ?? t.tutor.scope.reground;
+  const check = before?.role === 'tutor' ? answerCheck(before, pageCount) : null;
+  return (check === null ? null : regroundBubble(check)) ?? t.tutor.scope.reground;
 }
 
 /** Where a failure before the answer stands: after the last message at or before its place (-1: before them all). */
@@ -34,7 +34,7 @@ const noticeIndex = (messages: readonly MessageView[], notice: TurnNotice): numb
 
 /** A failure before the answer, where its turn would have been (spec 8.8): the question is back in the composer. */
 export function BeforeNotice({ notice }: { notice: TurnNotice }) {
-  return <TurnFailure code={notice.code} phase="before" agent={notice.agent} brief={notice.reground === true} />;
+  return <TurnFailure code={notice.code} phase="before" agent={notice.agent} form={notice.reground === true ? 'noBody' : 'full'} />;
 }
 
 /** The session's thread could not be read (anything but its being gone): the notice in the column's place, and 다시 시도. */
@@ -66,7 +66,8 @@ export function Conversation({ conversationId, visible }: { conversationId: stri
   const refused = useTutorTab((s) => s.retryRefused);
   const scope = useReaderScope();
   const revisionId = useItem(scope.id).data?.revisionId ?? null;
-  const pageCount = useReader((s) => s.pdf?.pagesCount ?? 0);
+  // Until pdf.js has the document, the body index's page count (a whole index read every page); 0 while neither is known.
+  const pageCount = knownPageCount(useReader((s) => s.pdf?.pagesCount ?? 0), useItemDetail(scope.id).data?.text);
   const page = useReader((s) => s.pdf?.pageNumber ?? null);
   const currentCite = useTutorTab((s) => s.currentCite);
   const setCurrentCite = useTutorTab((s) => s.setCurrentCite);
@@ -232,7 +233,7 @@ export function Conversation({ conversationId, visible }: { conversationId: stri
                   mixed={session.mixedAgents}
                   target={target}
                   agent={session.agent}
-                  reasked={messages[k + 1]?.kind === 'reground'}
+                  last={k === messages.length - 1}
                   refused={refused?.messageId === m.id ? refused.code : null}
                 />
               )}

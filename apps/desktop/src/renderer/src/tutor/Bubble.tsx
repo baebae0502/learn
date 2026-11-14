@@ -1,6 +1,6 @@
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { Check, Copy } from 'lucide-react';
-import { checkCitations, citationCopyText, verifiedPages, type AgentId, type ErrorCode, type MessageView, type SourceChip } from '@learn/domain';
+import { citationCopyText, verifiedPages, type AgentId, type ErrorCode, type MessageView, type SourceChip } from '@learn/domain';
 import { t } from '../strings';
 import { IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
@@ -9,7 +9,7 @@ import { useCopyFeedback } from '../ui/useCopyFeedback';
 import { useReaderScope } from '../viewers/readerScope';
 import { AnswerText } from './AnswerText';
 import { CitationChip, type CiteState } from './CitationChip';
-import { canReground } from './failureCopy';
+import { answerCheck, unverifiedForm } from './failureCopy';
 import { SentScope } from './SentScope';
 import { ToolChipRow } from './ToolChipRow';
 import { TurnFailure } from './TurnFailure';
@@ -20,8 +20,9 @@ import type { LiveTurn } from './useSessionThread';
 const { answer: words } = t.tutor;
 
 /**
- * What a chip needs from the reader of this tab: the document's revision, its page count, the jump to a page (0-based) that makes the
- * pressed chip (`key`, sending the reader into `revisionId`) the current one, and which chip is ringed as current.
+ * What a chip needs from the reader of this tab: the document's revision, its page count (0 while not known: knownPageCount), the jump to
+ * a page (0-based) that makes the pressed chip (`key`, sending the reader into `revisionId`) the current one, and which chip is ringed as
+ * current.
  */
 export interface CiteTarget {
   revisionId: string | null;
@@ -102,15 +103,16 @@ function useFirstTextPaint(coming: boolean, hasText: boolean): void {
  * its start) a cite of a page this turn read is a chip at once, any other "확인 중"; once it ended, the stored sources decide.
  * A failed answer keeps the part that came, cut with "…", and its failure's notice in place of the foot (mockup ?state=8): what
  * stopped it — or, after a resend main refused (`refused`), that refusal — and 다시 보내기. A finished answer that cited pages it did not
- * read says so under its foot, with 원문 근거로 다시 묻기 until the turn that asked again follows it (`reasked`). `agent`: the session's.
+ * read says so under its foot (failureCopy.unverifiedForm). Only the thread's `last` answer can be resent or asked again from the source
+ * (the turn goes at the end): under an older one either notice keeps its title alone. `agent`: the session's.
  */
-export function TutorBubble({ message, live, mixed, target, agent, reasked = false, refused = null }: {
+export function TutorBubble({ message, live, mixed, target, agent, last = true, refused = null }: {
   message: MessageView;
   live: LiveTurn | null;
   mixed: boolean;
   target: CiteTarget;
   agent: AgentId;
-  reasked?: boolean;
+  last?: boolean;
   refused?: ErrorCode | null;
 }) {
   const scope = useReaderScope();
@@ -133,8 +135,8 @@ export function TutorBubble({ message, live, mixed, target, agent, reasked = fal
   const end = endLine(message);
   const by = mixed && message.agent !== null ? t.tutor.agentName(message.agent) : null;
   const failed = !streaming && message.status === 'failed';
-  const check = useMemo(() => (streaming || failed ? null : checkCitations(message.text, message.tools, target.pageCount)), [streaming, failed, message.text, message.tools, target.pageCount]);
-  const unverified = check?.unverified.length ?? 0;
+  const check = useMemo(() => (streaming || failed ? null : answerCheck(message, target.pageCount)), [streaming, failed, message, target.pageCount]);
+  const unverified = unverifiedForm(streaming ? 'streaming' : message.status, check, last);
   const failure = failed ? (refused ?? (message.stopReason === 'interrupted' ? 'INTERRUPTED' : (message.errorCode ?? 'INTERNAL'))) : null;
   return (
     <div className={cx('tutor-msg tutor', streaming && 'is-streaming')} data-testid="tutor-answer" data-status={streaming ? 'streaming' : message.status}>
@@ -145,7 +147,7 @@ export function TutorBubble({ message, live, mixed, target, agent, reasked = fal
         </div>
       )}
       {failure !== null ? (
-        <TurnFailure code={failure} phase="during" agent={message.agent ?? agent} onResend={() => void resendAnswer(scope, message.id)} />
+        <TurnFailure code={failure} phase="during" agent={message.agent ?? agent} form={last ? 'full' : 'title'} onResend={() => void resendAnswer(scope, message.id)} />
       ) : (
         !streaming &&
         (text !== '' || end !== null || by !== null) && (
@@ -160,8 +162,8 @@ export function TutorBubble({ message, live, mixed, target, agent, reasked = fal
           </div>
         )
       )}
-      {check !== null && unverified > 0 && (
-        <UnverifiedNotice count={unverified} onReground={!reasked && canReground(message.status, check) ? () => void regroundAnswer(scope, message.id) : null} />
+      {unverified !== 'none' && check !== null && (
+        <UnverifiedNotice count={check.unverified.length} form={unverified} onReground={() => void regroundAnswer(scope, message.id)} />
       )}
     </div>
   );

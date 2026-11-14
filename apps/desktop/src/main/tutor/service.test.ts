@@ -211,9 +211,9 @@ function rig(o: RigOptions = {}) {
   /** The turn has ended: its answer was released to the supervisor. */
   const ended = (n = 1) => vi.waitFor(() => expect(supCtl.log.ended.length).toBeGreaterThanOrEqual(n), { interval: 1 });
   /** A conversation with one answered question, written as the repository would after a turn. */
-  const answered = (text = ANSWER, over: { status?: 'complete' | 'stopped' | 'failed'; code?: ErrorCode | null; attached?: boolean } = {}) => {
+  const answered = (text = ANSWER, over: { status?: 'complete' | 'stopped' | 'failed'; code?: ErrorCode | null; attached?: boolean; conversationId?: string } = {}) => {
     const t = repo.beginTurn({
-      conversationId: null, itemId: seed.itemId, revisionId: seed.revisionId, agent: 'claude', openedAtPage: 0,
+      conversationId: over.conversationId ?? null, itemId: seed.itemId, revisionId: seed.revisionId, agent: 'claude', openedAtPage: 0,
       user: { kind: 'question', text: '어텐션이 뭐야?', sent: SENT, attached: over.attached ? { anchor: span(seed.revisionId), quote: '붙인 구간의 글', label: '2쪽' } : null }, now: NOW,
     });
     const status = over.status ?? 'complete';
@@ -691,6 +691,17 @@ describe('the tutor service', () => {
       expect(r.be.starts).toEqual([]);
     });
 
+    it('only the conversation\'s last answer: an older failed one is refused before anything is touched', async () => {
+      const r = rig();
+      const older = r.answered('부분', { status: 'failed' });
+      r.answered(ANSWER, { conversationId: older.conversationId });
+      const retry = vi.spyOn(r.repo, 'retryTurn');
+      expect(await code(r.service.resend({ messageId: older.tutorMessageId, reader: READER }))).toBe('VALIDATION_FAILED');
+      expect(retry).not.toHaveBeenCalled();
+      expect(r.be.starts).toEqual([]);
+      expect(r.count()).toBe(4);
+    });
+
     it('asks the same question with its passage again, in a new answer row', async () => {
       const r = rig();
       const t = r.answered('부분', { status: 'failed', attached: true });
@@ -768,6 +779,18 @@ describe('the tutor service', () => {
       const doubted = r.answered('x [[p2]] y [[p999]]');
       expect(await code(r.service.reground({ messageId: doubted.tutorMessageId, reader: READER }))).toBe('AGENT_BUSY');
       expect(r.count()).toBe(8);
+    });
+
+    it('only the conversation\'s last answer: the turn goes at the end, and asks about the answer right before it', async () => {
+      const r = rig();
+      const older = r.answered('x [[p2]]');
+      const last = r.answered('y [[p5]]', { conversationId: older.conversationId });
+      expect(await code(r.service.reground({ messageId: older.tutorMessageId, reader: READER }))).toBe('VALIDATION_FAILED');
+      expect(r.count()).toBe(4);
+      expect(r.be.starts).toEqual([]);
+      const g = await r.service.reground({ messageId: last.tutorMessageId, reader: READER });
+      await r.ended();
+      expect(r.repo.message(g.userMessageId)).toMatchObject({ kind: 'reground', text: regroundInstruction([5]), seq: 4 });
     });
 
     it('asks with the reground instruction as a visible user turn', async () => {

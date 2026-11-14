@@ -320,7 +320,10 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
     if (failed.role !== 'tutor' || failed.status !== 'failed' || failed.errorCode === 'AGENT_LOCKDOWN' || c.deleted || c.itemTrashed) throw invalid();
     const target = targetOf(ctx, c.itemId, c.id);
     if (target === null) throw invalid();
-    const question = ctx.conversations.thread(c.id).messages.find((m) => m.seq === failed.seq - 1 && m.role === 'user');
+    const messages = ctx.conversations.thread(c.id).messages;
+    // Only the conversation's last answer: what follows it would be asked again out of its place.
+    if (messages.at(-1)?.id !== failed.id) throw invalid();
+    const question = messages.find((m) => m.seq === failed.seq - 1 && m.role === 'user');
     if (!question) throw invalid();
     // The passage goes again with the question: it must still be of the revision the tools read.
     if (question.attached?.revisionId != null && question.attached.revisionId !== target.revisionId) throw invalid();
@@ -466,6 +469,8 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
       if (!doubted || !c) throw invalid();
       refuseBusy({ itemId: c.itemId, conversationId: c.id });
       if (doubted.role !== 'tutor' || (doubted.status !== 'complete' && doubted.status !== 'stopped') || c.deleted || c.itemTrashed) throw invalid();
+      // Only the conversation's last answer: the turn goes at the end, and its instruction asks about the answer right before it.
+      if (ctx.conversations.thread(c.id).messages.at(-1)?.id !== doubted.id) throw invalid();
       const target = targetOf(ctx, c.itemId, c.id);
       if (target === null) throw invalid();
       const pages = regroundPages(checkCitations(doubted.text, ctx.conversations.toolReads(doubted.id), i.reader.pageCount));

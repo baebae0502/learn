@@ -95,12 +95,19 @@ describe('UI copy (design-spec 4, 9)', () => {
 
 /**
  * ‘<이름>’ + 조사 is one 어절 (design-spec 4): keep-all still breaks after a closing quote, so U+2060 sits between ’ and the
- * particle. A ’ right before a Hangul syllable is a break opportunity; one before U+2060 is not.
+ * particle. A ’ right before a Hangul syllable is a break opportunity; one before U+2060 is not. The same for a symbol a sentence
+ * names as a word (↩ + 로: "입력창에서 ↩로 보내세요"), whose particle would otherwise start the next line.
  */
 const QUOTE_THEN_HANGUL = /’(?=[가-힣])/;
+const SYMBOL_THEN_HANGUL = /[’↩⌘⌥⇧⌃](?=[가-힣])/;
 describe('a closing quote keeps its particle (design-spec 4)', () => {
   it('no copy string has ’ right before a Hangul syllable', () => {
     expect(copy.filter((s) => QUOTE_THEN_HANGUL.test(s.text)).map(show)).toEqual([]);
+  });
+  it('no copy string has a key symbol right before a Hangul syllable', () => {
+    expect(copy.filter((s) => SYMBOL_THEN_HANGUL.test(s.text)).map(show)).toEqual([]);
+    expect(SYMBOL_THEN_HANGUL.test('입력창에서 ↩로 보내세요')).toBe(true);
+    expect(SYMBOL_THEN_HANGUL.test('입력창에서 ↩\u2060로 보내세요')).toBe(false);
   });
   it.each([
     ['the empty collection', t.organize.empty.collectionBody('6장 · 신호 전달'), '’⁠로 끌어'],

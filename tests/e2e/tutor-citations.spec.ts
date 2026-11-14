@@ -6,7 +6,11 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { expectNoSeriousA11y } from './a11y';
 import type { LearnPdfProbe } from '../../apps/desktop/src/renderer/src/viewers/pdf/anchorProbe';
-import { FIXTURES, expectTooltipText, importPaths, launch, mainWindow, openItem, textExtraction, textIdle, tutorFakeLog, tutorFakeScript, type Session } from './helpers';
+import {
+  FIXTURES, closeReaderTab, expectDisabledReason, expectTooltipText, importPaths, launch, mainWindow, openItem, textExtraction, textIdle, tutorFakeLog, tutorFakeScript,
+  type Session,
+} from './helpers';
+import { holdReplies } from './dnd-helpers';
 import { consentAndChoose } from './tutor-helpers';
 
 declare global {
@@ -17,17 +21,23 @@ declare global {
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const NO_TEXT = path.join(FIXTURES, 'no-text.pdf');
+const LOCKED = path.join(FIXTURES, 'locked.pdf');
 const UNSET = { env: { LEARN_E2E_SETTINGS: '' } };
-const nb = (s: string) => s.replace(/ /g, ' ');
+const nb = (s: string) => s.replace(/\u00a0/g, ' ').replace(/\u2060/g, '');
 
 /** `file` with its body text read (or found to have none), open at 1440 wide; the consent given and the fake chosen. */
-async function atSession(testInfo: { outputPath(...p: string[]): string }, file = PAPER): Promise<Session & { itemId: string }> {
+async function atSession(testInfo: { outputPath(...p: string[]): string }, file = PAPER, password?: string): Promise<Session & { itemId: string }> {
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), UNSET);
   await (await mainWindow(s.app)).evaluate((w) => w.setContentSize(1440, w.getContentSize()[1]!));
   const [item] = await importPaths(s.page, [file]);
   await textExtraction(s.app, 'now');
   await textIdle(s.app);
   await openItem(s.page, item!.title);
+  if (password !== undefined) {
+    const field = s.page.getByTestId('pdf-password');
+    await field.fill(password);
+    await field.press('Enter');
+  }
   await expect(s.page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
   await consentAndChoose(s.page, 'fake');
   await expect(s.page.getByTestId('tutor-empty')).toBeVisible();
@@ -183,6 +193,97 @@ test('a PDF without readable text is named over the session, its empty session s
     await expect(line).toBeVisible();
     const box = (await line.boundingBox())!;
     expect(box.y + box.height).toBeLessThanOrEqual((await page.getByTestId('tutor-log').boundingBox())!.y + 1);
+  } finally {
+    await app.close();
+  }
+});
+
+test('before pdf.js has the document the notice counts against the body index\'s pages, never against none: a kept session opened again says the same as once open', async ({}, testInfo) => {
+  const { app, page, itemId } = await atSession(testInfo);
+  try {
+    const answer = await unverifiedAnswer(page, app, { attach: true });
+    const notice = answer.getByTestId('tutor-unverified');
+    await expect(notice.getByTestId('tutor-unverified-title')).toHaveText('인용 2개를 확인하지 못했습니다');
+    const conversationId = await page.evaluate(async (id) => {
+      const r = await window.learn.sessions.list({ itemId: id });
+      return r.ok ? r.data[0]!.id : '';
+    }, itemId);
+    // Every title the notice is drawn with from here, and whether the PDF had its pages then.
+    await page.evaluate(() => {
+      const seen: string[] = [];
+      (window as unknown as { __notices: string[] }).__notices = seen;
+      const look = () => {
+        const pages = document.querySelector('[data-testid="pdf-viewer"]')?.getAttribute('data-pages') ?? '0';
+        for (const n of document.querySelectorAll('[data-testid="tutor-unverified-title"]')) {
+          const v = `${/^[1-9]/.test(pages) ? 'loaded' : 'loading'}:${n.textContent}`;
+          if (!seen.includes(v)) seen.push(v);
+        }
+      };
+      new MutationObserver(look).observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+    });
+    // The tab closed, and the item opened again on the same session (as a reload of the window keeps it): its thread is drawn at once
+    // from what this window read, while pdf.js still opens the document.
+    await closeReaderTab(page);
+    await page.evaluate(([k, v]) => sessionStorage.setItem(k!, v!), [`learn.tutor.session.${itemId}`, conversationId] as const);
+    await openItem(page, 'paper-100');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
+    await expect(page.getByTestId('tutor-unverified-title')).toHaveText('인용 2개를 확인하지 못했습니다');
+    const seen = await page.evaluate(() => (window as unknown as { __notices: string[] }).__notices);
+    // Drawn while the PDF still opened and once it was open, with the one right count each time.
+    expect([...new Set(seen.map((v) => v.replace(/^\w+:/, '')))]).toEqual(['인용 2개를 확인하지 못했습니다']);
+    expect(seen).toContain('loaded:인용 2개를 확인하지 못했습니다');
+    // The reader's count gone again (as before pdf.js has the document): the body index's 100 pages still tell 999 from 1.
+    await page.evaluate(() => (window as unknown as { __learnReader: { getState(): { setPdf(p: { pagesCount: number }): void } } }).__learnReader.getState().setPdf({ pagesCount: 0 }));
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', '0');
+    await expect(page.getByTestId('tutor-unverified-title')).toHaveText('인용 2개를 확인하지 못했습니다');
+    await expect(page.getByTestId('tutor-reground')).toHaveCount(1);
+  } finally {
+    await app.close();
+  }
+});
+
+test('only the last answer can be asked again from the source: a question asked after it leaves the first notice its title; the button waits while a turn is on its way or the item opens', async ({}, testInfo) => {
+  const { app, page } = await atSession(testInfo);
+  try {
+    const first = await unverifiedAnswer(page, app, { attach: false });
+    const button = first.getByTestId('tutor-reground');
+    await expect(button).toBeVisible();
+    await expectDisabledReason(button, null);
+    // While the item opens (the reader's own flag), it waits with the composer's words.
+    const ready = (on: boolean) => page.evaluate((v) => (window as unknown as { __learnReader: { getState(): { setPdf(p: { ready: boolean }): void } } }).__learnReader.getState().setPdf({ ready: v }), on);
+    await ready(false);
+    await expectDisabledReason(button, '자료를 여는 중입니다');
+    await ready(true);
+    await expectDisabledReason(button, null);
+    // The next question on its way (main's answer held): the button waits, in the composer's words for an answer coming.
+    await holdReplies(app, ['tutor:ask'], 3000);
+    await composerInput(page).click();
+    await page.keyboard.insertText('다음 질문입니다.');
+    await page.keyboard.press('Enter');
+    await expectDisabledReason(button, '답을 받는 중입니다');
+    await holdReplies(app, ['tutor:ask'], 0);
+    await expect(page.getByTestId('tutor-answer')).toHaveCount(2, { timeout: 30_000 });
+    const second = page.getByTestId('tutor-answer').nth(1);
+    await expect(second).toHaveAttribute('data-status', 'complete', { timeout: 60_000 });
+    // The first answer is no longer the last: its notice keeps its title alone; the last one's has the button.
+    const notice = first.getByTestId('tutor-unverified');
+    await expect(notice).toHaveClass(/\bis-brief\b/);
+    await expect(notice.locator('.nt-text')).toHaveCount(0);
+    await expect(first.getByTestId('tutor-reground')).toHaveCount(0);
+    await expect(second.getByTestId('tutor-reground')).toBeVisible();
+    await expectDisabledReason(second.getByTestId('tutor-reground'), null);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a locked PDF is named over the session as such, and its empty session says a selection still goes with the question', async ({}, testInfo) => {
+  const { app, page } = await atSession(testInfo, LOCKED, 'learn');
+  try {
+    const line = page.getByTestId('tutor-no-text');
+    await expect(line).toHaveAttribute('data-kind', 'locked');
+    expect(nb(await line.innerText())).toBe('암호로 보호된 PDF라 튜터가 본문을 읽을 수 없습니다.');
+    expect(nb(await page.getByTestId('tutor-empty').locator('.pe-text').innerText())).toBe('이 자료에 대해 물어보세요. 본문에서 구간을 선택하면 질문에 붙지만, 답의 쪽은 확인되지 않습니다.');
   } finally {
     await app.close();
   }

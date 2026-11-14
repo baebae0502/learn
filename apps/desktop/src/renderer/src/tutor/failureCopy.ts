@@ -1,4 +1,4 @@
-import { regroundPages, type AgentId, type CitationCheck, type ErrorCode, type MessageStatus } from '@learn/domain';
+import { checkCitations, regroundPages, type AgentId, type BodyTextState, type CitationCheck, type ErrorCode, type MessageStatus, type ReadSpan } from '@learn/domain';
 import { t } from '../strings';
 
 const { failure: words } = t.tutor;
@@ -80,4 +80,30 @@ export function canReground(status: MessageStatus, check: CitationCheck): boolea
 export function regroundBubble(check: CitationCheck): string | null {
   const [first, ...more] = regroundPages(check).map((p) => p + 1);
   return first === undefined ? null : t.tutor.unverified.ask(first, ...more);
+}
+
+/**
+ * The page count an answer's cites are checked against: the reader's once pdf.js has the document; before that the body index's, when it
+ * read every page; 0 while neither is known.
+ */
+export function knownPageCount(readerPages: number, text: BodyTextState | null | undefined): number {
+  if (readerPages > 0) return readerPages;
+  if (text?.state === 'empty' || (text?.state === 'done' && !text.truncated)) return text.pages;
+  return 0;
+}
+
+/** An answer's cites against the pages its turn read; null while the page count is not known (no cite can be told inside or past it). */
+export function answerCheck(answer: { text: string; tools: readonly ReadSpan[] }, pageCount: number): CitationCheck | null {
+  return pageCount > 0 ? checkCitations(answer.text, answer.tools, pageCount) : null;
+}
+
+/**
+ * How a finished answer's unverified notice is drawn: in full with 원문 근거로 다시 묻기 when the button can go (the thread's last answer —
+ * the asked-again turn goes at the end — with a page inside the document not read); its title alone otherwise; none when every cite was
+ * read, while the page count is not known, while the answer comes, and under a failed answer (its failure stands alone, its 출처 없음
+ * chips mark the pages).
+ */
+export function unverifiedForm(status: MessageStatus, check: CitationCheck | null, last: boolean): 'none' | 'title' | 'full' {
+  if (status === 'streaming' || status === 'failed' || check === null || check.unverified.length === 0) return 'none';
+  return last && canReground(status, check) ? 'full' : 'title';
 }

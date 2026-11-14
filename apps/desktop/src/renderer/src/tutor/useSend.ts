@@ -5,15 +5,18 @@ import { api } from '../api';
 import { keys } from '../data/queries';
 import { queryClient } from '../data/query-client';
 import { useLearnEvent } from '../events';
+import { t } from '../strings';
 import { perfMarkLatest } from '../ui/perfMarks';
 import { outlineSnapshot } from '../viewers/pdf/outlineCache';
 import { useReader } from '../viewers/pdf/readerStore';
 import { readerScopes, useReaderScope, type ReaderScope } from '../viewers/readerScope';
 import { afterBusy } from './composerKeys';
 import { draftKey, useTutorTab, type SentTurn, type WaitingQuestion } from './tutorStore';
-import { recheckAgent } from './useAgents';
-import { answerComingIn } from './useSessionThread';
+import { recheckAgent, useAgentsRun } from './useAgents';
+import { answerComingIn, useAnswerComing } from './useSessionThread';
 import { useTutorPrefs } from './useTutorPrefs';
+
+const { composer } = t.tutor;
 
 /**
  * The tabs whose question is on its way (the agent checked again, then tutor:ask, or the question that waited): one at a time per tab,
@@ -57,26 +60,33 @@ function nextAgent(conversationId: string | null): AgentId {
   return thread?.session.agent ?? 'claude';
 }
 
-/** Refusals that are not a failure to show: another answer still coming (the waiting line's), Learn quitting. */
-const quietRefusal = (code: ErrorCode): boolean => code === 'AGENT_BUSY' || code === 'CANCELLED';
+/** Refusals that are not a failure to show: another answer still coming (the waiting line's), Learn quitting, the consent gone. */
+const quietRefusal = (code: ErrorCode): boolean => code === 'AGENT_BUSY' || code === 'CANCELLED' || code === 'TUTOR_CONSENT_REQUIRED';
+
+/** What a refusal says of the window's own reads: the consent gone (the panel shows its card again), a report main has changed. */
+function readAgainAfter(code: ErrorCode): void {
+  if (code === 'TUTOR_CONSENT_REQUIRED') void queryClient.invalidateQueries({ queryKey: keys.prefs });
+  if (code === 'AGENT_LOGIN' || code === 'AGENT_NOT_READY') void queryClient.invalidateQueries({ queryKey: keys.tutorAgents });
+}
 
 /**
  * A turn of the tab of `scope` failed before its answer began (or main refused to start it): a question goes back to the composer it
- * came from — its text into that session's draft (unless something was written there since), its passage onto the chip — and a new
- * session that question made is gone with it, so the tab is on a new empty session again. Where the tab still shows that session, the
- * notice stands where the turn would have been, the hidden alert says it once, and the composer takes the focus with its caret at the
- * end. A 원문 근거 요청 has nothing to give back: its notice only. Nothing is sent again (spec 8.8).
+ * came from — its text into that session's draft (unless something was written there since) — and a new session that question made is
+ * gone with it, so the tab is on a new empty session again. Where the tab still shows that session, its passage goes back onto the chip
+ * (unless another was attached since: the chip is the tab's, whatever session it shows), the notice stands where the turn would have
+ * been, the hidden alert says it once, and the composer takes the focus with its caret at the end. A 원문 근거 요청 has nothing to give
+ * back: its notice only. Nothing is sent again (spec 8.8).
  */
 function giveBack(scope: ReaderScope, turn: SentTurn, code: ErrorCode): void {
   const tab = scope.tutor.getState();
   if (turn.kind === 'question') {
     const key = draftKey(turn.from, scope.id);
     if ((tab.drafts[key] ?? '').trim() === '') tab.setDraft(key, turn.text);
-    if (turn.attached !== null) tab.setAttached(turn.attached);
   }
   if (turn.from === null && tab.conversationId === turn.conversationId) tab.setConversation(null);
   const now = scope.tutor.getState();
   if (now.conversationId !== turn.from) return;
+  if (turn.kind === 'question' && turn.attached !== null && now.attached === null) now.setAttached(turn.attached);
   now.setNotice({ code, afterSeq: turn.afterSeq, agent: turn.agent, ...(turn.kind === 'reground' ? { reground: true as const } : {}) });
   now.say({ code, phase: 'before', agent: turn.agent });
   if (turn.kind === 'question') now.focusComposer();
@@ -171,11 +181,9 @@ async function ask(scope: ReaderScope, text: string): Promise<boolean> {
   if (!answer.ok) {
     console.warn(`[tutor] ask failed: ${answer.code}`);
     tab.setWaiting(null);
-    if (!quietRefusal(answer.code)) {
-      // The command of a login, or the state of an agent the window still thought ready, is in the report main has now.
-      if (answer.code === 'AGENT_LOGIN' || answer.code === 'AGENT_NOT_READY') void queryClient.invalidateQueries({ queryKey: keys.tutorAgents });
-      giveBack(scope, { kind: 'question', tutorMessageId: '', conversationId: from ?? '', from, text, attached: null, afterSeq, agent }, answer.code);
-    }
+    // The command of a login, or the state of an agent the window still thought ready, is in the report main has now.
+    readAgainAfter(answer.code);
+    if (!quietRefusal(answer.code)) giveBack(scope, { kind: 'question', tutorMessageId: '', conversationId: from ?? '', from, text, attached: null, afterSeq, agent }, answer.code);
     return false;
   }
   if ('busyWith' in answer.data) {
@@ -278,6 +286,24 @@ export const useQuestionOnTheWay = (): boolean => {
 };
 
 /**
+ * Why a turn of the tab around the component cannot go now — the item still opens, a question waits for another session's answer or is
+ * on its way (the agent being checked again first), an answer of this session comes — in the composer's own words for the same state;
+ * null when it can. 다시 보내기 and 원문 근거로 다시 묻기 wait with it.
+ */
+export function useTurnHeld(): string | null {
+  const opening = useReader((s) => s.pdf?.ready !== true);
+  const conversationId = useTutorTab((s) => s.conversationId);
+  const waiting = useTutorTab((s) => s.waiting !== null);
+  const coming = useAnswerComing(conversationId) !== null;
+  const onTheWay = useQuestionOnTheWay();
+  const checking = useAgentsRun((s) => s.busy);
+  if (opening) return composer.sendOpening;
+  if (waiting) return composer.sendWaiting;
+  if (onTheWay && checking) return t.tutor.agents.searchingTip;
+  return coming || onTheWay ? composer.receiving : null;
+}
+
+/**
  * A send from the composer of the tab of `scope`: it needs text, the item open, no answer of this session coming, no question waiting
  * and none on its way. The agent's state never holds it back: when this window does not know the agent as 준비됨, it is checked again
  * first — the window's one check, so a second ↩ while it runs does nothing — and the question is asked whatever the check found; main
@@ -337,8 +363,8 @@ export async function resendAnswer(scope: ReaderScope, messageId: string): Promi
     if (now.conversationId !== conversationId) return;
     if (!r.ok) {
       console.warn(`[tutor] resend failed: ${r.code}`);
-      if (r.code === 'CANCELLED') return;
-      if (r.code === 'AGENT_LOGIN' || r.code === 'AGENT_NOT_READY') void queryClient.invalidateQueries({ queryKey: keys.tutorAgents });
+      readAgainAfter(r.code);
+      if (r.code === 'CANCELLED' || r.code === 'TUTOR_CONSENT_REQUIRED') return;
       now.setRetryRefused({ messageId, code: r.code });
       now.say({ code: r.code, phase: 'during', agent: nextAgent(conversationId) });
       return;
@@ -376,7 +402,8 @@ export async function regroundAnswer(scope: ReaderScope, messageId: string): Pro
     const turn: SentTurn = { kind: 'reground', tutorMessageId: r.ok ? r.data.tutorMessageId : '', conversationId, from: conversationId, text: '', attached: null, afterSeq, agent };
     if (!r.ok) {
       console.warn(`[tutor] reground failed: ${r.code}`);
-      if (r.code !== 'CANCELLED') giveBack(scope, turn, r.code);
+      readAgainAfter(r.code);
+      if (r.code !== 'CANCELLED' && r.code !== 'TUTOR_CONSENT_REQUIRED') giveBack(scope, turn, r.code);
       return;
     }
     void queryClient.invalidateQueries({ queryKey: keys.sessionThread(conversationId) });

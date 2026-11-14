@@ -216,15 +216,15 @@ export const tutor = {
    */
   failure: {
     offline: '인터넷에 연결되어 있지 않습니다',
-    offlineBody: '질문을 보내지 못했습니다. 연결을 확인한 뒤 입력창에서 ↩로 보내세요. 질문은 입력창에 그대로 있습니다.',
+    offlineBody: '질문을 보내지 못했습니다. 연결을 확인한 뒤 입력창에서 ↩\u2060로 보내세요. 질문은 입력창에 그대로 있습니다.',
     login: (agent: string) => `${agent} 로그인이 필요합니다`,
-    loginBody: '질문을 보내지 못했습니다. 터미널에서 아래 명령으로 로그인한 뒤 입력창에서 ↩로 보내세요. 질문은 입력창에 그대로 있습니다.',
+    loginBody: '질문을 보내지 못했습니다. 터미널에서 아래 명령으로 로그인한 뒤 입력창에서 ↩\u2060로 보내세요. 질문은 입력창에 그대로 있습니다.',
     notReady: (agent: string) => `${subject(agent)} 준비되지 않았습니다`,
     startFailed: (agent: string) => `${subject(agent)} 시작하지 못했습니다`,
     chooseBody: '질문을 보내지 못했습니다. 에이전트 고르기에서 상태를 확인한 뒤 다시 보내세요. 질문은 입력창에 그대로 있습니다.',
     timeout: (agent: string) => `${subject(agent)} 답하지 않습니다`,
     stoppedBefore: (agent: string) => `${subject(agent)} 답하기 전에 멈췄습니다`,
-    againBody: '답을 받지 못했습니다. 잠시 뒤 입력창에서 ↩로 다시 보내세요. 질문은 입력창에 그대로 있습니다.',
+    againBody: '답을 받지 못했습니다. 잠시 뒤 입력창에서 ↩\u2060로 다시 보내세요. 질문은 입력창에 그대로 있습니다.',
     stoppedDuring: (agent: string) => `${subject(agent)} 답하는 도중 멈췄습니다`,
     stoppedDuringBody: '에이전트 프로그램이 예기치 않게 종료되어 답이 중간에 끊겼습니다. 다시 보내면 에이전트를 다시 시작하고 같은 질문을 처음부터 묻습니다.',
     timeoutDuring: (agent: string) => `${agent}의 답이 멈췄습니다`,
@@ -238,7 +238,7 @@ export const tutor = {
       offline: '질문을 다시 보내지 못했습니다. 연결을 확인한 뒤 다시 보내세요.',
       login: '질문을 다시 보내지 못했습니다. 터미널에서 아래 명령으로 로그인한 뒤 다시 보내세요.',
       choose: '질문을 다시 보내지 못했습니다. 에이전트 고르기에서 상태를 확인한 뒤 다시 보내세요.',
-      busy: '그\u00a0답이 끝난 뒤 다시 보내세요.',
+      busy: '질문을 다시 보내지 못했습니다. 그\u00a0답이 끝난 뒤 다시 보내세요.',
     },
     resend: '다시 보내기',
     resendTip: '같은 질문을 처음부터 다시 묻습니다',
@@ -248,7 +248,7 @@ export const tutor = {
   /** Under an answer that cited pages it did not read in its turn (spec 7, 8.3, 13; mockup ?state=6), and the reground turn's bubble. */
   unverified: {
     title: (n: number) => `인용 ${n}개를 확인하지 못했습니다`,
-    body: '튜터가 이번 답에서 읽지 않은 쪽을 가리켰습니다. 원문 근거로 다시 물으면 튜터가 먼저 그\u00a0쪽을 읽고 답하게 합니다. 이번에도 읽지 않은 쪽을 가리키면 다시 표시합니다.',
+    body: '튜터가 이번 답에서 읽지 않은 쪽을 가리켰습니다. 원문\u00a0근거로 다시 물으면 튜터가 먼저 그\u00a0쪽을 읽고 답하게 합니다. 이번에도 읽지 않은 쪽을 가리키면 다시 표시합니다.',
     reground: '원문 근거로 다시 묻기',
     /** "57쪽을 먼저 읽고 다시 답해 주세요." — the pages 1-based, in the order the answer cited them. */
     ask: (first: number, ...more: number[]) => {

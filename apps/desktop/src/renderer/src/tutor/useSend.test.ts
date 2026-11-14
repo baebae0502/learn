@@ -76,7 +76,7 @@ beforeEach(() => {
   tab().setAttached(null);
   tab().setLive(null);
   for (const k of Object.keys(tab().drafts)) tab().setDraft(k, '');
-  scope.tutor.setState({ droppedAnswers: [] });
+  scope.tutor.setState({ droppedAnswers: [], alert: null, retryRefused: null });
   scope.reader.getState().setPdf({ ready: true, pagesCount: 10, pageNumber: 1 });
   queryClient.setQueryData(keys.tutorAgents, READY);
   queryClient.setQueryData(keys.prefs, { tutor: { consent: { version: 1, at: '2026-11-14T00:00:00.000Z' }, agent: 'fake' } });
@@ -322,6 +322,42 @@ describe('a failure before any answer gives the question back to the composer th
     expect(asks).toHaveLength(2);
     asks[1]!.settle(ok(MADE));
     await again;
+    warn.mockRestore();
+  });
+
+  it('the chip comes back only while no other passage is attached: one attached since stays', async () => {
+    await sent('첫 질문');
+    const since = { ...passage, text: '새 구간' };
+    tab().setAttached(since as never);
+    failedBefore(MADE.conversationId, MADE.tutorMessageId);
+    expect(tab().attached).toBe(since);
+    expect(tab().drafts).toEqual({ [draftKey(null, ITEM)]: '첫 질문' });
+  });
+
+  it('the chip comes back only while the tab shows the session the question was asked in; the text still goes to that session\'s draft', async () => {
+    tab().setConversation(CONV);
+    const made = { conversationId: CONV, userMessageId: 'u-2', tutorMessageId: 't-2' };
+    await sent('둘째 질문', made);
+    tab().setConversation(OTHER.conversationId);
+    failedBefore(CONV, made.tutorMessageId);
+    expect(tab().attached).toBeNull();
+    expect(tab().drafts).toEqual({ [CONV]: '둘째 질문' });
+    expect(tab().notice).toBeNull();
+  });
+
+  it('refused for consent: the prefs are read again (the card shows), the question stays, and no failure notice', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    tab().setDraft(draftKey(null, ITEM), '질문');
+    const going = sendQuestion(scope, '질문', 'fake');
+    await drain();
+    asks[0]!.settle(fail('TUTOR_CONSENT_REQUIRED'));
+    await going;
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.prefs });
+    expect(tab().drafts).toEqual({ [draftKey(null, ITEM)]: '질문' });
+    expect(tab().notice).toBeNull();
+    expect(tab().alert).toBeNull();
+    invalidate.mockRestore();
     warn.mockRestore();
   });
 

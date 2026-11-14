@@ -1961,6 +1961,35 @@ export const tutorFailAgents = (app: ElectronApplication, n: number) => app.eval
  * inspector, which can land it inside a query the window is running; better-sqlite3 then refuses it before anything is written (one
  * transaction), and it is asked again.
  */
+/** The sidebar dragged by its separator to `width` (180–360; a drag under 180 folds it). */
+export async function dragSidebarTo(page: Page, width: number): Promise<void> {
+  const sep = (await page.locator('#pane-separator').boundingBox())!;
+  const y = sep.y + sep.height / 2;
+  await page.mouse.move(sep.x + sep.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(width, y, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => Math.round((await page.locator('#sidebar').boundingBox())!.width)).toBe(width);
+}
+/**
+ * A name field's note under its row stays inside the sidebar: its box clear of the sidebar's edges by the rows' own 8 px (its shadow's
+ * edge shows), and nothing between it and the sidebar scrolls sideways or clips it.
+ */
+export async function expectNoteInsideSidebar(note: Locator): Promise<void> {
+  const at = await note.evaluate((el) => {
+    const side = el.closest('#sidebar')!.getBoundingClientRect();
+    const box = el.getBoundingClientRect();
+    const sideways: string[] = [];
+    for (let a = el.parentElement; a; a = a.parentElement) {
+      if (getComputedStyle(a).overflowX !== 'visible' && a.scrollWidth > a.clientWidth) sideways.push(a.className || a.id);
+      if (a.id === 'sidebar') break;
+    }
+    return { left: box.left - side.left, right: side.right - box.right, sideways };
+  });
+  expect(at.left, 'the note starts inside the sidebar').toBeGreaterThanOrEqual(8);
+  expect(at.right, 'the note ends 8 px or more inside the sidebar').toBeGreaterThanOrEqual(8);
+  expect(at.sideways, 'nothing scrolls sideways').toEqual([]);
+}
 export async function seedSessions(app: ElectronApplication, input: SeedSessionsInput): Promise<{ conversationIds: string[] }> {
   for (let attempt = 1; ; attempt += 1) {
     try {

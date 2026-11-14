@@ -156,6 +156,13 @@ export function TutorPanel({ visible }: { visible: boolean }) {
   useEffect(() => {
     if (owedFocus.current.step(state, tabId)) usePanelFocusRequest.getState().request();
   }, [state, tabId]);
+  // A session row's click owed the conversation column the focus; a panel seen without the session (the card, the chooser, off)
+  // lets it go, so the conversation it shows later does not take it.
+  const logFocus = useTutorTab((s) => s.logFocus);
+  const setLogFocus = useTutorTab((s) => s.setLogFocus);
+  useEffect(() => {
+    if (logFocus && visible && state !== 'ready') setLogFocus(false);
+  }, [logFocus, visible, state, setLogFocus]);
   const started = (focusInside: boolean) => {
     if (focusInside) {
       owedFocus.current.owe(tabId);

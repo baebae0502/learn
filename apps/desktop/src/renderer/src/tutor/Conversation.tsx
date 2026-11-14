@@ -10,6 +10,7 @@ import { useReaderScope } from '../viewers/readerScope';
 import { TutorBubble, UserBubble, type CiteTarget } from './Bubble';
 import { answerCheck, knownPageCount, regroundBubble } from './failureCopy';
 import { nearBottom, nextFollow } from './follow';
+import { createLogFocus } from './logFocus';
 import { SessionHead, StickyName } from './SessionHead';
 import { ringedChip, useTutorTab, type TurnNotice } from './tutorStore';
 import { TurnFailure, TutorNotice } from './TurnFailure';
@@ -109,15 +110,17 @@ export function Conversation({ conversationId, visible }: { conversationId: stri
   visibleRef.current = visible;
   const [latest, setLatest] = useState(false);
   const [stuck, setStuck] = useState(false);
-  // Owed the focus (a session row's click opened the folded panel and folded its sidebar): taken once the column is drawn and seen.
+  // Owed the focus (a session row's click opened the folded panel and folded its sidebar): taken once the column is drawn and seen,
+  // let go when the read fails or the panel is folded again first.
   const logFocus = useTutorTab((s) => s.logFocus);
   const setLogFocus = useTutorTab((s) => s.setLogFocus);
+  const owedFocus = useRef(createLogFocus());
   const drawn = thread !== null;
   useEffect(() => {
-    if (!logFocus || !drawn || !visible) return;
-    logRef.current?.focus({ preventScroll: true });
-    setLogFocus(false);
-  }, [logFocus, drawn, visible, setLogFocus]);
+    const step = owedFocus.current.step({ owed: logFocus, drawn, visible, failed });
+    if (step === 'take') logRef.current?.focus({ preventScroll: true });
+    if (step === 'take' || step === 'drop') setLogFocus(false);
+  }, [logFocus, drawn, visible, failed, setLogFocus]);
   const stickyRef = useRef<HTMLDivElement>(null);
   const stickyHeight = useRef(0);
 

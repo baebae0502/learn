@@ -12,7 +12,7 @@ import type { LearnPdfProbe } from '../../apps/desktop/src/renderer/src/viewers/
 import type { PdfAnchor } from '../../packages/domain/src/anchors';
 import type { TutorAskInput } from '../../packages/domain/src/tutor';
 import {
-  FIXTURES, assignTag, backFromReader, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, expectDisabledReason, expectTooltipText, expectWindow, hoverLikeUser, importPaths, ipcCalls, launch, mainWindow, menuItemEnabled,
+  FIXTURES, assignTag, backFromReader, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, dragSidebarTo, expectDisabledReason, expectNoteInsideSidebar, expectTooltipText, expectWindow, hoverLikeUser, importPaths, ipcCalls, launch, mainWindow, menuItemEnabled,
   menuSnapshot, openItem, readClipboard, readerTab, recordedPopups, rowByTitle, runMenuAccelerator, runMenuCommand, runPalette, seedSessions, setPdfZoom, specialRow, stubContextMenu,
   stubFolderPicker, stubFolderPicks, textExtraction, textIdle, trashItems, tutorFailAgents, tutorFakeLog, tutorFakeScript, tutorProcesses, type MenuNode, type Session,
 } from './helpers';
@@ -2297,6 +2297,21 @@ test('the 세션 pane with no session says where they come from; older sessions 
     // An older day's tooltip says its time as well as the day its group already names.
     await hoverOver(page, readerRows(page).nth(5));
     await expectTooltipText(page, /^그림 6-2는 어떻게 읽나요\?\s·\s2026\.\s10\.\s12\.\s오전\s9:00\s·\s가짜\s에이전트$/, 'session-row');
+    // Wrapped, it is as wide as its longer line: no empty band beside the shorter one.
+    const lines = await page.getByRole('tooltip').evaluate((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el.querySelector('.tooltip-label')!);
+      const rects = [...range.getClientRects()].filter((r) => r.width > 0);
+      const tops = [...new Set(rects.map((r) => Math.round(r.top)))];
+      const widest = Math.max(...tops.map((t) => {
+        const line = rects.filter((r) => Math.round(r.top) === t);
+        return Math.max(...line.map((r) => r.right)) - Math.min(...line.map((r) => r.left));
+      }));
+      const cs = getComputedStyle(el);
+      return { count: tops.length, slack: el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - widest };
+    });
+    expect(lines.count).toBe(2);
+    expect(Math.abs(lines.slack)).toBeLessThanOrEqual(1);
     // A double-click names a row in place too (the collection rows' grammar); a click elsewhere keeps what was typed, the row where it was.
     await readerRows(page).nth(5).dblclick();
     const field = page.getByTestId('session-name-input');
@@ -2471,6 +2486,7 @@ test('the name field keeps a Korean composition\'s ↩ and esc for it and refuse
     }
     await field.fill('가'.repeat(201));
     await expect(page.getByTestId('session-name-note')).toHaveText('세션 이름은 200자까지 쓸 수 있습니다.');
+    await expectNoteInsideSidebar(page.getByTestId('session-name-note'));
     await page.keyboard.press('Enter');
     await expect(field).toBeFocused();
     await expect(field).toHaveValue('가'.repeat(201));
@@ -2482,6 +2498,15 @@ test('the name field keeps a Korean composition\'s ↩ and esc for it and refuse
     await expect(field).toHaveCount(0);
     await expect(rowOf(page, b)).toHaveText('가'.repeat(200));
     expect(await renames()).toBe(before + 1);
+    // At the narrowest sidebar the note wraps inside it.
+    await dragSidebarTo(page, 181);
+    await rowOf(page, b).focus();
+    await page.keyboard.press('Enter');
+    await expect(field).toBeFocused();
+    await field.fill('나'.repeat(201));
+    await expectNoteInsideSidebar(page.getByTestId('session-name-note'));
+    await page.keyboard.press('Escape');
+    await expect(field).toHaveCount(0);
   } finally {
     await app.close();
   }

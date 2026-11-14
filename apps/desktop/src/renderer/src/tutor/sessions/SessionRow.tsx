@@ -27,7 +27,8 @@ const TIP_EDGE = 8;
 
 /**
  * A row's tooltip (the app's tooltip, ui/Tooltip.tsx): beside the sidebar, centred on its row's height, so it covers none of the rows
- * and labels around it; kept inside the window. A row of a list is no trigger of its own, so it is placed here.
+ * and labels around it; kept inside the window; as wide as its longest line. A row of a list is no trigger of its own, so it is placed
+ * here.
  */
 function RowTip({ row, text }: { row: HTMLElement; text: string }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -35,6 +36,16 @@ function RowTip({ row, text }: { row: HTMLElement; text: string }) {
   useLayoutEffect(() => {
     const tip = ref.current;
     if (!tip) return;
+    // Wrapped, the tooltip keeps its maximum width; its text is narrowed to the longest line (the lines break where they did), so
+    // the box is as wide as that line. The span is TooltipText's, which sets no style of its own.
+    const label = tip.querySelector<HTMLElement>('.tooltip-label');
+    if (label) {
+      label.style.width = '';
+      const range = document.createRange();
+      range.selectNodeContents(label);
+      const longest = Math.ceil(range.getBoundingClientRect().width);
+      if (longest < label.offsetWidth) label.style.width = `${longest}px`;
+    }
     const r = row.getBoundingClientRect();
     const edge = (row.closest('.sidebar') ?? row).getBoundingClientRect().right;
     const left = Math.max(TIP_EDGE, Math.min(edge + TIP_OFFSET, innerWidth - TIP_EDGE - tip.offsetWidth));

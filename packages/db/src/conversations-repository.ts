@@ -205,7 +205,7 @@ export class ConversationsRepository {
     return parsed?.success ? { anchor: parsed.data, quote: row.quote_snapshot, label: row.label } : null;
   }
 
-  /** The partial answer, while it comes. The session's time is left alone: it moves at a turn's start and end only (R41). */
+  /** The partial answer, while it comes. The session's time is left alone: it moves at a turn's start and end only. */
   saveText(tutorMessageId: string, text: string): void {
     const t = parse(z.string().max(ANSWER_COLUMN_MAX), text);
     const r = this.db.prepare(`UPDATE messages SET text = ? WHERE id = ? AND role = 'tutor' AND status = 'streaming'`).run(t, parse(idSchema, tutorMessageId));

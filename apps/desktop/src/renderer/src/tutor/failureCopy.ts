@@ -42,7 +42,7 @@ export function failureCopy(f: { code: FailureCode; phase: 'before' | 'during'; 
       case 'AGENT_LOCKDOWN':
         return view(words.stoppedBefore(name), words.againBody);
       default:
-        // Main refused it for a reason of its own (an item trashed from another tab, say): no agent ran (R47).
+        // Main refused it for a reason of its own (an item trashed from another tab, say): no agent ran.
         return view(words.notSent, words.againBody);
     }
   }

@@ -392,7 +392,7 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
   };
 
   /**
-   * P-40: the work folders of conversations whose rows are gone, and Claude's records of them. What still runs for them ends first —
+   * The work folders of conversations whose rows are gone, and Claude's records of them. What still runs for them ends first —
    * the answer stopped, the process closed and its group gone — or the agent would write the folders back.
    */
   async function removeWorkFolders(conversationIds: readonly string[]): Promise<void> {

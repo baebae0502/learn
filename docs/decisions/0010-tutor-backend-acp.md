@@ -213,7 +213,7 @@ P3 정의, AC11 범위, 키체인 시점은 `docs/spec-amendments.md` 2–4절�
   - 없으면 그만인 고정 경로도 연다: `~/.config/anthropic/{active_config,configs/default.json}`, `/etc/claude-code/{managed-settings.json,managed-settings.d,CLAUDE.md,.claude/*}`, `/home/claude/.claude/remote/*`.
   - 시스템 파일: `/etc/ssl`, `/etc/localtime`, `/etc/gai.conf`, `/etc/os-release`, `/etc/machine-id`.
   - **남는 위험**: 사용자의 `~/.config/anthropic` 설정이나 관리자의 `/etc/claude-code/managed-settings*`가 있으면 Learn의 에이전트에도 적용된다. 이것까지 막으려면 에이전트의 `HOME`을 바꿔야 하는데, 스파이크가 시험하지 않았고 Mac 키체인 로그인이 깨질 수 있어 T1a는 바꾸지 않는다. 소유자의 Mac 확인(명세 16.6)에서 본다.
-- **P-41(미룸)**: Learn이 CLI를 강제로 끝내면(SIGKILL — 잠금, 종료 시한, 다시 띄우기) Learn 전용 폴더의 `sessions/<pid>.json`과 `<pid>.<hash>.key`(0600)가 남는다. 다음 CLI는 그 pid가 죽었는지(`kill 0` → ESRCH)만 보고 파일을 지우지 않는다. Learn 전용 폴더 안의 일이라 T1a는 그대로 두고 Mac 확인 때 다시 본다.
+- **P-50(미룸)**: Learn이 CLI를 강제로 끝내면(SIGKILL — 잠금, 종료 시한, 다시 띄우기) Learn 전용 폴더의 `sessions/<pid>.json`과 `<pid>.<hash>.key`(0600)가 남는다. 다음 CLI는 그 pid가 죽었는지(`kill 0` → ESRCH)만 보고 파일을 지우지 않는다. Learn 전용 폴더 안의 일이라 T1a는 그대로 두고 Mac 확인 때 다시 본다.
 
 ## T1a 앱 전체 실제 시험 (2026-11-12)
 - `tests/e2e/tutor-live.spec.ts`(T1a 명세 16.4 — 앱 전체로 질문 하나와 확인된 인용 칩)를 컨트롤러가 개발 서버에서 두 번 돌렸다. 위 시험과 같은 격리 로그인 폴더와 같은 CLI · 연결 도구(Claude Code 2.1.318 + `claude-agent-acp` 0.103.0)이고, 시험이 찾는 자리를 스스로 넘긴다(E2E의 빈 찾는 자리가 이기지 않게). 측정은 부하 평균 약 80 / 40코어에서 했고 시간은 보고값이다.
@@ -225,7 +225,7 @@ P3 정의, AC11 범위, 키체인 시점은 `docs/spec-amendments.md` 2–4절�
   - 도구는 같다.
   - 답은 끝까지 왔다: 출력 1,403토큰. 도구 앞의 말 없이 곧바로 한국어 답으로 시작했다 — R33의 지시가 지켜졌다.
   - 확인된 출처 다섯.
-  - 에이전트는 두 번 다 종료 코드 0으로 끝났다.
+- 두 실행 모두 에이전트는 종료 코드 0으로 끝났다.
 
 ## 알아 둘 사실과 남는 위험 (T1a)
 - **알아 둘 사실 셋**

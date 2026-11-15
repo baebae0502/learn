@@ -98,16 +98,17 @@ function cut(text: string, n: number): string {
 
 /**
  * What a question carries of the outline (spec 5.1), as the cache has it now: the first 300 entries in reading order, titles cut
- * at 300 characters and depths at 8 (a deeper entry is sent at that depth), each with its page (0-based) or null — no destination, a broken one, or not resolved yet; whether
- * those entries are all resolved, and how many entries the document's outline has. No cache yet: nothing, not complete.
+ * at 300 characters and depths at 8 (a deeper entry is sent at that depth), each with its page (0-based) or null — no destination, a broken one
+ * (past the document's `pageCount` pages too), or not resolved yet; whether those entries are all resolved, and how many entries the
+ * document's outline has. No cache yet: nothing, not complete.
  */
-export function outlineSnapshot(c: OutlineCache | null): { outline: TutorAskInput['reader']['outline']; outlineComplete: boolean; outlineTotal: number } {
+export function outlineSnapshot(c: OutlineCache | null, pageCount = Infinity): { outline: TutorAskInput['reader']['outline']; outlineComplete: boolean; outlineTotal: number } {
   if (c === null) return { outline: [], outlineComplete: false, outlineTotal: 0 };
   const first = c.flat.slice(0, TUTOR_LIMITS.outlineEntries);
   return {
     outline: first.map((row) => {
       const page = c.pages.get(row.id);
-      return { title: cut(row.title, TUTOR_LIMITS.outlineTitle), depth: Math.min(row.depth, TUTOR_LIMITS.outlineDepth), pageIndex: page !== undefined && page >= 1 ? page - 1 : null };
+      return { title: cut(row.title, TUTOR_LIMITS.outlineTitle), depth: Math.min(row.depth, TUTOR_LIMITS.outlineDepth), pageIndex: page !== undefined && page >= 1 && page <= pageCount ? page - 1 : null };
     }),
     outlineComplete: c.resolvedUpTo >= first.length,
     outlineTotal: c.flat.length,

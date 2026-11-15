@@ -42,7 +42,7 @@ async function carrying(id: string, run: () => Promise<void>): Promise<void> {
 function readerNow(scope: ReaderScope): TutorAskInput['reader'] | null {
   const { pdf, outline } = scope.reader.getState();
   if (pdf?.ready !== true || pdf.pagesCount < 1) return null;
-  return { pageIndex: Math.min(Math.max(pdf.pageNumber, 1), pdf.pagesCount) - 1, pageCount: pdf.pagesCount, ...outlineSnapshot(outline) };
+  return { pageIndex: Math.min(Math.max(pdf.pageNumber, 1), pdf.pagesCount) - 1, pageCount: pdf.pagesCount, ...outlineSnapshot(outline, pdf.pagesCount) };
 }
 
 /** The highest seq of the session as this window read it (0 for none, or a new session): where a turn that is gone stood after. */

@@ -24,7 +24,14 @@ describe('tutorAskInput', () => {
   it('takes the smallest input and a 300-entry outline', () => {
     expect(tutorAskInput.safeParse(ask).success).toBe(true);
     const outline = Array.from({ length: 300 }, (_, i) => ({ title: `t${i}`, depth: 0, pageIndex: i }));
-    expect(tutorAskInput.safeParse({ ...ask, reader: { ...reader, outline, outlineTotal: 300 } }).success).toBe(true);
+    expect(tutorAskInput.safeParse({ ...ask, reader: { ...reader, pageCount: 300, outline, outlineTotal: 300 } }).success).toBe(true);
+  });
+  it('holds the reader\'s page and every outline page inside the document', () => {
+    const last = { ...reader, pageIndex: 9, outline: [{ title: 'End', depth: 0, pageIndex: 9 }, { title: 'No page', depth: 0, pageIndex: null }], outlineTotal: 2 };
+    expect(tutorAskInput.safeParse({ ...ask, reader: last }).success).toBe(true);
+    expect(tutorAskInput.safeParse({ ...ask, reader: { ...last, pageIndex: 10 } }).success).toBe(false);
+    expect(tutorAskInput.safeParse({ ...ask, reader: { ...last, outline: [{ title: 'Past', depth: 0, pageIndex: 10 }] } }).success).toBe(false);
+    expect(tutorRetryInput.safeParse({ messageId: ID, reader: { ...last, pageIndex: 10 } }).success).toBe(false);
   });
   it('takes a selection with a span anchor', () => {
     const r = tutorAskInput.safeParse({ ...ask, selection: { anchor: span, text: 'x' } });

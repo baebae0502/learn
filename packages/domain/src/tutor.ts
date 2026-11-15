@@ -105,7 +105,10 @@ export const readerSnapshotSchema = z.object({
   }).strict()).max(TUTOR_LIMITS.outlineEntries),
   outlineComplete: z.boolean(),
   outlineTotal: z.number().int().min(0),
-}).strict();
+}).strict().refine(
+  (s) => s.pageIndex < s.pageCount && s.outline.every((e) => e.pageIndex === null || e.pageIndex < s.pageCount),
+  { message: 'the reader\'s page and the outline\'s pages are inside the document' },
+);
 export type ReaderSnapshot = z.input<typeof readerSnapshotSchema>;
 
 export const tutorConsentInput = z.object({ grant: z.literal(true) }).strict();

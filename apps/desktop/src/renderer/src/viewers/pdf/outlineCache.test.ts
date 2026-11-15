@@ -28,6 +28,12 @@ describe('the outline a question carries (spec 5.1)', () => {
     expect(snap.outline[4]!.pageIndex).toBe(4);
   });
 
+  it('an entry whose destination is past the document\'s last page says null, as a broken one does', () => {
+    const flat = Array.from({ length: 3 }, (_, i) => row(String(i), 0, `e${i}`));
+    const pages = new Map([['0', 1], ['1', 10], ['2', 11]]);
+    expect(outlineSnapshot({ rows: flat, flat, pages, resolvedUpTo: 3 }, 10).outline.map((e) => e.pageIndex)).toEqual([0, 9, null]);
+  });
+
   it('says a document without an outline has a complete empty one', () => {
     expect(outlineSnapshot({ rows: [], flat: [], pages: new Map(), resolvedUpTo: 0 })).toEqual({ outline: [], outlineComplete: true, outlineTotal: 0 });
   });

@@ -125,8 +125,12 @@ export function createAcpBackend(d: AcpBackendDeps): TutorBackend {
     }
   };
 
-  /** The agent's stdout into a JSON-RPC peer; a protocol fault kills it, its exit closes the peer once its last line is in. */
-  const connect = (child: ChildPort, agent: AgentId, onExit: () => void): AcpClient => {
+  /**
+   * The agent's stdout into a JSON-RPC peer; a protocol fault kills it, its exit closes the peer once its last line is in. A lockdown
+   * outside a prompt (`prompting` false) ends the process at once: no turn is there to interrupt it, and it would live on until its
+   * idle close.
+   */
+  const connect = (child: ChildPort, agent: AgentId, onExit: () => void, prompting: () => boolean = () => false): AcpClient => {
     const peer: JsonRpcPeer = createPeer({ write: (line) => child.write(line), onFatal: () => fault() });
     const fault = () => {
       d.supervisor.killNow();
@@ -145,7 +149,11 @@ export function createAcpBackend(d: AcpBackendDeps): TutorBackend {
       const grace = setTimeout(gone, OUTPUT_GRACE_MS);
       child.onOutputEnd(gone);
     });
-    return createAcpClient(peer, { clientVersion: d.appVersion, isLearnTool: (c) => isLearnToolCall(agent, c), onLockdown: () => d.onLockdown(agent) });
+    const onLockdown = () => {
+      d.onLockdown(agent);
+      if (!prompting()) d.supervisor.killNow();
+    };
+    return createAcpClient(peer, { clientVersion: d.appVersion, isLearnTool: (c) => isLearnToolCall(agent, c), onLockdown });
   };
 
   // A token never outlives its ACP session.
@@ -155,7 +163,7 @@ export function createAcpBackend(d: AcpBackendDeps): TutorBackend {
 
   const begin = async (child: ChildPort, key: SessionKey, agent: AgentId): Promise<BackendConn> => {
     const session: Session = { key: copy(key), agent, sessionId: null, scope: null, firstPrompt: true, resumedBy: null };
-    const client = connect(child, agent, () => closeScope(session));
+    const client = connect(child, agent, () => closeScope(session), () => states.get(session)?.prompting === true);
     states.set(session, { client, opening: null, prompts: 0, prompting: false, interrupted: null });
     // The process was spawned just before this (supervisor): its start to initialize's answer, timed for tutor-perf (spec 15).
     const info = await timeLastAsync('tutorInitialize', () => client.initialize());

@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LearnError, type AgentId, type AgentsReport, type AgentState, type AgentStatus } from '@learn/domain';
-import type { AcpClient, InitializeInfo } from './acp/client';
+import type { AcpClient, InitializeInfo, SessionUpdate } from './acp/client';
 import { createPeer, RpcError, type JsonRpcPeer } from './acp/jsonrpc';
 import { AGENT_CATALOG } from './agents/catalog';
 import type { AgentDetector, Detected } from './agents/detect';
@@ -447,6 +447,31 @@ describe('the ACP backend', () => {
       await settle();
       expect(() => h.backend.interrupt(s, 'always')).not.toThrow();
       expect(h.log.interrupt).toEqual([]);
+    });
+
+    it('a tool call that is not Learn\'s outside a prompt locks the agent out and ends its process at once; inside one the turn\'s interrupt ends it', async () => {
+      const bash = { sessionUpdate: 'tool_call', toolCallId: 'toolu_9', title: 'Bash', kind: 'execute', status: 'pending', rawInput: {} };
+      // After session/prompt has answered: no turn will interrupt it.
+      const h = harness({ resume: false, load: false });
+      const s = await h.backend.start({ key: KEY, agent: 'claude', conversation: CONV });
+      await expect(h.backend.prompt(s, ASK, () => {})).resolves.toMatchObject({ stopReason: 'end_turn' });
+      h.children[0]!.agent.notify('session/update', { sessionId: 'acp-1', update: bash });
+      await settle();
+      expect(h.onLockdown).toHaveBeenCalledWith('claude');
+      expect(h.agentSaw('session/cancel')).toEqual([{ params: { sessionId: 'acp-1' } }]);
+      expect(h.log.killNow).toBe(1);
+
+      // Positive control: during the prompt the turn sees the call and interrupts ('always': cancel, 3 s, then the kill).
+      const inside = harness({ resume: false, load: false, script: { 'session/prompt': (_p, c) => {
+        c.agent.notify('session/update', { sessionId: 'acp-1', update: bash });
+        return { stopReason: 'cancelled' };
+      } } });
+      const t = await inside.backend.start({ key: KEY, agent: 'claude', conversation: CONV });
+      const seen: SessionUpdate[] = [];
+      await expect(inside.backend.prompt(t, ASK, (u) => seen.push(u))).resolves.toMatchObject({ lockdown: true });
+      expect(inside.onLockdown).toHaveBeenCalledWith('claude');
+      expect(seen).toMatchObject([{ kind: 'tool', learn: false }]);
+      expect(inside.log.killNow).toBe(0);
     });
 
     it('a close ends the scope and the process', async () => {

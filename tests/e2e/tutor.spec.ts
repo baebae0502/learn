@@ -1101,7 +1101,7 @@ test('the session\'s name row comes and goes in the frame of the scroll that cro
  * real streamed answer over a long thread, and it counts exactly what the memo saves — a bubble's render — where a frame time would
  * mostly measure this machine's load.
  */
-test('in a long session each piece of an answer draws only the answer that comes: the other bubbles are not drawn again', async ({}, testInfo) => {
+test('in a long session each piece of an answer draws only the answer that comes: the other bubbles and the main window are not drawn again', async ({}, testInfo) => {
   const { app, page, itemId } = await atSession(testInfo);
   try {
     const QUESTIONS = 40;
@@ -1126,6 +1126,8 @@ test('in a long session each piece of an answer draws only the answer that comes
     // never the 80 bubbles of the thread once per piece.
     const others = (counts['TutorBubble'] ?? 0) + (counts['UserBubble'] ?? 0);
     expect(others, `every other bubble's renders (${JSON.stringify(counts)})`).toBeLessThan(QUESTIONS);
+    // Nor the main window: what it reads of the answer is whether one comes, which a piece of its text does not change.
+    expect(counts['MainWindow'] ?? 0, `the main window's renders (${JSON.stringify(counts)})`).toBeLessThan(10);
   } finally {
     await app.close();
   }

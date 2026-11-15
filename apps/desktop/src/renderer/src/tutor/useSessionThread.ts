@@ -50,12 +50,16 @@ export function startsLive(thread: SessionThread | undefined, messageId: string)
 }
 
 /**
- * The answer of the session still coming: the live one, or a stored answer whose status is still streaming (a window that joined it
- * late); null when none comes. What 중지, esc and 답 중지 stop.
+ * The answer of the session still coming: the live one (`liveId`) unless the stored thread has it ended, or a stored answer whose status
+ * is still streaming (a window that joined it late); null when none comes. What 중지, esc and 답 중지 stop. The live answer's id is all
+ * it needs — a live answer the stored one stands in for is that same answer, still streaming — so what reads it is not drawn again for
+ * each piece of the text.
  */
-export function comingAnswer(thread: SessionThread | null, stored: LiveTurn | null): string | null {
-  const live = liveOver(thread, stored);
-  if (live !== null) return live.tutorMessageId;
+export function comingAnswer(thread: SessionThread | null, liveId: string | null): string | null {
+  if (liveId !== null) {
+    const stored = thread?.messages.find((m) => m.id === liveId);
+    if (stored === undefined || stored.status === 'streaming') return liveId;
+  }
   return thread?.messages.find((m) => m.role === 'tutor' && m.status === 'streaming')?.id ?? null;
 }
 
@@ -71,16 +75,16 @@ const threadQuery = (conversationId: string | null) => ({
  * answer's end is seen there too (답 중지 is the palette's whatever the panel shows).
  */
 export function useAnswerComing(conversationId: string | null): string | null {
-  const stored = useTutorTab((s) => s.live);
+  const liveId = useTutorTab((s) => s.live?.tutorMessageId ?? null);
   const read = useQuery({ ...threadQuery(conversationId), enabled: conversationId !== null });
-  return conversationId === null ? null : comingAnswer(read.data ?? null, stored);
+  return conversationId === null ? null : comingAnswer(read.data ?? null, liveId);
 }
 
 /** The same, outside a component: the answer still coming in the session the tab of `scope` shows. */
 export function answerComingIn(scope: ReaderScope): string | null {
   const { conversationId, live } = scope.tutor.getState();
   if (conversationId === null) return null;
-  return comingAnswer(queryClient.getQueryData<SessionThread>(keys.sessionThread(conversationId)) ?? null, live);
+  return comingAnswer(queryClient.getQueryData<SessionThread>(keys.sessionThread(conversationId)) ?? null, live?.tutorMessageId ?? null);
 }
 
 /** An answer of the thread is coming and the window has no live one over it: it joined that answer late. */

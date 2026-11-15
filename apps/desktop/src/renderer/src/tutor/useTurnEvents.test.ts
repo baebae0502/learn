@@ -74,14 +74,21 @@ describe('which of the live and the stored answer is drawn', () => {
 });
 
 describe('the answer still coming in a session: what 중지, esc and 답 중지 stop', () => {
-  const live = { tutorMessageId: M, text: '읽은 쪽을', tools: [], running: null, verifiedSoFar: new Set<number>() };
   it('is the live one, or a stored answer still streaming (a window that joined late), else none', () => {
-    expect(comingAnswer(null, live)).toBe(M); // the session not read yet
-    expect(comingAnswer(thread(), live)).toBe(M); // its rows not read yet
+    expect(comingAnswer(null, M)).toBe(M); // the session not read yet
+    expect(comingAnswer(thread(), M)).toBe(M); // its rows not read yet
     expect(comingAnswer(thread(answer()), null)).toBe(M);
     expect(comingAnswer(thread(answer({ status: 'complete' })), null)).toBeNull();
-    expect(comingAnswer(thread(answer({ status: 'stopped' })), live)).toBeNull(); // ended: the live one is stale
+    expect(comingAnswer(thread(answer({ status: 'stopped' })), M)).toBeNull(); // ended: the live one is stale
     expect(comingAnswer(null, null)).toBeNull();
+  });
+  it('needs only the live answer\'s id: whatever its text says against the stored one, the same answer comes', () => {
+    const live = { tutorMessageId: M, text: '그 뒤의 글', tools: [read(41, 42)], running: null, verifiedSoFar: new Set<number>() };
+    // Stored text that is not a prefix of the live one, or more tools stored: the stored one is drawn, and it is the same answer.
+    for (const stored of [answer({ text: '앞서 받은 글 ' }), answer({ tools: [read(1), read(41, 42)] })]) {
+      expect(liveOver(thread(stored), live)).toBeNull();
+      expect(comingAnswer(thread(stored), live.tutorMessageId)).toBe(M);
+    }
   });
 });
 

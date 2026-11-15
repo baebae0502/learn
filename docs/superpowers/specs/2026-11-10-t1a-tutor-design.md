@@ -173,7 +173,7 @@
   | 위 폴더의 저장소 | `cwd`마다 Learn의 빈 `.git` + `GIT_CEILING_DIRECTORIES=<userData>/Tutor`(R18) | — |
   | Learn 도구 호출의 표지 | 스파이크가 기록(S5 — 예: 도구 이름 `mcp__learn__…`) | 스파이크가 기록(S5) |
   | 공통 | ACP `fs`·`terminal` 능력 거짓, `session/request_permission` 모두 거절, 빈 작업 폴더, 환경 허용 목록(J15) | 같음 |
-- **환경 허용 목록**(J15): `PATH`(감지에서 만든 것), `HOME`, `USER`, `LOGNAME`, `SHELL`, `LANG`, `LC_ALL`, `TMPDIR`, 위 표의 격리 변수, HTTP 전송이면 `NO_PROXY=127.0.0.1,localhost`(프록시의 루프백 가로채기 — ADR-0010 "T1에서 채울 빈칸"). Learn 자신의 환경에 있는 `HTTPS_PROXY`·`HTTP_PROXY`는 그대로 넘긴다. **API 키 변수(`ANTHROPIC_API_KEY`·`OPENAI_API_KEY`·`CODEX_API_KEY` 등)는 넘기지 않는다** — Learn은 키를 다루지 않는다(spec-amendments 4절).
+- **환경 허용 목록**(J15): `PATH`(감지에서 만든 것), `HOME`, `USER`, `LOGNAME`, `SHELL`, `LANG`, `LC_ALL`, `TMPDIR`, 위 표의 격리 변수, HTTP 전송이면 `NO_PROXY=127.0.0.1,localhost`(프록시의 루프백 가로채기 — ADR-0010 "T1에서 채울 빈칸"). Learn 자신의 환경에 있는 `HTTPS_PROXY`·`HTTP_PROXY`는 그대로 넘긴다. **API 키 변수(`ANTHROPIC_API_KEY`·`OPENAI_API_KEY`·`CODEX_API_KEY` 등)는 넘기지 않는다** — Learn은 키를 다루지 않는다(spec-amendments 4절). macOS에서는 에이전트가 보는 환경에 `__CF_USER_TEXT_ENCODING`(사용자 id와 글자 인코딩, 비밀 아님)이 하나 더 있다 — Learn이 넘기는 것이 아니라, 연결 도구를 돌리는 Electron의 node가 불러오는 CoreFoundation이 그 이름이 없는 프로세스에 스스로 넣는다.
 - 가짜 에이전트는 같은 길로 띄우되 격리 변수 대신 `LEARN_FAKE_AGENT_SCRIPT`·`LEARN_FAKE_AGENT_LOG`(E2E)만 더한다(9절).
 
 ### 4.5 프롬프트 만들기 — 보내는 것

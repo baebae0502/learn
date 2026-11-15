@@ -44,6 +44,12 @@ const CLAUDE_ENV = [
   'CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_EXECUTABLE', 'ENABLE_CLAUDEAI_MCP_SERVERS', 'DISABLE_AUTOUPDATER', 'CLAUDE_CODE_TMPDIR', 'GIT_CEILING_DIRECTORIES',
   'LEARN_FAKE_AGENT_AS', 'LEARN_FAKE_AGENT_SCRIPT', 'LEARN_FAKE_AGENT_LOG',
 ];
+/**
+ * What a process sets in its own environment, which Learn never hands it (agentEnv keeps it out: isolation.test.ts): on macOS,
+ * CoreFoundation, which Electron's node loads, puts __CF_USER_TEXT_ENCODING (a user id and a text encoding) into a process
+ * whose environment lacks it. The fake lists the names it sees, so it sees that one too.
+ */
+const OWN_ENV = process.platform === 'darwin' ? ['__CF_USER_TEXT_ENCODING'] : [];
 
 test.beforeAll(() => {
   for (const f of [PAPER, INJECTION, SAMPLE]) if (!fs.existsSync(f)) throw new Error(`fixture missing: ${f} — run \`pnpm fixtures\``);
@@ -362,7 +368,7 @@ test('the isolated environment of Claude Code: no API key, its own config and te
       const env = p[0] as Entry<'env'>;
       expect(env.as).toBe('claude');
       expect(env.names.filter((n) => n.endsWith('_API_KEY'))).toEqual([]);
-      expect(env.names.filter((n) => !CLAUDE_ENV.includes(n))).toEqual([]);
+      expect(env.names.filter((n) => !CLAUDE_ENV.includes(n) && !OWN_ENV.includes(n))).toEqual([]);
       expect(env.isolation).toEqual({
         CLAUDE_CONFIG_DIR: path.join(userData, 'Tutor', 'agents', 'claude'),
         CLAUDE_CODE_TMPDIR: path.join(userData, 'Tutor', 'tmp'),

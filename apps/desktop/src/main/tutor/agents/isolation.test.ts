@@ -19,7 +19,8 @@ const mode = (p: string) => fs.statSync(p).mode & 0o777;
 
 describe('isolation', () => {
   it('hands Claude Code an allow-listed environment: its Learn-only folder, its own temp folder, no API key, the proxy kept', () => {
-    const base = { PATH: '/x', HOME: '/h', USER: 'u', LANG: 'ko_KR.UTF-8', HTTPS_PROXY: 'http://p:1', ANTHROPIC_API_KEY: 'k', OPENAI_API_KEY: 'k', CODEX_API_KEY: 'k', MY_API_KEY: 'k', SECRET: 's' };
+    // __CF_USER_TEXT_ENCODING is in every macOS process's own environment, Learn's too: it stays behind like any other name.
+    const base = { PATH: '/x', HOME: '/h', USER: 'u', LANG: 'ko_KR.UTF-8', HTTPS_PROXY: 'http://p:1', ANTHROPIC_API_KEY: 'k', OPENAI_API_KEY: 'k', CODEX_API_KEY: 'k', MY_API_KEY: 'k', SECRET: 's', __CF_USER_TEXT_ENCODING: '0x1F5:0x0:0x0' };
     const env = agentEnv('claude', base, { path: '/found', agentHome: '/u/Tutor/agents/claude', tmpDir: '/u/Tutor/tmp', ceiling: '/u/Tutor', cliPath: '/found/claude' });
     expect(Object.keys(env).filter((k) => /API_KEY|SECRET/.test(k))).toEqual([]);
     expect(env).toEqual({

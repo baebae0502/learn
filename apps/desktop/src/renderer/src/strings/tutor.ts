@@ -224,6 +224,8 @@ export const tutor = {
     chooseBody: '질문을 보내지 못했습니다. 에이전트 고르기에서 상태를 확인한 뒤 다시 보내세요. 질문은 입력창에 그대로 있습니다.',
     timeout: (agent: string) => `${subject(agent)} 답하지 않습니다`,
     stoppedBefore: (agent: string) => `${subject(agent)} 답하기 전에 멈췄습니다`,
+    /** A refusal before the answer that is not the agent's (R47): the approved bodies' first sentence. */
+    notSent: '질문을 보내지 못했습니다',
     againBody: '답을 받지 못했습니다. 잠시 뒤 입력창에서 ↩\u2060로 다시 보내세요. 질문은 입력창에 그대로 있습니다.',
     stoppedDuring: (agent: string) => `${subject(agent)} 답하는 도중 멈췄습니다`,
     stoppedDuringBody: '에이전트 프로그램이 예기치 않게 종료되어 답이 중간에 끊겼습니다. 다시 보내면 에이전트를 다시 시작하고 같은 질문을 처음부터 묻습니다.',

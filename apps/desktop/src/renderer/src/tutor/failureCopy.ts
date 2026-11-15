@@ -37,8 +37,13 @@ export function failureCopy(f: { code: FailureCode; phase: 'before' | 'during'; 
         return view(words.timeout(name), words.againBody);
       case 'AGENT_BUSY':
         return view(words.busy, words.notResent.busy);
-      default:
+      case 'AGENT_EXITED':
+      case 'AGENT_PROTOCOL':
+      case 'AGENT_LOCKDOWN':
         return view(words.stoppedBefore(name), words.againBody);
+      default:
+        // Main refused it for a reason of its own (an item trashed from another tab, say): no agent ran (R47).
+        return view(words.notSent, words.againBody);
     }
   }
   switch (f.code) {

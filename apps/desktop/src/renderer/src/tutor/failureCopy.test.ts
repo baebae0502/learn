@@ -17,6 +17,16 @@ describe('what a failed turn says (spec 8.8, 13; the approved mockup ?state=8&fa
     });
     expect(failureCopy({ code: 'AGENT_PROTOCOL', phase: 'before', ...claude })).toEqual(failureCopy({ code: 'AGENT_EXITED', phase: 'before', ...claude }));
   });
+  it('before any answer, a refusal that is not the agent\'s fault does not say the agent stopped (R47)', () => {
+    for (const code of ['VALIDATION_FAILED', 'INTERNAL', 'LIBRARY_UNAVAILABLE', 'NOT_FOUND', 'TUTOR_CONSENT_REQUIRED'] as const) {
+      expect(failureCopy({ code, phase: 'before', ...claude }), code).toEqual({
+        title: '질문을 보내지 못했습니다',
+        body: '답을 받지 못했습니다. 잠시 뒤 입력창에서 ↩\u2060로 다시 보내세요. 질문은 입력창에 그대로 있습니다.',
+        actions: [],
+        command: null,
+      });
+    }
+  });
   it('before any answer: offline, not answering in time', () => {
     expect(failureCopy({ code: 'OFFLINE', phase: 'before', ...claude })).toEqual({
       title: '인터넷에 연결되어 있지 않습니다',
@@ -100,8 +110,8 @@ describe('what a failed turn says (spec 8.8, 13; the approved mockup ?state=8&fa
     });
     expect(failureCopy({ code: 'AGENT_BUSY', phase: 'during', ...claude }).body).toBe('질문을 다시 보내지 못했습니다. 그\u00a0답이 끝난 뒤 다시 보내세요.');
   });
-  it('a code with no words of its own reads as the agent stopping, before or during', () => {
-    expect(failureCopy({ code: 'INTERNAL', phase: 'before', ...claude }).title).toBe(`${CLAUDE}가 답하기 전에 멈췄습니다`);
+  it('a code with no words of its own: before the answer the question was not sent (R47), during it the agent stopped', () => {
+    expect(failureCopy({ code: 'INTERNAL', phase: 'before', ...claude }).title).toBe('질문을 보내지 못했습니다');
     expect(failureCopy({ code: 'INTERNAL', phase: 'during', ...claude })).toEqual({
       title: `${CLAUDE}가 답하는 도중 멈췄습니다`,
       body: '다시 보내면 같은 질문을 처음부터 묻습니다.',

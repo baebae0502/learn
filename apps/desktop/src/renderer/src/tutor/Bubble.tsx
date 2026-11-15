@@ -1,10 +1,11 @@
-import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
+import { memo, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { Check, Copy } from 'lucide-react';
 import { citationCopyText, verifiedPages, type AgentId, type ErrorCode, type MessageView, type SourceChip } from '@learn/domain';
 import { t } from '../strings';
 import { IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { perfMarkLatest } from '../ui/perfMarks';
+import { countRender } from '../ui/renderCount';
 import { useCopyFeedback } from '../ui/useCopyFeedback';
 import { useReaderScope } from '../viewers/readerScope';
 import { AnswerText } from './AnswerText';
@@ -48,9 +49,10 @@ function endLine(m: MessageView): string | null {
 /**
  * The user's turn (design-spec 2.6): on the right in the accent wash, the passage it carried on top (two lines, its page's chip), then
  * the sent-scope line at its right end. `shown`: the words the bubble says when they are not the stored text (a 원문 근거 요청 says
- * which pages to read first, in the user's words; its stored text is the agent's instruction).
+ * which pages to read first, in the user's words; its stored text is the agent's instruction). Memoised, as TutorBubble is.
  */
-export function UserBubble({ message, answer, itemTitle, agent, target, shown }: { message: MessageView; answer: MessageView | null; itemTitle: string; agent: AgentId; target: CiteTarget; shown?: string }) {
+export const UserBubble = memo(function UserBubble({ message, answer, itemTitle, agent, target, shown }: { message: MessageView; answer: MessageView | null; itemTitle: string; agent: AgentId; target: CiteTarget; shown?: string }) {
+  countRender('UserBubble');
   const attached = message.attached;
   return (
     <div className="tutor-msg user" data-testid="tutor-question">
@@ -68,12 +70,12 @@ export function UserBubble({ message, answer, itemTitle, agent, target, shown }:
       <SentScope question={message} answer={answer} itemTitle={itemTitle} agent={agent} />
     </div>
   );
-}
+});
 
 /** Copies the answer with its cites as "(42쪽)" and "(출처 없음)" (spec 8.3); the tooltip says 복사했습니다 for 1.5 s. */
 function CopyAnswer({ message }: { message: MessageView }) {
   const { copied, copy } = useCopyFeedback('tutor');
-  const verified = new Set(message.sources.flatMap((s) => (s.pageIndex === null ? [] : [s.pageIndex])));
+  const verified = useMemo(() => new Set(message.sources.flatMap((s) => (s.pageIndex === null ? [] : [s.pageIndex]))), [message.sources]);
   return (
     <>
       <IconButton icon={copied ? Check : Copy} size="small" label={copied ? words.copied : words.copy} tooltipOpen={copied} onPress={() => copy(citationCopyText(message.text, verified, t.tutor.copy))} testId="tutor-copy" />
@@ -105,8 +107,12 @@ function useFirstTextPaint(coming: boolean, hasText: boolean): void {
  * stopped it — or, after a resend main refused (`refused`), that refusal — and 다시 보내기. A finished answer that cited pages it did not
  * read says so under its foot (failureCopy.unverifiedForm). Only the thread's `last` answer can be resent or asked again from the source
  * (the turn goes at the end): under an older one either notice keeps its title alone. `agent`: the session's.
+ * Memoised: the column draws again for each piece of an answer, each tool notice and each page the reader turns, and a thread of a
+ * hundred messages holds hundreds of react-aria controls (chips with tooltips, copy, the sent line). Every prop is stable for a bubble
+ * that did not change — a message keeps its identity through the thread's structural sharing, `target` is memoised, `live` is null —
+ * so only the answer that comes, and a bubble whose message or place changed, is drawn again.
  */
-export function TutorBubble({ message, live, mixed, target, agent, last = true, refused = null }: {
+export const TutorBubble = memo(function TutorBubble({ message, live, mixed, target, agent, last = true, refused = null }: {
   message: MessageView;
   live: LiveTurn | null;
   mixed: boolean;
@@ -115,6 +121,8 @@ export function TutorBubble({ message, live, mixed, target, agent, last = true, 
   last?: boolean;
   refused?: ErrorCode | null;
 }) {
+  // The answer that comes is counted apart: the others are what a piece of it must leave alone (tutor.spec).
+  countRender(live !== null ? 'TutorBubble:live' : 'TutorBubble');
   const scope = useReaderScope();
   const streaming = live !== null || message.status === 'streaming';
   const text = live?.text ?? message.text;
@@ -167,4 +175,4 @@ export function TutorBubble({ message, live, mixed, target, agent, last = true, 
       )}
     </div>
   );
-}
+});

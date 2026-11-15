@@ -55,6 +55,23 @@ function ThreadFailed({ retry }: { retry(): void }) {
 }
 
 /**
+ * The pressed chip keeps its ring while the reader shows its page: once the reader is there, leaving the page (a scroll, another jump,
+ * back or forward) ends it. A component of its own, drawing nothing: a page turned in the reader draws this again, not the column.
+ */
+function CurrentCiteWatch() {
+  const page = useReader((s) => s.pdf?.pageNumber ?? null);
+  const currentCite = useTutorTab((s) => s.currentCite);
+  const setCurrentCite = useTutorTab((s) => s.setCurrentCite);
+  useEffect(() => {
+    if (currentCite === null || page === null) return;
+    if (page - 1 === currentCite.pageIndex) {
+      if (!currentCite.shown) setCurrentCite({ ...currentCite, shown: true });
+    } else if (currentCite.shown) setCurrentCite(null);
+  }, [page, currentCite, setCurrentCite]);
+  return null;
+}
+
+/**
  * The conversation column (spec 8.2, 8.3): the session's head line, then the turns, in a log that is not a live region — it is
  * one Tab stop and scrolls with the arrows and PageUp/PageDown. While an answer comes the column keeps to its bottom, unless the user
  * scrolled up: then 최신으로 waits above the composer, and stays after the answer ended while there is unread text below. Scrolled
@@ -70,10 +87,9 @@ export function Conversation({ conversationId, visible }: { conversationId: stri
   const revisionId = useItem(scope.id).data?.revisionId ?? null;
   // Until pdf.js has the document, the body index's page count (a whole index read every page); 0 while neither is known.
   const pageCount = knownPageCount(useReader((s) => s.pdf?.pagesCount ?? 0), useItemDetail(scope.id).data?.text);
-  const page = useReader((s) => s.pdf?.pageNumber ?? null);
-  const currentCite = useTutorTab((s) => s.currentCite);
+  // The ringed chip's key alone: the chip's other changes (its page shown) and the reader's page do not draw the column again.
+  const ringed = useTutorTab((s) => ringedChip(s.currentCite, revisionId));
   const setCurrentCite = useTutorTab((s) => s.setCurrentCite);
-  const ringed = ringedChip(currentCite, revisionId);
   const target = useMemo<CiteTarget>(
     () => ({
       revisionId,
@@ -88,14 +104,6 @@ export function Conversation({ conversationId, visible }: { conversationId: stri
     }),
     [revisionId, pageCount, scope, setCurrentCite, ringed],
   );
-  // The pressed chip keeps its ring while the reader shows its page: once the reader is there, leaving the page (a scroll, another
-  // jump, back or forward) ends it.
-  useEffect(() => {
-    if (currentCite === null || page === null) return;
-    if (page - 1 === currentCite.pageIndex) {
-      if (!currentCite.shown) setCurrentCite({ ...currentCite, shown: true });
-    } else if (currentCite.shown) setCurrentCite(null);
-  }, [page, currentCite, setCurrentCite]);
   const streaming = live !== null || (thread?.messages.some((m) => m.role === 'tutor' && m.status === 'streaming') ?? false);
 
   const logRef = useRef<HTMLDivElement>(null);
@@ -241,6 +249,7 @@ export function Conversation({ conversationId, visible }: { conversationId: stri
   if (thread === null) {
     return (
       <div className="tutor-convo" data-testid="tutor-conversation" data-conversation-id={conversationId}>
+        <CurrentCiteWatch />
         {failed && <ThreadFailed retry={retry} />}
       </div>
     );
@@ -250,6 +259,7 @@ export function Conversation({ conversationId, visible }: { conversationId: stri
   const before = notice === null ? null : <BeforeNotice notice={notice} />;
   return (
     <div className="tutor-convo" data-testid="tutor-conversation" data-conversation-id={conversationId} data-drawn="" data-streaming={streaming ? '' : undefined}>
+      <CurrentCiteWatch />
       <StickyName title={session.title} shown={stuck} ref={stickyRef} />
       <div ref={logRef} className="tutor-log" role="log" aria-label={words.label} aria-live="off" tabIndex={0} onScroll={onScroll} data-testid="tutor-log">
         <div ref={contentRef} className="tutor-log-content">

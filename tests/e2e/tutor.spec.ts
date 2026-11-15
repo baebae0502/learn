@@ -13,8 +13,8 @@ import type { PdfAnchor } from '../../packages/domain/src/anchors';
 import type { TutorAskInput } from '../../packages/domain/src/tutor';
 import {
   FIXTURES, assignTag, backFromReader, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, dragSidebarTo, expectDisabledReason, expectNoteInsideSidebar, expectTooltipText, expectWindow, hoverLikeUser, importPaths, ipcCalls, launch, mainWindow, menuItemEnabled,
-  menuSnapshot, openItem, readClipboard, readerTab, recordedPopups, rowByTitle, runMenuAccelerator, runMenuCommand, runPalette, seedSessions, setPdfZoom, specialRow, stubContextMenu,
-  stubFolderPicker, stubFolderPicks, textExtraction, textIdle, trashItems, tutorFailAgents, tutorFakeLog, tutorFakeScript, tutorProcesses, type MenuNode, type Session,
+  menuSnapshot, openItem, readClipboard, readerTab, recordedPopups, renderCounts, rowByTitle, runMenuAccelerator, runMenuCommand, runPalette, seedSessions, setPdfZoom, specialRow, stubContextMenu,
+  stubFolderPicker, stubFolderPicks, textExtraction, textIdle, trashItems, tutorFailAgents, tutorFakeLog, tutorFakeScript, tutorProcesses, watchRenders, type MenuNode, type Session,
 } from './helpers';
 import { READER_100, askViaApi, consentAndChoose, installFakeAgents, nextFakeScript, turnEnded, windowReach } from './tutor-helpers';
 
@@ -1090,6 +1090,42 @@ test('the session\'s name row comes and goes in the frame of the scroll that cro
     const down = await framesAfterScroll(page, past, '[data-testid="tutor-answer-text"]');
     expect(down.y, 'the answer\'s top in the frame of the scroll down, then 1, 2 and 10 frames later').toEqual([down.y[0], down.y[0], down.y[0], down.y[0]]);
     expect(down.row, 'the row in the frame of the scroll down, and after').toEqual([true, true, true, true]);
+  } finally {
+    await app.close();
+  }
+});
+
+/**
+ * The bubbles' function bodies are counted (ui/renderCount — React's Profiler reports nothing in the
+ * production build the E2E runs), the answer that comes apart from the rest. The cheapest honest measure: it is the real build drawing a
+ * real streamed answer over a long thread, and it counts exactly what the memo saves — a bubble's render — where a frame time would
+ * mostly measure this machine's load.
+ */
+test('in a long session each piece of an answer draws only the answer that comes: the other bubbles are not drawn again', async ({}, testInfo) => {
+  const { app, page, itemId } = await atSession(testInfo);
+  try {
+    const QUESTIONS = 40;
+    const [seeded] = (await seedSessions(app, { itemId, sessions: 1, messagesPerSession: QUESTIONS * 2, citationsPerAnswer: 4 })).conversationIds;
+    await page.getByTestId('reader-nav-sessions').click();
+    await page.locator(`[data-testid="session-row"][data-conversation-id="${seeded}"]`).click();
+    await expect(page.getByTestId('tutor-question')).toHaveCount(QUESTIONS);
+    await expect(page.getByTestId('tutor-answer')).toHaveCount(QUESTIONS);
+    // An answer of 6,000 characters in some 30–50 pieces, its pages read as it goes (tutor-perf's stream).
+    await tutorFakeScript(app, 'stream');
+    await watchRenders(page);
+    await sendFromComposer(page, '이 세션에서 나온 내용을 정리해 주세요.');
+    await expect(page.getByTestId('tutor-answer')).toHaveCount(QUESTIONS + 1);
+    await expect(page.getByTestId('tutor-answer').last()).toHaveAttribute('data-status', 'complete', { timeout: 30_000 });
+    await expect(page.getByTestId('tutor-conversation')).not.toHaveAttribute('data-streaming');
+    await expect(page.getByTestId('tutor-said')).toHaveText('답을 받았습니다');
+    const counts = await renderCounts(page);
+    console.log(`[measure] tutor-bubble-renders ${JSON.stringify(counts)}`);
+    // Positive control: the counter reaches the bubbles, and the answer was drawn piece by piece.
+    expect(counts['TutorBubble:live'] ?? 0, 'the answer that came, drawn as its pieces came').toBeGreaterThan(20);
+    // The rest: the new question, the answer once stored, and the thread's last answer before it (no longer the last) — a few each,
+    // never the 80 bubbles of the thread once per piece.
+    const others = (counts['TutorBubble'] ?? 0) + (counts['UserBubble'] ?? 0);
+    expect(others, `every other bubble's renders (${JSON.stringify(counts)})`).toBeLessThan(QUESTIONS);
   } finally {
     await app.close();
   }

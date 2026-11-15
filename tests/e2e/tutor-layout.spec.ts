@@ -3,8 +3,8 @@
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { expectNoSeriousA11y } from './a11y';
-import { FIXTURES, dragAlong, importPaths, ipcCalls, launch, mainWindow, menuSnapshot, openItem, readerToolbarMin, runMenuCommand, textExtraction, textIdle, type MenuNode } from './helpers';
-import { READER_100, askViaApi, consentAndChoose, turnEnded, windowReach } from './tutor-helpers';
+import { FIXTURES, dragAlong, importPaths, ipcCalls, launch, mainWindow, menuSnapshot, openItem, readerToolbarMin, runMenuCommand, textExtraction, textIdle, windowReach, type MenuNode } from './helpers';
+import { READER_100, askViaApi, consentAndChoose, turnEnded } from './tutor-helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const SAMPLE = path.join(FIXTURES, 'sample.pdf');

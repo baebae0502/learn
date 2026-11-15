@@ -5,7 +5,7 @@ import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import type { AgentId } from '../../packages/domain/src/agents';
 import type { MessageView, TutorAskAnswer, TutorAskInput } from '../../packages/domain/src/tutor';
 import type { FakeScript } from '../../apps/desktop/src/main/tutor/fake-agent/fake-agent';
-import { ROOT, mainWindow, tutorFakeScript, tutorProcesses } from './helpers';
+import { ROOT, tutorFakeScript, tutorProcesses } from './helpers';
 
 /** The fake agent as the unpackaged build has it (pnpm build). */
 const FAKE_ENTRY = path.join(ROOT, 'apps/desktop/out/main/fake-agent.js');
@@ -47,20 +47,6 @@ export async function nextFakeScript(page: Page, app: ElectronApplication, name:
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await tutorFakeScript(app, name);
   await expect.poll(async () => (await tutorProcesses(app)).count, { message: `no fake left before "${name}"` }).toBe(0);
-}
-
-/**
- * The largest content size the main window can take: its maximum size less the frame — on the macOS runner the 1024 × 768 display's
- * (1024 × 656, as LEARN_E2E_MAC_WINDOW=1 has it); none set, no limit (MAX_SAFE_INTEGER).
- */
-export async function windowReach(app: ElectronApplication): Promise<{ width: number; height: number }> {
-  return (await mainWindow(app)).evaluate((w) => {
-    const [mw, mh] = w.getMaximumSize();
-    const [ow, oh] = w.getSize();
-    const [cw, ch] = w.getContentSize();
-    const reach = (max: number, frame: number) => (max === 0 ? Number.MAX_SAFE_INTEGER : max - frame);
-    return { width: reach(mw!, ow! - cw!), height: reach(mh!, oh! - ch!) };
-  });
 }
 
 /** 동의, then the agent chosen — through window.learn.tutor, as the screens will call it; the agent must be ready. */

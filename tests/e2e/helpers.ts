@@ -234,6 +234,40 @@ export async function settingsFitsContent(app: ElectronApplication, settings: Pa
 }
 
 /**
+ * What the display leaves the main window's content: the work area of the display it is on, less the window's frame. The macOS
+ * runner's 1024 × 768 display, with the menu bar and the Dock, leaves the main window (no title bar) 1024 × 684 and a window
+ * with a title bar 1024 × 656. A restart on macOS fits the window into it, width too (Electron's RestoreBounds: AdjustToFit);
+ * on Linux a restart keeps the window's size, and Xvfb, with no window manager, lets a window be larger than its screen.
+ */
+export async function displayRoom(app: ElectronApplication): Promise<{ width: number; height: number }> {
+  return app.evaluate(({ BrowserWindow, screen }) => {
+    const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed() && !x.webContents.isDestroyed() && x.webContents.getURL().includes('window=main'));
+    if (!w) throw new Error('no main window (window=main)');
+    const [ow, oh] = w.getSize();
+    const [cw, ch] = w.getContentSize();
+    const area = screen.getDisplayMatching(w.getBounds()).workArea;
+    return { width: area.width - (ow! - cw!), height: area.height - (oh! - ch!) };
+  });
+}
+
+/**
+ * The largest content size the main window takes when a test asks for more. Its maximum size less the frame bounds both sides
+ * (LEARN_E2E_MAC_WINDOW=1 sets one: content 1024 × 656). The display's room (displayRoom) bounds the height only: macOS fits a
+ * window's height to the work area as it is sized and leaves its width (NSWindow constrainFrameRect:toScreen:), so on the macOS
+ * runner the main window's content is 684 high at most yet 1440 wide when asked. Neither set: no limit (MAX_SAFE_INTEGER).
+ */
+export async function windowReach(app: ElectronApplication): Promise<{ width: number; height: number }> {
+  const max = await (await mainWindow(app)).evaluate((w) => {
+    const [mw, mh] = w.getMaximumSize();
+    const [ow, oh] = w.getSize();
+    const [cw, ch] = w.getContentSize();
+    const reach = (limit: number, frame: number) => (limit === 0 ? Number.MAX_SAFE_INTEGER : limit - frame);
+    return { width: reach(mw!, ow! - cw!), height: reach(mh!, oh! - ch!) };
+  });
+  return { width: max.width, height: Math.min(max.height, (await displayRoom(app)).height) };
+}
+
+/**
  * Replace the native file dialog in the main process for the next calls; resets the call counter. The real dialog is
  * kept the first time (`restoreOpenDialog` puts it back): a stub otherwise stays for the rest of the session, and a later
  * step that needs the real panel gets the stub's files instead (Mac run 39779536146: the settings folder panel got a PDF).

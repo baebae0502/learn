@@ -14,9 +14,9 @@ import type { TutorAskInput } from '../../packages/domain/src/tutor';
 import {
   FIXTURES, assignTag, backFromReader, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, dragSidebarTo, expectDisabledReason, expectNoteInsideSidebar, expectTooltipText, expectWindow, hoverLikeUser, importPaths, ipcCalls, launch, mainWindow, menuItemEnabled,
   menuSnapshot, openItem, readClipboard, readerTab, recordedPopups, renderCounts, rowByTitle, runMenuAccelerator, runMenuCommand, runPalette, seedSessions, setPdfZoom, specialRow, stubContextMenu,
-  stubFolderPicker, stubFolderPicks, textExtraction, textIdle, trashItems, tutorFailAgents, tutorFakeLog, tutorFakeScript, tutorProcesses, watchRenders, type MenuNode, type Session,
+  stubFolderPicker, stubFolderPicks, textExtraction, textIdle, trashItems, tutorFailAgents, tutorFakeLog, tutorFakeScript, tutorProcesses, watchRenders, windowReach, type MenuNode, type Session,
 } from './helpers';
-import { READER_100, askViaApi, consentAndChoose, installFakeAgents, nextFakeScript, turnEnded, windowReach } from './tutor-helpers';
+import { READER_100, askViaApi, consentAndChoose, installFakeAgents, nextFakeScript, turnEnded } from './tutor-helpers';
 
 declare global {
   interface Window {
@@ -2730,7 +2730,8 @@ test('the library sidebar with the tutor\'s sessions scrolls as one region â€” ë
     await expect(section.getByTestId('session-row')).toHaveCount(15);
     const scroller = page.locator('[data-pane="sidebar"]');
     const tags = page.getByTestId('tag-selector');
-    // At the heights the window can have: the macOS runner's display stops it at 656 (as LEARN_E2E_MAC_WINDOW=1 does), under both.
+    // At the heights the window can have: the macOS runner's display stops the main window at 684 (LEARN_E2E_MAC_WINDOW=1 at 656),
+    // under both.
     const tallest = (await windowReach(app)).height;
     for (const height of new Set([900, 700].map((h) => Math.min(h, tallest)))) {
       await (await mainWindow(app)).evaluate((w, h) => w.setContentSize(1440, h), height);

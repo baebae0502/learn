@@ -354,7 +354,7 @@ test('a tutor shown on demand pushes the sidebar away only beside a PDF: a video
 test('200 % zoom: the tutor folds, then the sidebar, and nothing scrolls sideways; shown on demand it fits; 100 % gives them back, nothing stored', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo), UNSET);
   try {
-    // The widest the screen gives (1440 on Linux; the 1024 px macOS runner fits the window to 1024): 200 % halves what it got.
+    // The widest the screen gives (1440 on Linux; macOS keeps the window 1440 wide while the app runs, and fits it to the display only at a restart): 200 % halves what it got.
     await contentWidth(app, 1440);
     await expect.poll(() => page.evaluate(() => innerWidth)).toBe(Math.min(1440, (await windowReach(app)).width));
     const w0 = await page.evaluate(() => innerWidth);

@@ -131,8 +131,11 @@ export function useLibrarySync(): void {
  * sessions:changed: main created, ended, renamed, deleted or restored a session (spec 12). The lists and the recent sessions are read
  * again where they are shown, and of the threads only the named sessions'.
  *
- * A list read already on its way may have started before this write: it is cancelled and read again (a kept one would end the
- * query's staleness with the older list, and nothing would read it again). Lists are cheap.
+ * A list read already on its way may have started before this write: once the list has data it is cancelled and read again (a kept
+ * one would end the query's staleness with the older list, and nothing would read it again). Lists are cheap. TanStack Query v5
+ * cancels an in-flight fetch only when the query already has data (query-core's `cancelRefetch` branch in `Query.fetch`): a list's
+ * first read, just mounted, is reused. Accepted: a notice for a write that this first read may predate is then missed until the
+ * next notice or a remount.
  *
  * A thread read already on its way is kept: the one there is at a notice is the window's own read at a turn's end, which starts
  * once main has committed that end, and main's notice of the same end must not cancel it for a second whole read. Accepted: a

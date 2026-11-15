@@ -8,7 +8,7 @@ on:
       suite:
         description: Evidence suite (Playwright tag @<suite>; all = no filter)
         type: choice
-        options: [baseline, e2e, evidence, perf, demo, mockups, library, organize, p1, all]
+        options: [baseline, e2e, evidence, perf, demo, mockups, library, organize, p1, t1a, all]
         default: baseline
       runner:
         description: GitHub-hosted Apple Silicon runner image
@@ -192,6 +192,8 @@ jobs:
       # A hang fails this step (Playwright globalTimeout 36 min inside, step limit 37) instead of cancelling the job.
       # T1a: M7c's suite took 21.6 min (run 42704566004; 30.6 in 42716660692 with a 600 s hang). T1a adds tutor-perf (2.2 of the
       # Linux suite's 13.6 min; its demo replaces M7c's), × 1.19: 25.8, + 25 % = 32.2 — inside 37, so the limit stays.
+      # t1a-shots (suite t1a) adds 0.9 min on Linux (× 14.5 / 13.6 = 1.07) and, on the Mac only, 30 window shots of about 1 s each
+      # (focusApp's 0.4 s and screencapture): 25.8 × 1.07 + 0.5 = 28.1, + 25 % = 35.1 — still inside 37 and the 36 min globalTimeout.
       # A suite that selects no evidence tests fails fast, except `all` (and `e2e`, which is the functional suite).
       - name: Evidence suite
         id: evidence

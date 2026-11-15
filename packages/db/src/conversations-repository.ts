@@ -32,7 +32,8 @@ const finishTurnSchema = z.object({
   stopReason: z.enum(STOP_REASONS).nullable(),
   errorCode: z.enum(ERROR_CODES).nullable(),
   revisionId: z.uuid(),
-  verified: z.array(z.object({ pageIndex: z.number().int().min(0), label: LABEL }).strict()).max(TUTOR_LIMITS.pagesPerTurn)
+  // No count of its own: a verified page is inside the document (checkCitations), and pages read again are free of the turn's budget.
+  verified: z.array(z.object({ pageIndex: z.number().int().min(0), label: LABEL }).strict())
     .refine((v) => new Set(v.map((p) => p.pageIndex)).size === v.length, { message: 'a page is cited once' }),
   agentVersion: z.string().max(64).nullable().optional(),
   model: z.string().max(128).nullable().optional(),

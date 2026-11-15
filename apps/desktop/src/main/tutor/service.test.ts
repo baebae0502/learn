@@ -536,6 +536,23 @@ describe('the tutor service', () => {
       expect(r.events.at(-1)).toMatchObject({ kind: 'done', status: 'complete' });
     });
 
+    it('a turn that fails after its text was saved keeps that text, as a turn failed during its answer does', async () => {
+      const r = rig();
+      // Past the save threshold: written at once, while the answer comes.
+      const long = '가'.repeat(2_500);
+      r.be.ctl.prompt = async (_s, _b, on) => {
+        on({ kind: 'text', text: long });
+        return OK;
+      };
+      vi.spyOn(r.repo, 'finishTurn').mockImplementationOnce(() => {
+        throw new LearnError('INTERNAL', 'disk');
+      });
+      const a = askIds(await r.ask());
+      await r.ended();
+      expect(r.events.at(-1)).toEqual({ conversationId: a.conversationId, messageId: a.tutorMessageId, kind: 'failed', phase: 'during', code: 'INTERNAL' });
+      expect(r.repo.message(a.tutorMessageId)).toMatchObject({ status: 'failed', errorCode: 'INTERNAL', text: long });
+    });
+
     it('a window that cannot be told strands nothing: an emit that throws is logged by its code and the turn still ends', async () => {
       const r = rig({ emitThrows: true });
       vi.mocked(tutorLog).mockClear();

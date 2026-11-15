@@ -284,7 +284,12 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
       tutorLog('turn-failed', { code: codeOf(e) });
       if (shuttingDown) return;
       try {
-        repo().finishTurn(t.tutorMessageId, { status: 'failed', text: '', stopReason: null, errorCode: 'INTERNAL', revisionId: t.target.revisionId, verified: [] }, d.now());
+        // What was saved while the answer came stays, as a turn failed during its answer keeps its text.
+        const r = repo();
+        const text = r.message(t.tutorMessageId)?.text ?? '';
+        const verified = checkCitations(text, r.toolReads(t.tutorMessageId), t.reader.pageCount).verified
+          .map((pageIndex) => ({ pageIndex, label: mainStrings.tutor.pageLabel(pageIndex + 1) }));
+        r.finishTurn(t.tutorMessageId, { status: 'failed', text, stopReason: null, errorCode: 'INTERNAL', revisionId: t.target.revisionId, verified }, d.now());
       } catch {
         // The row is gone or already ended; the event below still ends the turn on screen.
       }

@@ -326,6 +326,20 @@ describe('runTurn', () => {
     expect(repo.thread(t.conversationId).messages[1]!.sources.map((s) => s.pageIndex)).toEqual([41]);
   });
 
+  it('keeps an answer that cites more pages than one turn may read: pages read again are free of the budget and still verified', async () => {
+    const t = begin();
+    // 45 pages read in nine calls (earlier turns' pages come back as duplicates, free of the 40-page budget); 41 of them cited.
+    for (let from = 0; from < 45; from += 5) {
+      repo.addToolRead(t.tutorMessageId, { tool: 'read_pdf_pages', outcome: from < 20 ? 'duplicate' : 'ok', revisionId: seed.revisionId, pageFrom: from, pageTo: from + 4, duplicatePages: from < 20 ? 5 : 0, chars: 10, errorCode: null, ms: 1 }, NOW);
+    }
+    const cited = Array.from({ length: TUTOR_LIMITS.pagesPerTurn + 1 }, (_, p) => `[[p${p + 1}]]`).join(' ');
+    const r = rig(async (on) => { on(learnTool); on(text(`요약: ${cited}`)); return OK; });
+    expect(await runTurn(r.d, t)).toEqual({ phase: 'end', status: 'complete', code: null, answered: true });
+    expect(row(t.tutorMessageId)).toMatchObject({ status: 'complete', text: `요약: ${cited}` });
+    expect(repo.thread(t.conversationId).messages[1]!.sources).toHaveLength(TUTOR_LIMITS.pagesPerTurn + 1);
+    expect(r.events.at(-1)).toMatchObject({ kind: 'done', status: 'complete' });
+  });
+
   it('a stop pressed before a clock fires stays a stop, with the rows kept and no second interrupt', async () => {
     const t = begin('drop-pair');
     let stopped = false;

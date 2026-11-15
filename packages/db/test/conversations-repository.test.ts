@@ -55,9 +55,22 @@ describe('ConversationsRepository', () => {
   it('keeps the partial answer: two saves leave the last text and the row streaming', () => {
     const db = freshDb(); const s = seedItem(db); const repo = new ConversationsRepository(db);
     const t = begin(repo, s);
-    repo.saveText(t.tutorMessageId, '앞', NOW);
-    repo.saveText(t.tutorMessageId, '앞 뒤', NOW);
+    repo.saveText(t.tutorMessageId, '앞');
+    repo.saveText(t.tutorMessageId, '앞 뒤');
     expect(repo.message(t.tutorMessageId)).toMatchObject({ text: '앞 뒤', status: 'streaming' });
+  });
+
+  it('a save while the answer comes leaves the session\'s time alone: it moves only at a turn\'s start and end (R41)', () => {
+    const db = freshDb(); const s = seedItem(db); const repo = new ConversationsRepository(db);
+    const t = begin(repo, s, { now: at(1) });
+    const updated = () => db.prepare('SELECT updated_at FROM conversations WHERE id = ?').pluck().get(t.conversationId);
+    expect(updated()).toBe(at(1));
+    repo.saveText(t.tutorMessageId, '앞');
+    expect(repo.message(t.tutorMessageId)).toMatchObject({ text: '앞' });
+    expect(updated()).toBe(at(1));
+    // Positive control: the end moves it.
+    repo.finishTurn(t.tutorMessageId, { ...FINISH, revisionId: s.revisionId }, at(3));
+    expect(updated()).toBe(at(3));
   });
 
   it('a resend replaces the failed answer with a streaming row of the same seq, and its tool reads go', () => {
@@ -291,7 +304,7 @@ describe('ConversationsRepository', () => {
 
   it('turns an answer a quit cut off into an interrupted failure, keeping the text, and purges only the sessions deleted before this run', () => {
     const db = freshDb(); const s = seedItem(db); const repo = new ConversationsRepository(db);
-    const withText = begin(repo, s); repo.saveText(withText.tutorMessageId, '받은 글', NOW);
+    const withText = begin(repo, s); repo.saveText(withText.tutorMessageId, '받은 글');
     const empty = begin(repo, s);
     const old = begin(repo, s); repo.remove(old.conversationId, '2026-11-10T08:00:00.000Z');
     const recent = begin(repo, s); repo.remove(recent.conversationId, '2026-11-10T10:30:00.000Z');

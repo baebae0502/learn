@@ -205,14 +205,11 @@ export class ConversationsRepository {
     return parsed?.success ? { anchor: parsed.data, quote: row.quote_snapshot, label: row.label } : null;
   }
 
-  saveText(tutorMessageId: string, text: string, now: string): void {
+  /** The partial answer, while it comes. The session's time is left alone: it moves at a turn's start and end only (R41). */
+  saveText(tutorMessageId: string, text: string): void {
     const t = parse(z.string().max(ANSWER_COLUMN_MAX), text);
-    const at = parse(timeSchema, now);
-    this.db.transaction(() => {
-      const r = this.db.prepare(`UPDATE messages SET text = ? WHERE id = ? AND role = 'tutor' AND status = 'streaming'`).run(t, parse(idSchema, tutorMessageId));
-      if (r.changes === 0) throw new LearnError('NOT_FOUND', '받는 중인 답을 찾을 수 없습니다.');
-      this.db.prepare(`UPDATE conversations SET updated_at = ? WHERE id = (SELECT conversation_id FROM messages WHERE id = ?)`).run(at, tutorMessageId);
-    })();
+    const r = this.db.prepare(`UPDATE messages SET text = ? WHERE id = ? AND role = 'tutor' AND status = 'streaming'`).run(t, parse(idSchema, tutorMessageId));
+    if (r.changes === 0) throw new LearnError('NOT_FOUND', '받는 중인 답을 찾을 수 없습니다.');
   }
 
   finishTurn(tutorMessageId: string, finish: FinishTurnInput, now: string): SourceChip[] {

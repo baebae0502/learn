@@ -100,7 +100,7 @@ export async function runTurn(d: TurnDeps, t: TurnInput): Promise<TurnEnd> {
     disarm(saveTimer); saveTimer = null;
     if (d.shuttingDown() || text.length === savedLen) return;
     try {
-      d.repo.saveText(t.tutorMessageId, text, d.now());
+      d.repo.saveText(t.tutorMessageId, text);
       savedLen = text.length;
       saveFailed = false;
     } catch (e) {

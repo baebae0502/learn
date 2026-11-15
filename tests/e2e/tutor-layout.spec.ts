@@ -3,7 +3,7 @@
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { expectNoSeriousA11y } from './a11y';
-import { FIXTURES, dragAlong, importPaths, ipcCalls, launch, mainWindow, menuSnapshot, openItem, readerToolbarMin, runMenuCommand, textExtraction, textIdle, windowReach, type MenuNode } from './helpers';
+import { FIXTURES, displayRoom, dragAlong, importPaths, ipcCalls, launch, mainWindow, menuSnapshot, openItem, readerToolbarMin, runMenuCommand, textExtraction, textIdle, windowReach, type MenuNode } from './helpers';
 import { READER_100, askViaApi, consentAndChoose, turnEnded } from './tutor-helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
@@ -147,7 +147,9 @@ test('the segment is a tablist with one tab stop: a click and the arrow keys cho
 test('each mode keeps its own width, which a restart keeps too', async ({}, testInfo) => {
   let { app, page } = await launch(...dirs(testInfo), UNSET);
   try {
-    await contentWidth(app, 1440);
+    // Within the display: a restart on macOS fits the window into the work area, so a 1440 window on the 1024 px runner comes back
+    // 1024 wide with the sidebar shown, where a 360 info panel folds by the rule (240 + 360 + 440 > 1024).
+    await contentWidth(app, Math.min(1440, (await displayRoom(app)).width));
     await openPaper(page);
     // The widest the steps below drag the tutor to (440) beside the sidebar and a 440 reader.
     await roomFor(app, page, 240 + 440 + 440);

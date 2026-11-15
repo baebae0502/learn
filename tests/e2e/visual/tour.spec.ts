@@ -2488,12 +2488,17 @@ async function fixClock(page: Page): Promise<void> {
   });
 }
 
+/** `shoot` with the PDF canvases hidden, as in the reader scenes (the comment at CANVASES_OFF): paper-100's text is drawn with the system's font. */
+async function shootT1a(page: Page, name: string, opts: Parameters<typeof shoot>[2] = {}): Promise<void> {
+  await shoot(page, name, { ...opts, style: opts.style === undefined ? CANVASES_OFF : `${opts.style} ${CANVASES_OFF}` });
+}
+
 /** A tutor scene in both themes, its clock fixed. */
 async function shootBoth(page: Page, name: string, opts: Parameters<typeof shoot>[2] = {}): Promise<void> {
   for (const theme of THEMES) {
     await setTheme(page, theme);
     await fixClock(page);
-    await shoot(page, `${name}-${theme}`, opts);
+    await shootT1a(page, `${name}-${theme}`, opts);
   }
 }
 
@@ -2622,7 +2627,7 @@ test('T1a tutor: the consent card, 나중에 and the tutor off, the chooser — 
       await noTooltip(page);
       for (const theme of THEMES) {
         await setTheme(page, theme);
-        await shoot(page, `tutor-chooser-${name}-${theme}`);
+        await shootT1a(page, `tutor-chooser-${name}-${theme}`);
       }
     }
     await expect(claude.getByRole('radio')).toBeChecked();
@@ -2705,7 +2710,7 @@ test('T1a tutor: an empty session, a passage attached, an answer coming, the ans
       await expect(page.getByTestId('tutor-agent-menu')).toBeVisible();
       await noTooltip(page);
       await fixClock(page);
-      await shoot(page, `tutor-agent-menu-${theme}`);
+      await shootT1a(page, `tutor-agent-menu-${theme}`);
       await page.keyboard.press('Escape');
       await expect(page.getByTestId('tutor-agent-menu')).toHaveCount(0);
     }
@@ -2963,7 +2968,7 @@ test('T1a sessions: the reader\'s 세션 pane empty, then by day with the tab\'s
       await page.keyboard.press('Enter');
       await expect(page.getByTestId('session-name-input')).toBeFocused();
       await fixClock(page);
-      await shoot(page, `sessions-rename-${theme}`, { keepPointer: true });
+      await shootT1a(page, `sessions-rename-${theme}`, { keepPointer: true });
       await page.keyboard.press('Escape');
       await expect(page.getByTestId('session-name-input')).toHaveCount(0);
     }
@@ -2982,7 +2987,7 @@ test('T1a sessions: the reader\'s 세션 pane empty, then by day with the tab\'s
       await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
       await noTooltip(page);
       await fixClock(page);
-      await shoot(page, `tutor-toast-undo-${theme}`);
+      await shootT1a(page, `tutor-toast-undo-${theme}`);
       await expect(toast).toHaveCount(0, { timeout: 12_000 });
       expect(await page.evaluate((id) => window.learn.sessions.restore({ conversationId: id }), older!)).toMatchObject({ ok: true });
       await expect(row(older!)).toHaveCount(1);

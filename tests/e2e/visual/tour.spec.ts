@@ -7,14 +7,14 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import type { LearnPdfProbe } from '../../../apps/desktop/src/renderer/src/viewers/pdf/anchorProbe';
 import {
   FIXTURES, addToCollection, assignTag, backupPause, backupResume, backupWaiting, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, drag, dropSource, expectWindow, holdCopies, holdJob, imageState, importFiles as importFilesNow, importPause, importPaths as importNow, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, requestLibraryCheck, rowAt, recordedPopups, restorePause, restoreResume, restoreWaiting, rowByTitle, runMenuCommand, seedLibrary, selectInPage, translationFake, seedMetadata, selectRows,
   makeTags, setTagColor, specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubSaveDialog, tagChip, textExtraction, trashItems, treeRow, waitForSheet, waitImportIdle, type Session,
   backFromReader, runMenuAccelerator, seedSessions, tutorFakeScript, tutorKillAgent, tutorNetwork, tutorProcesses,
 } from '../helpers';
-import { READER_100, askViaApi, consentAndChoose, installFakeAgents, nextFakeScript, turnEnded } from '../tutor-helpers';
+import { READER_100, askViaApi, attachPassage, consentAndChoose, holdAnswerAfter, installFakeAgents, nextFakeScript, turnEnded } from '../tutor-helpers';
 import { THEMES, TOUR_VIDEO_BYTES, bodyIndexDone, closeReaderTabs, fixedSizeCopy, importStarting, launchTour, readEndedImports, setTheme, shoot } from './tour';
 
 declare global {
@@ -2522,23 +2522,6 @@ async function tutorTour(dir: string, opts: { env?: Record<string, string>; cons
   return Object.assign(s, { itemId: paper!.id });
 }
 
-/** A passage of page 1 attached to the next question; the page's own selection let go (its translation pop-up with it): the chip stays. */
-async function attachPassage(page: Page): Promise<string> {
-  await page.waitForFunction(() => window.__learnPdf !== undefined);
-  const passage = 'We propose a new simple network architecture.';
-  const at = (await page.evaluate(() => window.__learnPdf!.pageText(0))).indexOf(passage);
-  expect(at, 'page 1 holds the passage').toBeGreaterThanOrEqual(0);
-  await page.evaluate(async ([from, to]) => {
-    (document.activeElement as HTMLElement | null)?.blur();
-    await window.__learnPdf!.selectText(0, from!, to!);
-  }, [at, at + passage.length] as const);
-  await expect(page.getByTestId('tutor-attached-label')).toHaveText(`1쪽 · ${passage}`);
-  await page.evaluate(() => window.getSelection()?.removeAllRanges());
-  await expect(page.getByTestId('selection-popup')).toHaveCount(0);
-  await expect(page.locator('.pdfViewer .page[data-page-number="1"] [data-testid="pdf-attached"] .attached')).toHaveCount(1);
-  return passage;
-}
-
 /** No tooltip is open (one a click left on its button closes once the pointer is parked). */
 async function noTooltip(page: Page): Promise<void> {
   await page.mouse.move(1439, 899);
@@ -2551,38 +2534,6 @@ async function sendQuestion(page: Page, text: string): Promise<void> {
   await page.keyboard.insertText(text);
   await expect(tutorInput(page)).toHaveValue(text);
   await page.keyboard.press('Enter');
-}
-
-/**
- * An answer's frame held still for its pictures: from the `texts`-th piece of an answer's text on, main's tutor and session events to the
- * window wait (the fake streams on and the answer ends in main; the window shows the turn where it was, and follows everything else, as the
- * theme) until the returned release sends them in order.
- */
-async function holdAnswerAfter(app: ElectronApplication, texts: number): Promise<{ held(): Promise<boolean>; release(): Promise<void> }> {
-  await app.evaluate(({ BrowserWindow }, texts) => {
-    const contents = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('window=main'))!.webContents;
-    const send = contents.send;
-    const queue: Array<[string, unknown[]]> = [];
-    let seen = 0;
-    let holding = false;
-    contents.send = (channel: string, ...args: unknown[]) => {
-      if (holding && (channel === 'evt:tutor-turn' || channel === 'evt:sessions-changed')) return void queue.push([channel, args]);
-      send.call(contents, channel, ...args);
-      if (channel === 'evt:tutor-turn' && (args[0] as { kind?: string } | undefined)?.kind === 'text' && ++seen >= texts) holding = true;
-    };
-    (globalThis as { __tourHold?: unknown }).__tourHold = {
-      held: () => holding,
-      release: () => {
-        contents.send = send;
-        for (const [channel, args] of queue.splice(0)) send.call(contents, channel, ...args);
-      },
-    };
-  }, texts);
-  type Hold = { held(): boolean; release(): void };
-  return {
-    held: () => app.evaluate(() => (globalThis as unknown as { __tourHold: Hold }).__tourHold.held()),
-    release: () => app.evaluate(() => (globalThis as unknown as { __tourHold: Hold }).__tourHold.release()),
-  };
 }
 
 test('T1a tutor: the consent card, 나중에 and the tutor off, the chooser — Claude Code in its five states, opened again over the fake in use, searching again', async ({}, testInfo) => {

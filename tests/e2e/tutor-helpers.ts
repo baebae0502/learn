@@ -5,7 +5,15 @@ import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import type { AgentId } from '../../packages/domain/src/agents';
 import type { MessageView, TutorAskAnswer, TutorAskInput } from '../../packages/domain/src/tutor';
 import type { FakeScript } from '../../apps/desktop/src/main/tutor/fake-agent/fake-agent';
+import type { LearnPdfProbe } from '../../apps/desktop/src/renderer/src/viewers/pdf/anchorProbe';
 import { ROOT, tutorFakeScript, tutorProcesses } from './helpers';
+
+declare global {
+  interface Window {
+    /** The PDF reader's E2E probe (e2e=1 only): attachPassage selects a passage with it. */
+    __learnPdf?: LearnPdfProbe;
+  }
+}
 
 /** The fake agent as the unpackaged build has it (pnpm build). */
 const FAKE_ENTRY = path.join(ROOT, 'apps/desktop/out/main/fake-agent.js');
@@ -97,3 +105,52 @@ export const READER_100: TutorAskInput['reader'] = {
   outlineComplete: true,
   outlineTotal: 100,
 };
+
+/** A passage of page 1 attached to the next question; the page's own selection let go (its translation pop-up with it): the chip stays. */
+export async function attachPassage(page: Page): Promise<string> {
+  await page.waitForFunction(() => window.__learnPdf !== undefined);
+  const passage = 'We propose a new simple network architecture.';
+  const at = (await page.evaluate(() => window.__learnPdf!.pageText(0))).indexOf(passage);
+  expect(at, 'page 1 holds the passage').toBeGreaterThanOrEqual(0);
+  await page.evaluate(async ([from, to]) => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    await window.__learnPdf!.selectText(0, from!, to!);
+  }, [at, at + passage.length] as const);
+  await expect(page.getByTestId('tutor-attached-label')).toHaveText(`1쪽 · ${passage}`);
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
+  await expect(page.getByTestId('selection-popup')).toHaveCount(0);
+  await expect(page.locator('.pdfViewer .page[data-page-number="1"] [data-testid="pdf-attached"] .attached')).toHaveCount(1);
+  return passage;
+}
+
+/**
+ * An answer's frame held still for its pictures: from the `texts`-th piece of an answer's text on, main's tutor and session events to the
+ * window wait (the fake streams on and the answer ends in main; the window shows the turn where it was, and follows everything else, as the
+ * theme) until the returned release sends them in order.
+ */
+export async function holdAnswerAfter(app: ElectronApplication, texts: number): Promise<{ held(): Promise<boolean>; release(): Promise<void> }> {
+  await app.evaluate(({ BrowserWindow }, texts) => {
+    const contents = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('window=main'))!.webContents;
+    const send = contents.send;
+    const queue: Array<[string, unknown[]]> = [];
+    let seen = 0;
+    let holding = false;
+    contents.send = (channel: string, ...args: unknown[]) => {
+      if (holding && (channel === 'evt:tutor-turn' || channel === 'evt:sessions-changed')) return void queue.push([channel, args]);
+      send.call(contents, channel, ...args);
+      if (channel === 'evt:tutor-turn' && (args[0] as { kind?: string } | undefined)?.kind === 'text' && ++seen >= texts) holding = true;
+    };
+    (globalThis as { __answerHold?: unknown }).__answerHold = {
+      held: () => holding,
+      release: () => {
+        contents.send = send;
+        for (const [channel, args] of queue.splice(0)) send.call(contents, channel, ...args);
+      },
+    };
+  }, texts);
+  type Hold = { held(): boolean; release(): void };
+  return {
+    held: () => app.evaluate(() => (globalThis as unknown as { __answerHold: Hold }).__answerHold.held()),
+    release: () => app.evaluate(() => (globalThis as unknown as { __answerHold: Hold }).__answerHold.release()),
+  };
+}

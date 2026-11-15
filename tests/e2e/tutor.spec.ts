@@ -2408,6 +2408,11 @@ test('the reader\'s 세션 pane (⌥⌘5): the item\'s sessions by day, the tab\
     const toast = page.getByTestId('session-undo');
     await expect(toast).toContainText('세션을 삭제했습니다');
     await expect(toast.getByTestId('undo-action')).toHaveText('실행 취소');
+    // The toast stands beside the tutor, 16 from its slot, over the reader — never over the composer's agent button or 보내기.
+    const box = async (l: ReturnType<Page['locator']>) => (await l.boundingBox())!;
+    const [region, slot] = [await box(page.locator('[data-pane="toasts"]')), await box(page.getByTestId('inspector-panel'))];
+    expect(Math.round(slot.x - (region.x + region.width)), 'the toasts\' right edge, 16 left of the tutor\'s slot').toBe(16);
+    for (const control of [page.getByTestId('tutor-agent'), page.getByTestId('tutor-send')]) expect((await box(control)).x).toBeGreaterThanOrEqual(region.x + region.width);
     await expect(rowOf(page, b)).toHaveCount(0);
     await expect(readerRows(page)).toHaveText([Q_A]);
     await expect(page.getByTestId('tutor-empty')).toBeVisible();

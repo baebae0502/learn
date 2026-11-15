@@ -2943,7 +2943,7 @@ test('T1a sessions: the reader\'s 세션 pane empty, then by day with the tab\'s
     yesterday.setDate(yesterday.getDate() - 1);
     yesterday.setHours(16, 52, 0, 0);
     await seedSessions(app, { itemId, sessions: 2, messagesPerSession: 2, citationsPerAnswer: 1, startedAt: new Date(2026, 9, 12, 9, 0).toISOString(), questions: ['그림 6-2는 어떻게 읽나요?', '연습 문제 3번 풀이가 맞는지 봐 주세요'] });
-    await seedSessions(app, { itemId, sessions: 1, messagesPerSession: 2, citationsPerAnswer: 1, startedAt: yesterday.toISOString(), questions: ['6.3절을 다섯 줄로 요약해 주세요'] });
+    const [older] = (await seedSessions(app, { itemId, sessions: 1, messagesPerSession: 2, citationsPerAnswer: 1, startedAt: yesterday.toISOString(), questions: ['6.3절을 다섯 줄로 요약해 주세요'] })).conversationIds;
     const asked = await askViaApi(page, { itemId, conversationId: null, text: '‘각 단계 배율의 곱’이 무슨 뜻인가요?', selection: null, reader: { ...READER_100, pageIndex: 40 } });
     if ('busyWith' in asked) throw new Error('the question waited for another answer');
     await turnEnded(page, asked.conversationId, asked.tutorMessageId);
@@ -2966,6 +2966,25 @@ test('T1a sessions: the reader\'s 세션 pane empty, then by day with the tab\'s
       await shoot(page, `sessions-rename-${theme}`, { keepPointer: true });
       await page.keyboard.press('Escape');
       await expect(page.getByTestId('session-name-input')).toHaveCount(0);
+    }
+
+    // ⌘⌫ on yesterday's row while the tutor shows the tab's session: the undo toast stands beside the tutor, at the reader's
+    // corner, clear of the composer. Shot at once (it closes 5 s after it first paints), then 실행 취소 brings the row back for the next.
+    const toast = page.getByTestId('session-undo');
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await row(older!).focus();
+      await runMenuAccelerator(app, 'item.trash');
+      await expect(toast).toContainText('세션을 삭제했습니다');
+      await expect(row(older!)).toHaveCount(0);
+      // The focus that went to the next row would bring its tooltip to the picture.
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await noTooltip(page);
+      await fixClock(page);
+      await shoot(page, `tutor-toast-undo-${theme}`);
+      await toast.getByTestId('undo-action').click();
+      await expect(row(older!)).toHaveCount(1);
+      await expect(page.locator('[data-pane="toasts"] .toast')).toHaveCount(0);
     }
 
     // The library's 세션 section (tutor--1-mode-info-library): the items talked about last, each with its newest sessions.

@@ -6,12 +6,14 @@
   .toasts {
     position: fixed;
     z-index: 45;
-    right: var(--space-16);
+    /* Beside the tutor while the reader shows it (Shell's --toasts-right is its slot's width), 16 from the window's edge elsewhere. */
+    right: calc(var(--toasts-right, 0px) + var(--space-16));
     bottom: var(--space-16);
     display: flex;
     flex-direction: column;
     gap: var(--space-8);
     width: 360px;
+    max-width: calc(100vw - var(--toasts-right, 0px) - 2 * var(--space-16));
     outline: none;
   }
   .toast {

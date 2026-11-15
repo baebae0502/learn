@@ -34,7 +34,8 @@ export function Shell(props: { sidebar: ReactNode; sidebarFoot?: ReactNode; laun
   const setInspector = useShell((s) => s.setInspector);
   const setTutorWidth = useShell((s) => s.setTutorWidth);
   const viewportWidth = useViewportWidth();
-  const contentMin = inspectorContentMin(useShell((s) => s.view.kind));
+  const viewKind = useShell((s) => s.view.kind);
+  const contentMin = inspectorContentMin(viewKind);
   const mode = useInspectorMode();
   const panes = { sidebar, inspector, tutorWidth };
   // In the tutor mode a slot shown on demand pushes the sidebar away (spec 8.10): the sidebar's fold reads the slot too.
@@ -44,6 +45,7 @@ export function Shell(props: { sidebar: ReactNode; sidebarFoot?: ReactNode; laun
   const setInspectorPresent = useShell((s) => s.setInspectorPresent);
   useLayoutEffect(() => setInspectorPresent(present), [present, setInspectorPresent]);
   const slotWidth = slotWidthFor(mode, panes, viewportWidth, contentMin);
+  useToastsBeside(viewKind === 'reader' && present && !inspectorHidden && mode === 'tutor' ? slotWidth : 0);
   useKeepFocusAcrossFold(hidden);
   useKeepFocusOnInspectorFold(inspectorHidden);
   const inspectorSeparatorKey = useSeparatorKeyAfterFirstShow(present, inspectorHidden);
@@ -170,6 +172,17 @@ export function Shell(props: { sidebar: ReactNode; sidebarFoot?: ReactNode; laun
       {props.overlays}
     </div>
   );
+}
+
+/**
+ * While the reader shows the tutor, the toasts stand at the reader's bottom-right corner, `width` (the tutor's slot) in from the
+ * window's edge — never over the composer's agent button, 보내기 or 중지, for as long as a toast (a job's, for minutes) lasts. Everywhere
+ * else 0: they keep their place. On the root, as the toast region is drawn in the body (toast.css reads --toasts-right).
+ */
+function useToastsBeside(width: number): void {
+  useLayoutEffect(() => {
+    document.documentElement.style.setProperty('--toasts-right', `${width}px`);
+  }, [width]);
 }
 
 /**

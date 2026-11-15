@@ -45,6 +45,7 @@ import {
 } from '../e2e/helpers';
 import { IS_MAC, outFile, record, startRecording, startScreencast, startX11Recording, type Recording, type StoppableRecording } from './capture';
 import { savedDisplayModes, switchDisplayForDemo, type DisplaySwitch } from './display-mac';
+import { pressAndDrag } from './demo-drag';
 import { captionBottom, parkSpot as parkAt } from './demo-geometry';
 import { pressKey } from './demo-keys';
 import { OSASCRIPT_MS, glideCursor, hideDock, neutralDesktop, renamedElectron, warpTo } from './demo-mac';
@@ -571,8 +572,9 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     type Captioned = { target: Page; place?: 'top'; top?: number; maxWidth?: number };
     /**
      * Whether the overlay keeps clear of the sidebar's own text where it is drawn now: the caption and the tag off the launcher,
-     * the section labels and the tag selector; a parked pointer (`at`, its tip, the arrow 20 px below it) off the chips and the
-     * caption. Anything found is recorded in overlayClashes, judged at the end.
+     * the section labels and the tag selector; the pill, the caption and the tag off a toast shown now (beside the tutor its column
+     * reaches into the pill band); a parked pointer (`at`, its tip, the arrow 20 px below it) off the chips and the caption.
+     * Anything found is recorded in overlayClashes, judged at the end.
      */
     const overlayClear = async (p: Page, what: string, at?: { x: number; y: number }) => {
       await p.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
@@ -588,6 +590,12 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
           for (const r of rects) {
             for (const c of captions) if (hit(c, r)) out.push(`caption ${at(c)} over ${name} ${at(r)}`);
             for (const c of tags) if (hit(c, r)) out.push(`tag ${at(c)} over ${name} ${at(r)}`);
+          }
+        }
+        const pills = boxes('[data-testid="demo-pill"]:not([data-leaving])');
+        for (const t of boxes('.toasts .toast')) {
+          for (const [name, rects] of Object.entries({ pill: pills, caption: captions, tag: tags })) {
+            for (const c of rects) if (hit(c, t)) out.push(`${name} ${at(c)} over a toast ${at(t)}`);
           }
         }
         if (pt) {
@@ -745,7 +753,8 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     const accel = (id: CommandId) => key(commandById(id).accelerator!);
     /**
      * A sentence of page `n` selected as a reader does it: the pointer pressed on its first letter and dragged to its last, along its
-     * line. The passage attaches itself to the next question; a drag that left nothing is made by the reader's own probe (a note).
+     * line. The passage attaches itself to the next question. A drag that left nothing fails the demo (a soft failure, so the run and
+     * its files go on): the reader's own probe then selects it, a synthetic step the video would not say.
      */
     const selectSentence = async (sentence: string, n: number) => {
       const at = await page.evaluate(([sentence, n]) => {
@@ -773,14 +782,13 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
         // While the system arrow is the pointer it is the drag's only cursor: the overlay's drawn one goes for the drag (as M7c's did).
         if (cursor !== 'synthetic') await drawnCursor(page, false);
         try {
-          await page.mouse.down();
-          await dragAlong(page, 'main', at.x0, at.x1, at.y);
-          await page.mouse.up();
+          await pressAndDrag(page.mouse, { x: at.x0, y: at.y }, () => dragAlong(page, 'main', at.x0, at.x1, at.y));
         } finally {
           if (cursor !== 'synthetic') await drawnCursor(page, true);
         }
         attached = await expect(label).toContainText(sentence.slice(0, 8), { timeout: 5000 }).then(() => true, () => false);
       }
+      expect.soft(attached, `the drag over "${sentence}" selected it (the reader's probe did instead)`).toBe(true);
       if (!attached) {
         notes.push(`the drag over "${sentence}" attached nothing (${at === null ? 'not one run of text' : 'no selection'}): the reader's probe selected it`);
         const text = await page.evaluate((i) => window.__learnPdf!.pageText(i), n - 1);
@@ -904,7 +912,10 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await scriptedTag('연결 끊김은 시험용 설정으로 재현');
     // The column at its end, where the next turn's place is.
     const end = (await log.boundingBox())!;
-    await glide(page, 'main', end.x + end.width / 2, end.y + end.height / 2);
+    const inLog = { x: end.x + end.width / 2, y: end.y + end.height / 2 };
+    await glide(page, 'main', inLog.x, inLog.y);
+    // The wheel goes where Playwright's mouse is: a glide of the system's arrow leaves it at the park spot.
+    await page.mouse.move(inLog.x, inLog.y);
     await page.mouse.wheel(0, 20_000);
     await expect.poll(() => log.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight)).toBeLessThanOrEqual(24);
     await pause(1000);
@@ -963,8 +974,11 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await expect(rows).toHaveCount(2);
     const undo = page.getByTestId('session-undo');
     await expect(undo).toBeVisible();
-    // The toast stays 5 s: 실행 취소 is pressed while its pill still shows.
-    await pause(1800);
+    await overlayClear(page, 'the ⌘⌫ pill beside the undo toast');
+    // The toast is read whole once the pill has gone, 1.5 s, before the pointer goes to 실행 취소: about 3.6 s after the key, inside
+    // the toast's 5 s (and the toast holds while the pointer is on it).
+    await expect(page.getByTestId('demo-pill')).toHaveCount(0, { timeout: 5000 });
+    await pause(1500);
     await glideClick(page, 'main', undo.getByTestId('undo-action'));
     await expect(rows).toHaveCount(3);
     await expect(rows.filter({ hasText: SESSION_NAME })).toHaveCount(1);
@@ -979,6 +993,8 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     // The tag again for the view now shown: over the library table's empty area, clear of its header row (then back in the reader).
     await scriptedTag(SEEDED_TAG);
     await afterKey(library, 4000);
+    // The tag is placed for the library's view: it goes with it, and comes back at the reader's place once the reader shows.
+    await scriptedTag(null);
     await glideClick(page, 'main', section.getByTestId('session-row').filter({ hasText: SESSION_NAME }));
     await expect.poll(() => shownTab()).toBe(readId);
     await expect(page.getByTestId('tutor-session-head').locator('.t')).toHaveText(SESSION_NAME);
@@ -1077,7 +1093,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     mergeEnv({ displayModes: savedDisplayModes(), displaySwitch: display.result });
   }
   if (loss) return { lost: loss };
-  expect.soft(overlayClashes, 'captions, the tag and the parked pointer keep clear of the sidebar\'s labels and tag chips').toEqual([]);
+  expect.soft(overlayClashes, 'captions, the tag, the pill and the parked pointer keep clear of the sidebar\'s labels and tag chips and of the toasts').toEqual([]);
   // A demo longer than the fixed macOS recording lost its end: say so (the files above are written either way).
   if (IS_MAC && rec?.file) expect(demoSeconds, 'the demo fits the recording (RECORD_SECONDS)').toBeLessThanOrEqual(RECORD_SECONDS);
   return { lost: null };

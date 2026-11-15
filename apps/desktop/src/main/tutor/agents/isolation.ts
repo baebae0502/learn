@@ -100,9 +100,13 @@ export function sessionMeta(agent: AgentId): Record<string, unknown> {
 export const systemPromptParam = (instructions: string): { mode: 'append'; content: Array<{ type: 'text'; text: string }> } =>
   ({ mode: 'append', content: [{ type: 'text', text: instructions }] });
 
-/** By title or tool name only: rawInput is empty on the first update. The fake imitates Claude's shape, so every id shares the rule. */
+/**
+ * By the tool name when the call names one — then alone, so a built-in titled like a Learn tool is caught — else by the title; never by
+ * rawInput, which is empty on the first update. The fake imitates Claude's shape, so every id shares the rule.
+ */
 export function isLearnToolCall(_agent: AgentId, call: ToolCallInfo): boolean {
-  return (call.title !== null && LEARN_TOOLS.includes(call.title)) || (call.toolName !== null && LEARN_TOOLS.includes(call.toolName));
+  if (call.toolName !== null) return LEARN_TOOLS.includes(call.toolName);
+  return call.title !== null && LEARN_TOOLS.includes(call.title);
 }
 
 export function isLoginRequired(error: unknown): boolean {

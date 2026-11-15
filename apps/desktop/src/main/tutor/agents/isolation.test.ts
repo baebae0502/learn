@@ -78,6 +78,16 @@ describe('isolation', () => {
     for (const c of [call({ title: 'Bash' }), call({ title: 'Read', kind: 'read' }), call({ title: 'mcp__learn__read_pdf_pages_x' }), call({ toolName: 'mcp__other__get_context' }), call({ rawInput: { tool: 'read_pdf_pages' } })]) expect(isLearnToolCall('claude', c)).toBe(false);
   });
 
+  it('a call that names its tool is judged by that name alone: a built-in titled like a Learn tool is not Learn\'s', () => {
+    const call = (o: Partial<ToolCallInfo>): ToolCallInfo => ({ toolCallId: 'toolu_1', title: null, kind: 'other', toolName: null, rawInput: {}, ...o });
+    expect(isLearnToolCall('claude', call({ title: 'mcp__learn__read_pdf_pages', toolName: 'Bash' }))).toBe(false);
+    expect(isLearnToolCall('claude', call({ title: 'mcp__learn__get_context', toolName: 'Read', kind: 'read' }))).toBe(false);
+    expect(isLearnToolCall('fake', call({ title: 'mcp__learn__get_outline', toolName: 'WebFetch' }))).toBe(false);
+    // Positive control: the same title with Learn's own tool name passes.
+    expect(isLearnToolCall('claude', call({ title: 'mcp__learn__read_pdf_pages', toolName: 'mcp__learn__read_pdf_pages' }))).toBe(true);
+    expect(isLearnToolCall('claude', call({ title: 'Read pages', toolName: 'mcp__learn__read_pdf_pages' }))).toBe(true);
+  });
+
   it('names the records of a work folder where the agent writes them: its own environment has no XDG_CACHE_HOME (P-40, N2)', () => {
     expect(historyDirs({ agentHome: '/u/Tutor/agents/claude', work: '/u/Tutor/work/abc.d', home: '/h' })).toEqual([
       '/u/Tutor/agents/claude/projects/-u-Tutor-work-abc-d', '/h/.cache/claude-cli-nodejs/-u-Tutor-work-abc-d', '/h/Library/Caches/claude-cli-nodejs/-u-Tutor-work-abc-d',

@@ -1,5 +1,5 @@
 import { memo, useMemo, type ReactNode } from 'react';
-import { parseAnswer, splitStable, type AnswerBlock, type Inline } from './markdown';
+import { parseAnswer, splitStable, streamingText, type AnswerBlock, type Inline } from './markdown';
 
 /** How a cite token is drawn: the chip for that 0-based page; `ordinal` counts the answer's cites from 0, in reading order. */
 export type DrawCite = (pageIndex: number, ordinal: number) => ReactNode;
@@ -189,7 +189,7 @@ const StableBlocks = memo(function StableBlocks({ blocks, ordinals, cite }: { bl
  * states are the same. `end`: what follows the last line of an answer that ended (the "…" of one that was cut off).
  */
 export function AnswerText({ text, streaming, cite, end }: { text: string; streaming: boolean; cite: DrawCite; end?: ReactNode }) {
-  const { stable, tail } = streaming ? splitStable(text) : { stable: text, tail: '' };
+  const { stable, tail } = streaming ? splitStable(streamingText(text)) : { stable: text, tail: '' };
   const stableBlocks = useMemo(() => parseAnswer(stable), [stable]);
   const stableCites = useMemo(() => numberCites(stableBlocks, 0), [stableBlocks]);
   const tailBlocks = useMemo(() => parseAnswer(tail), [tail]);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseAnswer, splitStable, type AnswerBlock, type Inline } from './markdown';
+import { parseAnswer, splitStable, streamingText, type AnswerBlock, type Inline } from './markdown';
 
 const p = (...inline: Inline[]): AnswerBlock => ({ kind: 'p', inline });
 const text = (t: string): Inline => ({ kind: 'text', text: t });
@@ -85,5 +85,17 @@ describe('the answer\'s small Markdown', () => {
       const { stable, tail } = splitStable(whole);
       expect([...parseAnswer(stable), ...parseAnswer(tail)]).toEqual(parseAnswer(whole));
     }
+  });
+
+  it('while an answer streams, a cite token cut short at its end is held back until it closes: no "[" is drawn, a closed one is a chip', () => {
+    for (const cut of ['…라고 설명합니다 [[', '…라고 설명합니다 [[p', '…라고 설명합니다 [[p2', '…라고 설명합니다 [[p2]', '…라고 설명합니다 [']) {
+      expect(parseAnswer(streamingText(cut)), cut).toEqual([p(text('…라고 설명합니다'))]);
+    }
+    expect(parseAnswer(streamingText('…라고 설명합니다 [[p2]]'))).toEqual([p(text('…라고 설명합니다 '), { kind: 'cite', pageIndex: 1 })]);
+    // Only at the end: a token that closed, or "[" text earlier in the answer, is drawn as it was.
+    expect(streamingText('[1] 참고 [[p2]] 그리고')).toBe('[1] 참고 [[p2]] 그리고');
+    // Not a cite token at all: drawn at once.
+    expect(streamingText('배열 a[0')).toBe('배열 a[0');
+    expect(streamingText('[[x')).toBe('[[x');
   });
 });

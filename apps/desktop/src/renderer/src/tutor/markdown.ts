@@ -210,6 +210,14 @@ export function parseAnswer(text: string): AnswerBlock[] {
   return parseLines(text.replace(/\r\n?/g, '\n').split('\n'));
 }
 
+/** A cite token not closed yet at the text's end: "[[", "[[p", "[[p2", "[[p2]", or the "[" it starts with. */
+const OPEN_CITE = /\[(?:\[(?:p\d{0,6}\]?)?)?$/;
+/**
+ * A streaming answer as it is drawn: a chunk may end inside a cite token, which is held back until it closes, so its "[[" never shows
+ * as text for a moment. An answer that ended is drawn whole, an unclosed remainder as text.
+ */
+export const streamingText = (text: string): string => text.replace(OPEN_CITE, '');
+
 /**
  * The finished blocks (memoised while streaming) and the last one (drawn again on each append). The cut is at the start of the last
  * block that follows a blank line outside a code fence — never inside an open fence, and never inside a list (between two of its

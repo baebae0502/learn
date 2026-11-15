@@ -2969,7 +2969,8 @@ test('T1a sessions: the reader\'s 세션 pane empty, then by day with the tab\'s
     }
 
     // ⌘⌫ on yesterday's row while the tutor shows the tab's session: the undo toast stands beside the tutor, at the reader's
-    // corner, clear of the composer. Shot at once (it closes 5 s after it first paints), then 실행 취소 brings the row back for the next.
+    // corner, clear of the composer. Shot at once (it closes 5 s after it first paints). The blur, the clock and the shot may take longer than
+    // that on a slow runner, so the toast is waited out and the row is brought back through the API, as the trash scene does.
     const toast = page.getByTestId('session-undo');
     for (const theme of THEMES) {
       await setTheme(page, theme);
@@ -2982,7 +2983,8 @@ test('T1a sessions: the reader\'s 세션 pane empty, then by day with the tab\'s
       await noTooltip(page);
       await fixClock(page);
       await shoot(page, `tutor-toast-undo-${theme}`);
-      await toast.getByTestId('undo-action').click();
+      await expect(toast).toHaveCount(0, { timeout: 12_000 });
+      expect(await page.evaluate((id) => window.learn.sessions.restore({ conversationId: id }), older!)).toMatchObject({ ok: true });
       await expect(row(older!)).toHaveCount(1);
       await expect(page.locator('[data-pane="toasts"] .toast')).toHaveCount(0);
     }

@@ -1973,11 +1973,6 @@ export const tutorProcesses = (app: ElectronApplication, input?: { resetMax?: tr
 export const tutorKillAgent = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithTutorHooks).__learnTest.tutorKillAgent());
 /** The next `n` tutor:agents calls fail, as a detection that threw. */
 export const tutorFailAgents = (app: ElectronApplication, n: number) => app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.tutorFailAgents(arg), n);
-/**
- * Finished sessions of one PDF (the performance fixture, the session list's days), announced once. The hook runs in main through the
- * inspector, which can land it inside a query the window is running; better-sqlite3 then refuses it before anything is written (one
- * transaction), and it is asked again.
- */
 /** The sidebar dragged by its separator to `width` (180–360; a drag under 180 folds it). */
 export async function dragSidebarTo(page: Page, width: number): Promise<void> {
   const sep = (await page.locator('#pane-separator').boundingBox())!;
@@ -2023,6 +2018,11 @@ export async function expectNoteInsideSidebar(note: Locator): Promise<void> {
     expect(at.onTop, 'over what is under it').toEqual(['note', 'note']);
   }).toPass({ timeout: 5_000 });
 }
+/**
+ * Finished sessions of one PDF (the performance fixture, the session list's days), announced once. The hook runs in main through the
+ * inspector, which can land it inside a query the window is running; better-sqlite3 then refuses it before anything is written (one
+ * transaction), and it is asked again.
+ */
 export async function seedSessions(app: ElectronApplication, input: SeedSessionsInput): Promise<{ conversationIds: string[] }> {
   for (let attempt = 1; ; attempt += 1) {
     try {

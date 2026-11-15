@@ -584,7 +584,11 @@ test('a folded panel asks main nothing: no detection until the chooser can be se
   try {
     await runMenuCommand(s.app, 'view.toggleInspector');
     await expect(s.page.getByTestId('shell')).toHaveAttribute('data-inspector', 'hidden');
-    await s.page.waitForTimeout(1000); // the layout is saved 300 ms after it changes
+    // The layout is saved 300 ms after it changes: the fold is stored before the window goes.
+    await expect.poll(() => s.page.evaluate(async () => {
+      const r = await window.learn.settings.get({ key: 'layout.panes' });
+      return r.ok ? ((r.data as Record<string, number> | null)?.['inspectorCollapsed'] ?? null) : null;
+    })).toBe(1);
   } finally {
     await s.app.close();
   }
@@ -598,6 +602,8 @@ test('a folded panel asks main nothing: no detection until the chooser can be se
     if ((await again.page.getByTestId('pdf-viewer').count()) === 0) await openItem(again.page, 'paper-100');
     await expect(again.page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
     await expect(again.page.getByTestId('shell')).toHaveAttribute('data-inspector', 'hidden');
+    // A negative check, so a fixed wait: the time a detection would take to be asked for — the shown panel's read goes within a
+    // frame of its showing — had the folded one asked. The positive control after it shows the same path reading once shown.
     await again.page.waitForTimeout(1500);
     expect((await ipcCalls(again.app))['tutor:agents'] ?? 0).toBe(0);
     expect((await tutorProcesses(again.app)).count).toBe(0);

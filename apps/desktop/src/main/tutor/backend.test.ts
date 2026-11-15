@@ -199,13 +199,13 @@ function fakeDetector(o: { cached?: AgentsReport | null; report?: () => Promise<
   } satisfies AgentDetector;
 }
 
-function harness(o: { resume?: boolean; load?: boolean; protocolVersion?: number; script?: Script; detector?: ReturnType<typeof fakeDetector>; spawnFails?: boolean } = {}) {
+function harness(o: { resume?: boolean; load?: boolean; http?: boolean; protocolVersion?: number; script?: Script; detector?: ReturnType<typeof fakeDetector>; spawnFails?: boolean } = {}) {
   const children: FakeChild[] = [];
   let n = 0;
   const script: Script = {
     initialize: () => ({
       protocolVersion: o.protocolVersion ?? 1,
-      agentCapabilities: { loadSession: o.load ?? true, mcpCapabilities: { http: true }, sessionCapabilities: (o.resume ?? true) ? { resume: {} } : {} },
+      agentCapabilities: { loadSession: o.load ?? true, mcpCapabilities: { http: o.http ?? true }, sessionCapabilities: (o.resume ?? true) ? { resume: {} } : {} },
     }),
     'session/new': () => ({ sessionId: `acp-${++n}` }),
     'session/resume': () => ({}),
@@ -542,7 +542,7 @@ describe('the ACP backend', () => {
   describe('the login check (P-37, M13)', () => {
     const noticeAtInit = (kind: string): Handler => (_p, c) => {
       c.agent.notify('_auth/status_update', { authStatus: { kind, label: 'x@y (Max)' } });
-      return { protocolVersion: 1, agentCapabilities: {} };
+      return { protocolVersion: 1, agentCapabilities: { mcpCapabilities: { http: true } } };
     };
 
     it('kind none: login, and nothing is sent after it', async () => {
@@ -599,6 +599,13 @@ describe('the ACP backend', () => {
     it('another ACP version is old; an agent that cannot be started, or fails, is failed', async () => {
       const old = harness({ protocolVersion: 2 });
       await expect(old.backend.probe('claude')).resolves.toBe('old');
+      // No HTTP MCP servers (spec 5.6): 지원하지 않는 버전 too, and a session's start is AGENT_NOT_READY.
+      const noHttp = harness({ http: false });
+      await expect(noHttp.backend.probe('claude')).resolves.toBe('old');
+      expect(noHttp.agentSaw('session/new')).toEqual([]);
+      const unreachable = harness({ http: false });
+      await expect(unreachable.backend.start({ key: KEY, agent: 'claude', conversation: CONV })).rejects.toMatchObject({ code: 'AGENT_NOT_READY' });
+      expect(unreachable.agentSaw('session/new')).toEqual([]);
       const unstarted = harness({ spawnFails: true });
       await expect(unstarted.backend.probe('claude')).resolves.toBe('failed');
       const broken = harness({ script: { initialize: () => { throw new RpcError(-32603, 'Internal error'); } } });

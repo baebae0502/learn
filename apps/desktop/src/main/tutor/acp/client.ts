@@ -5,7 +5,8 @@ import type { AcpMcpServer } from '../mcp/http';
 import { RpcError, type JsonRpcPeer } from './jsonrpc';
 import { ACP_STOP_REASONS, acpIn, acpOut, resumeCapable, type AcpStopReason } from './schema';
 
-export interface InitializeInfo { protocolVersion: 1; loadSession: boolean; resume: boolean; http: boolean; image: boolean }
+/** An agent without HTTP MCP servers never gets this far: initialize refuses it (spec 5.6). */
+export interface InitializeInfo { protocolVersion: 1; loadSession: boolean; resume: boolean; image: boolean }
 /** _auth/status_update's authStatus.kind; its label (an email and a plan) is never read. */
 export type AuthStatus = 'none' | 'account';
 /** toolName: _meta.claudeCode.toolName, one of the two _meta paths Learn reads. */
@@ -185,11 +186,12 @@ export function createAcpClient(peer: JsonRpcPeer, o: {
       const r = read(acpIn.initializeResult, raw);
       if (r.protocolVersion !== 1) throw new LearnError('AGENT_NOT_READY', `The agent speaks ACP version ${r.protocolVersion}, not 1.`);
       const caps = r.agentCapabilities;
+      // Learn's tools reach the agent as an HTTP MCP server only: without it the agent is 지원하지 않는 버전, as another ACP version is.
+      if (caps?.mcpCapabilities?.http !== true) throw new LearnError('AGENT_NOT_READY', 'The agent does not take HTTP MCP servers.');
       return {
         protocolVersion: 1,
         loadSession: caps?.loadSession === true,
         resume: resumeCapable(r),
-        http: caps?.mcpCapabilities?.http === true,
         image: caps?.promptCapabilities?.image === true,
       };
     },

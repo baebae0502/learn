@@ -90,7 +90,7 @@ describe('permissionAnswer', () => {
 describe('createAcpClient', () => {
   it('initialize sends exactly the spec\'s object, every capability false, and reads what the agent offers', async () => {
     const h = setup();
-    await expect(h.client.initialize()).resolves.toEqual({ protocolVersion: 1, loadSession: true, resume: true, http: true, image: true });
+    await expect(h.client.initialize()).resolves.toEqual({ protocolVersion: 1, loadSession: true, resume: true, image: true });
     expect(h.lines).toHaveLength(1);
     expect(h.lines[0]).not.toContain('\n');
     expect(JSON.parse(h.lines[0]!)).toEqual({
@@ -101,8 +101,16 @@ describe('createAcpClient', () => {
 
   it('a capability the agent does not announce is false', async () => {
     const h = setup();
-    h.script.initialize = () => ({ protocolVersion: 1 });
-    await expect(h.client.initialize()).resolves.toEqual({ protocolVersion: 1, loadSession: false, resume: false, http: false, image: false });
+    h.script.initialize = () => ({ protocolVersion: 1, agentCapabilities: { mcpCapabilities: { http: true } } });
+    await expect(h.client.initialize()).resolves.toEqual({ protocolVersion: 1, loadSession: false, resume: false, image: false });
+  });
+
+  it('an agent that does not announce HTTP MCP servers is AGENT_NOT_READY: Learn\'s tools reach it only that way (spec 5.6)', async () => {
+    for (const caps of [{}, { mcpCapabilities: {} }, { mcpCapabilities: { http: false, sse: true } }]) {
+      const h = setup();
+      h.script.initialize = () => ({ protocolVersion: 1, agentCapabilities: caps });
+      await expect(h.client.initialize()).rejects.toMatchObject({ code: 'AGENT_NOT_READY' });
+    }
   });
 
   it('protocol version 2 is AGENT_NOT_READY', async () => {
@@ -486,7 +494,7 @@ describe('createAcpClient', () => {
     vi.useFakeTimers();
     const h = setup();
     let answer!: () => void;
-    h.script.initialize = () => new Promise((r) => (answer = () => r({ protocolVersion: 1 })));
+    h.script.initialize = () => new Promise((r) => (answer = () => r({ protocolVersion: 1, agentCapabilities: { mcpCapabilities: { http: true } } })));
     const init = h.client.initialize();
     let result: string | null | undefined;
     void h.client.authStatus(3000).then((r) => (result = r));

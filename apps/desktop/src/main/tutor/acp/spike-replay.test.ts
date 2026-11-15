@@ -69,7 +69,7 @@ describe('the spike\'s recorded adapter messages', () => {
       }
     });
     const init = await h.client.initialize();
-    expect(init).toEqual({ protocolVersion: 1, loadSession: true, resume: true, http: true, image: true });
+    expect(init).toEqual({ protocolVersion: 1, loadSession: true, resume: true, image: true });
     const auth = FIXTURE.filter((e) => e.msg.method === '_auth/status_update');
     for (const e of auth) h.agent.notify('_auth/status_update', e.msg.params);
     await expect(h.client.authStatus(1_000)).resolves.toMatch(/^(none|account)$/);

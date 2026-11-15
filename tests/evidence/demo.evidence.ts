@@ -548,12 +548,27 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       const at = await parkSpot(p, kind);
       await p.mouse.move(at.x, at.y);
     };
-    /** Glides onto the middle of an element, rests on it, presses it (where the pointer already is), and stays a beat. */
-    const glideClick = async (p: Page, kind: WindowKind, target: Locator, opts: { modifiers?: Array<'Shift' | 'Meta' | 'Control'>; button?: 'right' } = {}) => {
+    /**
+     * Glides onto the middle of an element (or, with `at`, onto that fraction of its width), rests on it (`restMs`, 250 by
+     * default), presses it (where the pointer already is: `at` also gives the press its place) and stays a beat. `timeout`
+     * bounds the press, so a target that went away fails in seconds, not at the test's timeout.
+     */
+    const glideClick = async (
+      p: Page,
+      kind: WindowKind,
+      target: Locator,
+      opts: { modifiers?: Array<'Shift' | 'Meta' | 'Control'>; button?: 'right'; restMs?: number; timeout?: number; at?: number } = {},
+    ) => {
       const box = (await target.boundingBox())!;
-      await glide(p, kind, box.x + box.width / 2, box.y + box.height / 2);
-      await pause(250);
-      await target.click({ ...(opts.modifiers ? { modifiers: opts.modifiers } : {}), ...(opts.button ? { button: opts.button } : {}) });
+      const dx = box.width * (opts.at ?? 0.5);
+      await glide(p, kind, box.x + dx, box.y + box.height / 2);
+      await pause(opts.restMs ?? 250);
+      await target.click({
+        ...(opts.modifiers ? { modifiers: opts.modifiers } : {}),
+        ...(opts.button ? { button: opts.button } : {}),
+        ...(opts.timeout !== undefined ? { timeout: opts.timeout } : {}),
+        ...(opts.at !== undefined ? { position: { x: dx, y: box.height / 2 } } : {}),
+      });
       await releasePointer(p, kind);
       await pause(400);
     };
@@ -830,11 +845,14 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await pause(4000);
 
     // 3. A passage of page 1 selected: it attaches itself (a chip in the composer, a mark on the page); a question typed.
-    await chapter('본문에서 구간을 고르면 그 구간이 다음 질문에 붙습니다. 입력창에는 칩으로, 쪽 위에는 표시로 남습니다.', page, 6000);
+    await chapter('본문에서 구간을 고르면 그 구간이 다음 질문에 붙습니다. 입력창에는 칩으로, 쪽 위에는 표시로 남습니다.', page, 60000);
     await pause(1500);
     await selectSentence(PASSAGES.first, 1);
     await expect(page.getByTestId('tutor-attached')).toBeVisible();
-    await pause(3000);
+    // The caption stays until 2 s after the chip has come (the Mac's drag takes about 3.5 s, Linux's about 1 s), then goes.
+    await pause(2000);
+    await caption(lastCaptioned, '');
+    await pause(1000);
     await glideClick(page, 'main', composer);
     await page.keyboard.type(QUESTIONS.first, { delay: Math.round(110 * PACE) });
     await expect(composer).toHaveValue(QUESTIONS.first);
@@ -975,11 +993,16 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     const undo = page.getByTestId('session-undo');
     await expect(undo).toBeVisible();
     await overlayClear(page, 'the ⌘⌫ pill beside the undo toast');
-    // The toast is read whole once the pill has gone, 1.5 s, before the pointer goes to 실행 취소: about 3.6 s after the key, inside
-    // the toast's 5 s (and the toast holds while the pointer is on it).
+    // The arrow goes onto 실행 취소 at once, and the toast holds while the pointer is on it (react-aria's hover hold), so nothing
+    // here is timed against its 5 s; the arrow also leaves the 세션 pane, so no row slides under it. The pill goes (its own 5 s
+    // at most), the clear toast is read about 1.5 s with the arrow resting on its button, and the press comes where it rests.
+    // The arrow aims at the button's right part, so the label stays readable. Where the system arrow is the pointer, the press
+    // moves Playwright's mouse to that same point, inside the toast, so the hold lasts. A miss fails in 3 s.
+    const undoAction = undo.getByTestId('undo-action');
+    const undoBox = (await undoAction.boundingBox())!;
+    await glide(page, 'main', undoBox.x + undoBox.width * 0.85, undoBox.y + undoBox.height / 2);
     await expect(page.getByTestId('demo-pill')).toHaveCount(0, { timeout: 5000 });
-    await pause(1500);
-    await glideClick(page, 'main', undo.getByTestId('undo-action'));
+    await glideClick(page, 'main', undoAction, { at: 0.85, restMs: 1500, timeout: 3000 });
     await expect(rows).toHaveCount(3);
     await expect(rows.filter({ hasText: SESSION_NAME })).toHaveCount(1);
     await park(page, 'main');

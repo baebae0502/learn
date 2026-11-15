@@ -128,9 +128,9 @@ export function Conversation({ conversationId, visible }: { conversationId: stri
 
   /**
    * 최신으로 shows while the user is away from the bottom and an answer comes, or text came below that they have not seen. The name row
-   * shows once the column is scrolled past its head line. `scrolled`: called from a scroll (or the column's own follow), which the
-   * frame being drawn already holds — a row that comes or goes is drawn in that frame too, with its scroll make-up, or the text would
-   * jump by the row's height a frame later (at the top the log cannot scroll to make up for it).
+   * shows once the column is scrolled past its head line. `scrolled`: called from a scroll, which the frame being drawn already holds —
+   * a row that comes or goes is drawn in that frame too, with its scroll make-up, or the text would jump by the row's height a frame
+   * later (at the top the log cannot scroll to make up for it).
    */
   const settle = useCallback((scrolled = false) => {
     const el = logRef.current;
@@ -173,7 +173,10 @@ export function Conversation({ conversationId, visible }: { conversationId: stri
       if (following.current) toBottom();
       // What the answer wrote below, not a list opened above, is unread.
       else if (grew && streamingRef.current) unread.current = true;
-      settle(true);
+      // Not flushed: the observer runs after layout and before paint, and a commit forced inside it resizes what it watches (the
+      // "ResizeObserver loop" error). The row's make-up comes in the commit that adds it; a scroll that crosses the head line is the
+      // scroll handler's, which flushes.
+      settle();
     });
     watch.observe(el);
     watch.observe(content);

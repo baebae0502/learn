@@ -2944,11 +2944,16 @@ test('T1a sessions: the reader\'s 세션 pane empty, then by day with the tab\'s
     await shootBoth(page, 'sessions-empty');
 
     // Sessions of three days (tutor--9-sessions): two of 2026. 10. 12., one of yesterday, and today's, asked now and shown by the tab.
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(16, 52, 0, 0);
-    await seedSessions(app, { itemId, sessions: 2, messagesPerSession: 2, citationsPerAnswer: 1, startedAt: new Date(2026, 9, 12, 9, 0).toISOString(), questions: ['그림 6-2는 어떻게 읽나요?', '연습 문제 3번 풀이가 맞는지 봐 주세요'] });
-    const [older] = (await seedSessions(app, { itemId, sessions: 1, messagesPerSession: 2, citationsPerAnswer: 1, startedAt: yesterday.toISOString(), questions: ['6.3절을 다섯 줄로 요약해 주세요'] })).conversationIds;
+    // The dates come from the page: the renderer runs in the app's TZ (launchTour's Seoul), the test process in the runner's own (UTC on CI), and
+    // "yesterday 16:52" or "2026. 10. 12. 09:00" computed here would fall on another day in Seoul.
+    const [yesterday, october] = await page.evaluate(() => {
+      const y = new Date();
+      y.setDate(y.getDate() - 1);
+      y.setHours(16, 52, 0, 0);
+      return [y.toISOString(), new Date(2026, 9, 12, 9, 0).toISOString()];
+    });
+    await seedSessions(app, { itemId, sessions: 2, messagesPerSession: 2, citationsPerAnswer: 1, startedAt: october!, questions: ['그림 6-2는 어떻게 읽나요?', '연습 문제 3번 풀이가 맞는지 봐 주세요'] });
+    const [older] = (await seedSessions(app, { itemId, sessions: 1, messagesPerSession: 2, citationsPerAnswer: 1, startedAt: yesterday!, questions: ['6.3절을 다섯 줄로 요약해 주세요'] })).conversationIds;
     const asked = await askViaApi(page, { itemId, conversationId: null, text: '‘각 단계 배율의 곱’이 무슨 뜻인가요?', selection: null, reader: { ...READER_100, pageIndex: 40 } });
     if ('busyWith' in asked) throw new Error('the question waited for another answer');
     await turnEnded(page, asked.conversationId, asked.tutorMessageId);

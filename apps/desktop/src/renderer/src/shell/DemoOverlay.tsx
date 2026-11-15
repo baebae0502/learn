@@ -58,6 +58,12 @@ function placeOf(e: KeyboardEvent): KeyPlace {
   return 'other';
 }
 
+/**
+ * The toasts stand beside the tutor (Shell's --toasts-right): their column then reaches into the centred pill band, so a pill shown
+ * meanwhile goes aside, or it would sit on the toast it brought (⌘⌫'s undo toast).
+ */
+const toastsBeside = (): boolean => (parseFloat(document.documentElement.style.getPropertyValue('--toasts-right')) || 0) > 0;
+
 const later = (fn: () => void, ms: number): Pending => {
   const id = setTimeout(fn, ms);
   return () => clearTimeout(id);
@@ -141,10 +147,10 @@ export function DemoOverlay() {
     drawnHidden.current = hidden;
     drawnSessionFocused.current = sessionFocused;
   });
-  // Its place is fixed here, when it appears (aside under a sheet, or for a command that opens one): a pill on screen
-  // never moves (critique round 3 m1).
+  // Its place is fixed here, when it appears (aside under a sheet, for a command that opens one, or while the toasts stand beside
+  // the tutor): a pill on screen never moves (critique round 3 m1).
   const pillFor = (p: DemoPill | null) => {
-    if (p) showPill(sheetOpen.current && !p.aside ? { ...p, aside: true } : p, p.held ? null : PILL_MS);
+    if (p) showPill((sheetOpen.current || toastsBeside()) && !p.aside ? { ...p, aside: true } : p, p.held ? null : PILL_MS);
   };
   useLearnEvent('menuCommand', ({ commandId }) =>
     pillFor(commandPill(commandId, currentPlatform(), { sidebar: drawnHidden.current ? 'hidden' : 'shown', ...(drawnSessionFocused.current ? { sessionFocused: true } : {}) })),

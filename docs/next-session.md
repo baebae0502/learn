@@ -494,7 +494,7 @@ GitHub 러너로는 확인할 수 없다. Scaleway Mac mini나 사용자 Mac에�
 
 계획 [`superpowers/plans/2026-11-10-t1a-tutor.md`](superpowers/plans/2026-11-10-t1a-tutor.md), 명세 [`superpowers/specs/2026-11-10-t1a-tutor-design.md`](superpowers/specs/2026-11-10-t1a-tutor-design.md), 브랜치 `t1a-tutor`. 검증 숫자는 [`acceptance.md`](acceptance.md) "T1a 완료 조건"과 AC10·AC11·AC14·AC15·AC19·AC20, Mac 실행은 [`mac-verification.md`](mac-verification.md) "T1a". 결정은 [ADR-0010](decisions/0010-tutor-backend-acp.md)(스파이크 결과 · 실제 에이전트 시험 · 앱 전체 실제 시험 · 알아 둘 사실과 남는 위험), [ADR-0013](decisions/0013-presenting-material-to-agents.md)(쪽 계열 채택), [ADR-0003](decisions/0003-storage-layout.md) "스키마 v5", [ADR-0007](decisions/0007-settings-and-preferences.md)(T1a가 더한 것), [ADR-0009](decisions/0009-anchor-hub-and-links.md) "T1a 결과". 명세 정정과 컨트롤러 판정은 [`spec-amendments.md`](spec-amendments.md) 15절.
 - Linux 로컬(이 서버, `taskset -c 0-3`, 최종 제품 코드 `9a74f5d`): 단위 3,726 통과 · 8 건너뜀, 전체 E2E 721 통과 · 5 건너뜀 · 0 실패(1920×1200, 59.6분), 증거(1440×900) 76 통과 · 8 건너뜀(14.0분). Mac 실행에서 실패한 spec 넷은 1920×1200, `LEARN_E2E_MAC_WINDOW=1`, xvfb 1024×768에서 78/78. 실행마다의 수는 `acceptance.md` "T1a 완료 조건".
-- Linux CI 최종 run 43703043456(`0e49937`, 성공): 단위 3,726 통과 · 8 건너뜀, E2E 721 통과 · 5 건너뜀 · 0 실패(37.3분), 증거 76 통과 · 8 건너뜀.
+- Linux CI 최종 run 43716013332(`a93c2d4`, 성공): 단위 3,726 통과 · 8 건너뜀, E2E 721 통과(37.5분), 증거 81 통과(`t1a-shots` 5를 더함). Mac 튜터 라이트·다크 그림 run 43716038526 — 비평 승인 0/0/1.
 - Mac `all` 두 번 — 조건 충족. 최종은 run 43702890663(`520bcd3`): 증거 82 통과 · 2 건너뜀 · 0 실패, 기능 E2E 669 통과 · 0 실패 · 57 건너뜀 · 불안정 0, 청구 77 + 1분(1회차 run 43681139993과 합계 161분).
 - Mac tutor-perf는 모두 예산 안이다(세션 전환 103.3 ms, 말풍선 44.3 ms, 스트리밍 프레임 16.7 ms). P-43 · P-45 · P-48 · P-53은 닫혔다. 1회차의 시험 쪽 실패 넷과 데모 비평 다섯은 고쳤다(`mac-verification.md` "T1a").
 

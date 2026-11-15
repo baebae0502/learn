@@ -129,14 +129,19 @@ export function useLibrarySync(): void {
 
 /**
  * sessions:changed: main created, ended, renamed, deleted or restored a session (spec 12). The lists and the recent sessions are read
- * again where they are shown, and of the threads only the named sessions'. A read already on its way is kept: at a turn's end the
- * window reads the thread when it hears the end, and main's notice of that end must not cancel it for a second whole read.
+ * again where they are shown, and of the threads only the named sessions'.
+ *
+ * A list read already on its way may have started before this write: it is cancelled and read again (a kept one would end the
+ * query's staleness with the older list, and nothing would read it again). Lists are cheap.
+ *
+ * A thread read already on its way is kept: the one there is at a notice is the window's own read at a turn's end, which starts
+ * once main has committed that end, and main's notice of the same end must not cancel it for a second whole read. Accepted: a
+ * notice of another write to that session that lands during an unrelated read of its thread is missed until the next one.
  */
 export function invalidateSessions(client: QueryClient, e: SessionsChanged): void {
-  const keep = { cancelRefetch: false };
-  void client.invalidateQueries({ queryKey: ['sessions', 'list'] }, keep);
-  void client.invalidateQueries({ queryKey: keys.sessionsRecent }, keep);
-  for (const id of e.conversationIds) void client.invalidateQueries({ queryKey: keys.sessionThread(id) }, keep);
+  void client.invalidateQueries({ queryKey: ['sessions', 'list'] });
+  void client.invalidateQueries({ queryKey: keys.sessionsRecent });
+  for (const id of e.conversationIds) void client.invalidateQueries({ queryKey: keys.sessionThread(id) }, { cancelRefetch: false });
 }
 export function useSessionsSync(): void {
   useLearnEvent('sessions:changed', (e) => invalidateSessions(queryClient, e));

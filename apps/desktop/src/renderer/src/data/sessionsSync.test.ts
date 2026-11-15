@@ -50,4 +50,33 @@ describe('sessions:changed (spec 12)', () => {
       stop();
     }
   });
+
+  it('reads a list and the recent sessions again when a write\'s notice lands while their read is on its way: that read may predate the write', async () => {
+    for (const key of [keys.sessionsList('item-a'), keys.sessionsRecent]) {
+      const client = new QueryClient();
+      client.setQueryData(key, 'stored');
+      let reads = 0;
+      const first = gate<string>();
+      const observer = new QueryObserver(client, {
+        queryKey: key,
+        staleTime: Infinity,
+        queryFn: () => {
+          reads += 1;
+          return reads === 1 ? first.p : Promise.resolve('after the third seed');
+        },
+      });
+      const stop = observer.subscribe(() => {});
+      try {
+        // The second seed's notice starts a read; the third seed's notice comes while it is on its way.
+        invalidateSessions(client, { reason: 'created', itemIds: ['item-a'], conversationIds: ['c2'] });
+        expect(reads).toBe(1);
+        invalidateSessions(client, { reason: 'created', itemIds: ['item-a'], conversationIds: ['c3'] });
+        first.resolve('after the second seed');
+        await expect.poll(() => client.getQueryData(key), { message: JSON.stringify(key) }).toBe('after the third seed');
+        expect(reads).toBe(2);
+      } finally {
+        stop();
+      }
+    }
+  });
 });

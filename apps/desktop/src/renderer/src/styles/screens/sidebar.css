@@ -29,6 +29,30 @@
   .section-label .icon-btn {
     margin-right: -6px; /* local: the 22 px button's glyph lines up with the rows' counts (mockup) */
   }
+  /* With the tutor's 세션 section under it (spec 8.9, mockup .tu-lib-sessions), the sidebar's sections scroll as one: the tree takes
+     its rows' height and the sidebar's own scroll area moves 라이브러리, 컬렉션 and 세션 together, the tag selector pinned under it. */
+  .sidebar-body[data-after] {
+    flex: none;
+  }
+  .sidebar-body[data-after] .sidebar-tree:not([data-fit]) {
+    flex: none;
+    overflow: visible; /* as tall as its rows, it never scrolls; a name field's note under its last rows goes over the section */
+  }
+  /* The virtual list draws each row, and each section, in a box of its own stacked in order, so a later row would cover the note
+     under the row being named: that row's boxes come first. */
+  .sidebar-tree [role='presentation']:has(.rename-note) {
+    z-index: 1 !important; /* local: over the virtualizer's own inline z-index: 0 */
+  }
+  .library-sessions {
+    flex: none;
+  }
+  .library-sessions > .section-label {
+    margin-top: var(--space-12);
+  }
+  /* An item's line: a label, not a row to press (mockup navRow muted). */
+  .session-item-line {
+    color: var(--text-secondary);
+  }
   .sidebar-empty-hint {
     padding: var(--space-4) var(--space-8) 0 var(--space-16);
     color: var(--text-tertiary);
@@ -150,6 +174,27 @@
     overflow-y: auto;
     padding: var(--space-4) 0;
     outline: none;
+  }
+  /* The reader's 세션 pane (T1a spec 8.9, mockup .tu-sess): day groups and their rows, the outline's gutters. */
+  .reader-sessions {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 0 var(--space-4);
+  }
+  /* Each day after the first keeps the 12 px a section label stands off what is above it (its label is its group's first child). */
+  .session-group + .session-group > .section-label {
+    margin-top: var(--space-12);
+  }
+  .reader-sessions .nav-row {
+    margin-inline: var(--space-8);
+    flex: none;
+  }
+  .reader-sessions .section-label {
+    padding-left: calc(var(--space-8) + var(--space-16)); /* the label over the rows' icons */
+  }
+  .reader-sessions-wait {
+    flex: 1 1 auto;
   }
   .outline .nav-row {
     /* The virtualizer sizes a row to the list's full width: the 8 px side gutters are taken out of it here. */

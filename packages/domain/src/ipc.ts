@@ -15,6 +15,11 @@ import { prefsFields } from './settings';
 import { LIBRARY_COLUMN_IDS, LIBRARY_SORT_COLUMNS, type LibraryColumnId } from './library-columns';
 import { TAG_COLORS, type TagColorId } from './tag-colors';
 import { translationFromSchema, translationToSchema, type TranslationResult } from './translation';
+import type { AgentsReport } from './agents';
+import type {
+  RecentSessions, SessionIdInput, SessionsListInput, SessionsRenameInput, SessionSummary, SessionThread, TutorAgentsInput, TutorAskAnswer, TutorAskInput,
+  TutorChooseAgentInput, TutorConsentInput, TutorRetryInput, TutorStopInput, TutorViewInput, TutorWarmInput,
+} from './tutor';
 
 export const storageModeSchema = z.enum(['managed', 'linked']);
 /** The collection an import files its items into: a uuid, or null/absent for none. */
@@ -107,8 +112,8 @@ export const settingSetInput = z.object({ key: z.string().min(1).max(100), value
 /** Main-internal prefs patch (the store's own input): built from default-free fields so omitted keys stay omitted. */
 export const prefsPatchInput = z.object(prefsFields).partial().strict();
 export type PrefsPatch = z.input<typeof prefsPatchInput>;
-/** What the renderer may change: everything but the library location and the backup folder, which only main sets (R4). */
-export const prefsSetInput = z.object(prefsFields).omit({ libraryRoot: true, backupDir: true }).partial().strict();
+/** What the renderer may change: everything but the library location, the backup folder and the tutor's consent and agent, which only main sets (R4). */
+export const prefsSetInput = z.object(prefsFields).omit({ libraryRoot: true, backupDir: true, tutor: true }).partial().strict();
 /** translation.translate: the selection's text (up to 20,000; the service refuses what is over 5,000 once prepared). */
 export const translateInput = z.object({ text: z.string().min(1).max(20000), from: translationFromSchema, to: translationToSchema }).strict();
 export type TranslateInput = z.input<typeof translateInput>;
@@ -131,6 +136,15 @@ export const commandContextInput = z
     blocked: z.boolean(),
     sidebar: paneShownSchema.optional(),
     inspector: paneShownSchema.optional(),
+    inspectorMode: z.enum(['info', 'tutor']).optional(),
+    /** The tutor's consent is recorded: 에이전트 고르기… is on; absent otherwise. */
+    tutorConsented: z.boolean().optional(),
+    /** The tutor shows the active tab's session and it has a question: 새 세션 is on; absent otherwise. */
+    tutorHasMessages: z.boolean().optional(),
+    /** The active reader tab's session has an answer coming, the tutor on screen or not: 답 중지 is on; absent otherwise. */
+    tutorStreaming: z.boolean().optional(),
+    /** A tutor session row of the sidebar has the focus: ⌘⌫ is 세션 삭제; absent otherwise. */
+    sessionFocused: z.boolean().optional(),
     textSize: z.union([z.literal(12), z.literal(13), z.literal(14), z.literal(15)]),
     libraryCount: contextCount,
     selectionCount: contextCount,
@@ -190,9 +204,15 @@ export const sheetResultInput = z.discriminatedUnion('kind', [
 /** A native question with the renderer's words (collection delete, tag merge and delete): spec 3.4. */
 export const confirmInput = z.object({ message: z.string().min(1).max(300), detail: z.string().max(600).optional(), confirm: z.string().min(1).max(40), caution: z.boolean().optional() }).strict();
 export type ConfirmInput = z.input<typeof confirmInput>;
-/** 영구 삭제… / 휴지통 비우기… (P-25): main opens the purge sheet with what it is about; the words are the sheet's own. */
+/**
+ * 영구 삭제… / 휴지통 비우기… (P-25): main opens the purge sheet with what it is about; the words are the sheet's own. `itemIds`: the
+ * items an `items` or `mixed` purge takes, whose tutor sessions main counts for the sheet (T1a spec 6.2) — never handed on to it.
+ */
 export const confirmPurgeInput = z
-  .object({ variant: z.enum(['items', 'collections', 'mixed', 'empty']) satisfies z.ZodType<PurgeVariant>, items: contextCount, collections: contextCount, name: z.string().min(1).max(1000).optional() })
+  .object({
+    variant: z.enum(['items', 'collections', 'mixed', 'empty']) satisfies z.ZodType<PurgeVariant>, items: contextCount, collections: contextCount, name: z.string().min(1).max(1000).optional(),
+    itemIds: z.array(z.uuid()).max(1_000_000).optional(),
+  })
   .strict();
 export type ConfirmPurgeInput = z.input<typeof confirmPurgeInput>;
 export type SheetResultInput = z.input<typeof sheetResultInput>;
@@ -225,6 +245,8 @@ export const showContextMenuInput = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('trash'), itemIds: z.array(z.uuid()).max(1_000_000), collectionIds: z.array(z.uuid()).max(5000), ...point }),
   // A reader tab (spec 3.4): the item it shows; `active` says it is the shown tab, whose menu names the keys of its commands.
   z.object({ kind: z.literal('tab'), itemId: z.uuid(), active: z.boolean().optional(), ...point }),
+  // A tutor session row (T1a spec 11): its conversation; main answers null for one that is gone or deleted.
+  z.object({ kind: z.literal('session'), conversationId: z.uuid(), ...point }),
 ]);
 /** The table header's native menu: which columns show now, which a view forces on (drawn checked and fixed), and where the pointer is. */
 export const showColumnMenuInput = z
@@ -438,6 +460,39 @@ export interface LearnApi {
     reportIdle(): Promise<Result<void>>;
     /** The column header menu: the column picked to show or hide, a reset, or null when dismissed. */
     showColumnMenu(input: ShowColumnMenuInput): Promise<Result<{ toggle: LibraryColumnId } | { reset: true } | null>>;
+  };
+  /** The tutor (spec 12): the main window only. Nothing runs before consent; the agent is started by main, never by a page. */
+  tutor: {
+    /** 동의: prefs.tutor.consent, written by main. */
+    consent(input: TutorConsentInput): Promise<Result<void>>;
+    /** The agents' states: this run's report (cached), one agent checked again (recheck), or found again (research). TUTOR_CONSENT_REQUIRED before consent. */
+    agents(input: TutorAgentsInput): Promise<Result<AgentsReport>>;
+    /** prefs.tutor.agent, once main has seen it ready (AGENT_NOT_READY otherwise). */
+    chooseAgent(input: TutorChooseAgentInput): Promise<Result<void>>;
+    /** The session on screen, or null: a process that is not that session's closes. */
+    view(input: TutorViewInput): Promise<Result<void>>;
+    /** Starts the chosen agent ahead of a question when it can; otherwise nothing, and never an error. */
+    warm(input: TutorWarmInput): Promise<Result<void>>;
+    /** The rows written for the question, answered at once; or the other session's answer this one waits for (busyWith, no row written). */
+    ask(input: TutorAskInput): Promise<Result<TutorAskAnswer>>;
+    stop(input: TutorStopInput): Promise<Result<void>>;
+    /** A failed answer asked again in a new agent process. */
+    resend(input: TutorRetryInput): Promise<Result<{ tutorMessageId: string }>>;
+    /** An answer whose citations were not read asked again, with the pages to read first. */
+    reground(input: TutorRetryInput): Promise<Result<{ userMessageId: string; tutorMessageId: string }>>;
+  };
+  /** The tutor's sessions (spec 12): the main window only; a change is announced as sessions:changed. */
+  sessions: {
+    list(input: SessionsListInput): Promise<Result<SessionSummary[]>>;
+    /** The newest sessions of the items talked about last. */
+    recent(): Promise<Result<RecentSessions>>;
+    /** NOT_FOUND for a deleted session and for one of an item in the trash. */
+    get(input: SessionIdInput): Promise<Result<SessionThread>>;
+    /** A title, or null for the first question again. */
+    rename(input: SessionsRenameInput): Promise<Result<SessionSummary>>;
+    /** Marked deleted: purged at a later start unless restored first. */
+    delete(input: SessionIdInput): Promise<Result<void>>;
+    restore(input: SessionIdInput): Promise<Result<void>>;
   };
   /** Only callable from an open sheet window. */
   sheet: {

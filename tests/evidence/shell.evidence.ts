@@ -14,7 +14,7 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import {
   FIXTURES, KEY_CODE, NativeInputNotPermitted, bringAppToFront, bringFinderToFront, closeReaderTab, closeSheet, expectDisabledReason, expectWindow, frontmostProcess, importFiles, importPaths,
-  launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeyCode, nativeKeystroke, openItem, osascript, restoreOpenDialog, rowByTitle, runMenuCommand, stubContextMenu, stubOpenDialog, windowKinds,
+  launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeyCode, nativeKeystroke, openItem, osascript, readerToolbarMin, restoreOpenDialog, rowByTitle, runMenuCommand, stubContextMenu, stubOpenDialog, windowKinds,
   type LaunchOptions,
   type Session,
 } from '../e2e/helpers';
@@ -776,6 +776,9 @@ test('M3 chrome: collapsed sidebar, PDF, unplayable video, sheets (real ↩ and 
   latency['pdf'] = await timedOpen(s.page, 'sample', '[data-testid="pdf-viewer"]');
   await expect(s.page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
   await allShots(s.app, s.page, 'm3-05-pdf', 'PDF in the new chrome');
+  // The reader toolbar's smallest width at 13, 14 and 15 pt (T1a: what READER_CONTENT_MIN must hold, spec 8.10): read after the Mac `e2e`, report only.
+  results['readerToolbarMin'] = await readerToolbarMin(s.page);
+  console.log('[measure] reader-toolbar-min', JSON.stringify(results['readerToolbarMin']));
   // n6: a Latin-only title at 600 — SF Semibold (as the Hangul beside it is SemiBold), not Bold?
   results['fontsLatinTitle'] = await platformFonts(s.page, '[data-testid="tab"][aria-selected="true"] .title');
   if (IS_MAC) {

@@ -3,7 +3,7 @@ import { z } from 'zod';
 /** Coordinate rules are part of schema v1 — see docs/decisions/0002-anchor-coordinates.md. */
 export const ANCHOR_SCHEMA_VERSION = 2;
 
-export const anchorPrecision = z.enum(['item', 'span', 'region']);
+export const anchorPrecision = z.enum(['item', 'span', 'region', 'page']);
 
 export const textQuoteSchema = z.object({ exact: z.string().min(1), prefix: z.string(), suffix: z.string() });
 /** UTF-16 offsets into the page text; the W3C target converts them to code points. */
@@ -33,6 +33,19 @@ export const pdfAnchor = z
   })
   .refine((a) => a.precision !== 'span' || a.text !== undefined, { message: 'a span anchor carries its text' });
 export type PdfAnchor = z.infer<typeof pdfAnchor>;
+
+/** A whole page of a PDF (citations and session starts): no coordinates, no text, because main never opens the PDF. */
+export const pdfPageAnchor = z
+  .object({ kind: z.literal('pdf'), revisionId: z.uuid(), precision: z.literal('page'), pageIndex: z.number().int().min(0) })
+  .strict();
+export type PdfPageAnchor = z.infer<typeof pdfPageAnchor>;
+
+/** A selected span (the passage a question carries): a pdfAnchor with span precision and its text. */
+export const pdfSpanAnchor = pdfAnchor.refine(
+  (a): a is PdfAnchor & { precision: 'span'; text: NonNullable<PdfAnchor['text']> } => a.precision === 'span' && a.text !== undefined,
+  { message: 'a span anchor has span precision and its text' },
+);
+export type PdfSpanAnchor = z.infer<typeof pdfSpanAnchor>;
 
 export const videoAnchor = z
   .object({
@@ -81,5 +94,5 @@ export const imageAnchor = z
   .refine((a) => a.rect[2] > 0 && a.rect[3] > 0, { message: 'rect has an area' })
   .refine((a) => a.rect[0] + a.rect[2] <= 1 + 1e-9 && a.rect[1] + a.rect[3] <= 1 + 1e-9, { message: 'rect must stay inside the image' });
 
-export const sourceAnchor = z.union([pdfAnchor, videoAnchor, epubAnchor, webAnchor, slideAnchor, imageAnchor]);
+export const sourceAnchor = z.union([pdfAnchor, pdfPageAnchor, videoAnchor, epubAnchor, webAnchor, slideAnchor, imageAnchor]);
 export type SourceAnchor = z.infer<typeof sourceAnchor>;

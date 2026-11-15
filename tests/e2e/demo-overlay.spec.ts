@@ -207,6 +207,19 @@ test('with LEARN_DEMO_OVERLAY=1 the overlay is inert in the main and settings wi
     const centred = (await pill.boundingBox())!;
     expect(Math.abs(centred.x + centred.width / 2 - (await page.evaluate(() => innerWidth)) / 2)).toBeLessThan(2);
     await runMenuCommand(app, 'view.toggleSidebar');
+    // While the toasts stand beside the tutor (Shell sets --toasts-right while the reader shows it) their column reaches into the
+    // centred band: a pill shown then is aside, clear of the toast a key brings (⌘⌫'s undo toast); with the toasts back at the
+    // window's edge, centred again.
+    await expect(pill).toHaveCount(0, { timeout: 4000 });
+    await page.evaluate(() => document.documentElement.style.setProperty('--toasts-right', '380px'));
+    await runMenuCommand(app, 'view.toggleSidebar');
+    await expect(pill).toContainText('사이드바 가리기');
+    await expect(pill).toHaveAttribute('data-aside', '');
+    expect((await pill.boundingBox())!.x).toBeLessThan(40);
+    await page.evaluate(() => document.documentElement.style.setProperty('--toasts-right', '0px'));
+    await runMenuCommand(app, 'view.toggleSidebar');
+    await expect(pill).toContainText('사이드바 보기');
+    await expect(pill).not.toHaveAttribute('data-aside', '');
 
     // 설정… is run by main itself (no menuCommand): main tells the overlay. The settings window has its own, as inert.
     const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { dayKey, formatDate, formatElapsed, formatDateTime, formatTimeOfDay, formatDuration, formatSize, homeRelative, msUntilMidnight } from './format';
+import { dayKey, formatDate, formatDay, formatElapsed, formatDateTime, formatDayAndTime, formatTimeOfDay, formatDuration, formatSize, homeRelative, msUntilMidnight } from './format';
 
 const at = (y: number, m: number, d: number, h: number, min: number) => new Date(y, m - 1, d, h, min).toISOString();
 const now = new Date(2026, 9, 21, 15, 0);
@@ -116,3 +116,21 @@ describe('formatDateTime', () => {
     expect(formatDateTime('not a date')).toBe('—');
   });
 });
+
+describe('one day rule: formatDay names the day formatDate starts with, formatDayAndTime always adds the time', () => {
+  it('오늘, 어제, else the date — the same day formatDate writes', () => {
+    for (const iso of [at(2026, 10, 21, 0, 0), at(2026, 10, 21, 23, 59), at(2026, 10, 20, 12, 0), at(2026, 10, 12, 10, 0), at(2025, 10, 21, 9, 0)]) {
+      expect(formatDate(iso, now).startsWith(formatDay(new Date(iso), now)), iso).toBe(true);
+    }
+    expect(formatDay(new Date(at(2026, 10, 21, 0, 0)), now)).toBe('오늘');
+    expect(formatDay(new Date(at(2026, 10, 20, 23, 59)), now)).toBe('어제');
+    expect(formatDay(new Date(at(2026, 10, 12, 10, 0)), now)).toBe('2026. 10. 12.');
+  });
+  it('a day before yesterday keeps its time too: "2026. 10. 12. 오후 4:52"; today and yesterday as formatDate writes them', () => {
+    expect(formatDayAndTime(at(2026, 10, 12, 16, 52), now)).toBe('2026. 10. 12. 오후 4:52');
+    expect(formatDayAndTime(at(2026, 10, 21, 9, 31), now)).toBe('오늘 오전 9:31');
+    expect(formatDayAndTime(at(2026, 10, 20, 16, 52), now)).toBe('어제 오후 4:52');
+    expect(formatDayAndTime('x', now)).toBe(formatDate('x', now));
+  });
+});
+

@@ -8,7 +8,9 @@ import { Icon } from '../../ui/Icon';
 import { pdfViewerModule, pdfjs } from '../pdfjs';
 import { readWindowParams } from '../../ui/platform';
 import { watchDevicePixelRatio } from './displayChange';
-import { INITIAL_PDF, useReader, type PdfPlace, type PdfViewHandle, type ZoomValue } from './readerStore';
+import { CITE_FLASH_MS, INITIAL_PDF, useReader, type PdfPlace, type PdfViewHandle, type ZoomValue } from './readerStore';
+import { drawAttached, type MarkViewport } from './attachedMark';
+import { dropOutline } from './outlineCache';
 import { goBack, goForward, recordJump } from './history';
 import { linkHistory } from './historyAdapter';
 import { usePageColor } from './usePageColor';
@@ -341,6 +343,14 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
           if (page >= 1 && page <= viewer.pagesCount) jump({ pageNumber: page }, false, false);
           viewer.update();
         };
+        /** The page a pressed citation outlines for a moment, and the timer that takes the outline off. */
+        let flashed: { div: HTMLElement; timer: ReturnType<typeof setTimeout> } | null = null;
+        const unflash = () => {
+          if (flashed === null) return;
+          clearTimeout(flashed.timer);
+          flashed.div.classList.remove('cite-page');
+          flashed = null;
+        };
         const handle: PdfViewHandle = {
           place,
           goToPage: (n) => place({ pageNumber: n }),
@@ -352,6 +362,13 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
               recordHere();
             }
             place({ pageNumber: n });
+          },
+          flashPage: (pageIndex) => {
+            unflash();
+            const div = viewer.getPageView(pageIndex)?.div;
+            if (!div) return;
+            div.classList.add('cite-page');
+            flashed = { div, timer: setTimeout(unflash, CITE_FLASH_MS) };
           },
           historyBack: () => step('back'),
           historyForward: () => step('forward'),
@@ -490,7 +507,35 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
           if (failed.delete(e.pageNumber)) setPageDivs(new Map(failed));
           doneOnce.add(e.pageNumber);
           setRendered(doneOnce.size);
+          // A page drawn again (a zoom, a turn, a page that came back into view) gets the attached passage's mark again.
+          markPage(e.pageNumber - 1);
         });
+        // A redraw that is not a CSS zoom resets the page (its layers but the canvas and the text go) before it draws: the mark is put
+        // back as the draw begins, so it does not drop out for the length of the render.
+        eventBus.on('pagerender', (e: { pageNumber: number }) => markPage(e.pageNumber - 1));
+        /** The passage attached to the tab's question, when it is of this revision (spec 8.4). */
+        const attachedHere = () => {
+          const a = scope.tutor.getState().attached;
+          return a !== null && a.anchor.revisionId === revisionId ? a : null;
+        };
+        /** The page's mark of the attached passage, drawn for its viewport now, or taken off a page the passage is not on. */
+        const markPage = (pageIndex: number) => {
+          const view = viewer.getPageView(pageIndex) as { div?: HTMLElement; viewport?: MarkViewport } | undefined;
+          if (!view?.div || !view.viewport) return;
+          const a = attachedHere();
+          if (a?.pageIndex === pageIndex) drawAttached(view.div, a.anchor, view.viewport, a.margin);
+          else drawAttached(view.div, null, view.viewport);
+        };
+        // A chip of another revision cannot go with a question about this one.
+        if (scope.tutor.getState().attached !== null && attachedHere() === null) scope.tutor.getState().setAttached(null);
+        let marked: number | null = null;
+        /** Another passage attached, or none: the old page's mark goes and the new page's is drawn (a page not drawn yet gets it with pagerendered). */
+        const remark = () => {
+          const next = attachedHere()?.pageIndex ?? null;
+          if (marked !== null && marked !== next) markPage(marked);
+          marked = next;
+          if (next !== null) markPage(next);
+        };
         store.setPdf({ ...INITIAL_PDF, pagesCount: doc.numPages });
         store.setHandle(handle);
         // E2E only: a viewer that fails to start, to show the notice that stands in for it.
@@ -568,8 +613,13 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
           // Once, for what the pages need to draw at this size; a stage that changed size is fitted by its observer in this frame.
           viewer.update();
         };
+        const stopMarking = scope.tutor.subscribe((now, before) => {
+          if (now.attached !== before.attached) remark();
+        });
+        remark();
         teardown = () => {
           onShown.current = null;
+          unflash();
           container.removeEventListener('scroll', onScroll);
           // Before the viewer lets go of the document: a fit scheduled for the next frame would draw pages of a document that is going away.
           stageObserver.disconnect();
@@ -582,6 +632,8 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
           viewer.setDocument(null);
           lifetime.abort();
           scope.find.getState().reset();
+          stopMarking();
+          dropOutline(scope);
           store.setHandle(null);
           store.setPdf(null);
         };

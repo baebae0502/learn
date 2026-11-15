@@ -17,6 +17,8 @@ export interface PurgeResult {
   /** Every collection removed: each row asked for, then the sub-collections that were part of it. */
   collectionIds: string[];
   assets: PurgedAsset[];
+  /** The sessions of the items removed, gathered before the cascade took them: their work folders go after the commit. */
+  conversationIds: string[];
 }
 
 /**
@@ -118,18 +120,22 @@ function removeCollectionRows(db: Db, ids: readonly string[]): string[] {
 }
 
 /** Removes the asked items that are in the trash (cascading their memberships, tags, position); the assets they used. */
-function removeItems(db: Db, ids: readonly string[]): { itemIds: string[]; assetIds: Set<string> } {
+function removeItems(db: Db, ids: readonly string[]): { itemIds: string[]; assetIds: Set<string>; conversationIds: string[] } {
+  const sessionsOf = db.prepare('SELECT id FROM conversations WHERE item_id = ?').pluck();
   const assetsOf = db.prepare('SELECT asset_id FROM item_assets WHERE item_id = ?').pluck();
   const del = db.prepare('DELETE FROM items WHERE id = ? AND deleted_at IS NOT NULL');
   const itemIds: string[] = [];
   const assetIds = new Set<string>();
+  const conversationIds: string[] = [];
   for (const id of new Set(ids)) {
     const used = assetsOf.all(id) as string[];
+    const sessions = sessionsOf.all(id) as string[];
     if (del.run(id).changes === 0) continue;
     itemIds.push(id);
+    conversationIds.push(...sessions);
     for (const assetId of used) assetIds.add(assetId);
   }
-  return { itemIds, assetIds };
+  return { itemIds, assetIds, conversationIds };
 }
 
 interface AssetFacts { id: string; sha256: string; storage_mode: StorageMode; relative_path: string | null; size: number }
@@ -187,8 +193,8 @@ function removeUnusedAssets(db: Db, assetIds: ReadonlySet<string>): PurgedAsset[
 export function purgeTrash(db: Db, asked: { itemIds: readonly string[]; collectionIds: readonly string[] }): PurgeResult {
   return db.transaction((): PurgeResult => {
     const collectionIds = removeCollectionRows(db, asked.collectionIds);
-    const { itemIds, assetIds } = removeItems(db, asked.itemIds);
-    return { itemIds, collectionIds, assets: removeUnusedAssets(db, assetIds) };
+    const { itemIds, assetIds, conversationIds } = removeItems(db, asked.itemIds);
+    return { itemIds, collectionIds, assets: removeUnusedAssets(db, assetIds), conversationIds };
   })();
 }
 

@@ -51,6 +51,10 @@ export interface LibraryCounts {
   /** In the trash (spec 8.3: items with and without it) — the live counts above leave them out. */
   trashedItems: number;
   trashedCollections: number;
+  /** The tutor's sessions that are not deleted, their messages and those messages' sources. */
+  conversations: number;
+  messages: number;
+  messageSources: number;
 }
 
 /** An item whose original file is a given asset (a restore names the items its problems touch, spec 9.3). */
@@ -494,6 +498,10 @@ export class LibraryRepository {
       readingPositions: n('SELECT COUNT(*) AS n FROM reading_positions'),
       trashedItems: n('SELECT COUNT(*) AS n FROM items WHERE deleted_at IS NOT NULL'),
       trashedCollections: n('SELECT COUNT(*) AS n FROM collections WHERE deleted_at IS NOT NULL'),
+      conversations: n('SELECT COUNT(*) AS n FROM conversations WHERE deleted_at IS NULL'),
+      messages: n('SELECT COUNT(*) AS n FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE deleted_at IS NULL)'),
+      messageSources: n(`SELECT COUNT(*) AS n FROM message_sources WHERE message_id IN
+        (SELECT m.id FROM messages m JOIN conversations c ON c.id = m.conversation_id WHERE c.deleted_at IS NULL)`),
     };
   }
 }

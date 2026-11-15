@@ -26,6 +26,8 @@ export interface ChangeDeps {
   invalidateReading(itemIds: string[] | null): void;
   /** The body search results (['search']): they are not under ['library']. */
   invalidateBody(): void;
+  /** The tutor's sessions (['sessions']): a trashed item's are not shown, a restored one's are again, a purged one's are gone (spec 6.2, 12). */
+  invalidateSessions(): void;
   /** Runs `fn` at the window's next idle moment, or after `ms` at the latest; the answer cancels it. */
   whenIdle(fn: () => void, ms: number): () => void;
   setTimer(fn: () => void, ms: number): unknown;
@@ -151,6 +153,7 @@ export function createChangeHandler(d: ChangeDeps): ChangeHandler {
         return;
       }
       const ids = itemIds === undefined ? [] : [...new Set(itemIds)];
+      if (reason === 'trash' || reason === 'restore' || reason === 'purge') d.invalidateSessions();
       if (reason === 'position' || reason === 'opened') d.invalidateReading(ids.length === 0 ? null : ids);
       // Body text moved on: the panel's state changes now, the body matches once in a while (a job ends every few seconds).
       if (reason === 'text') {

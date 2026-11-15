@@ -78,8 +78,11 @@ export type SheetPayload =
   | { kind: 'duplicate'; fileName: string; existing: DuplicateCard; remaining: number }
   /** `view`: the view the list is read in, so ⌘+ ⌘− ⌘0 are named as that view's menu names them (P-9). */
   | { kind: 'shortcuts'; view?: 'library' | 'viewer' }
-  /** `name`: the one row's title or name when exactly one is chosen; the sheet's title names it. */
-  | { kind: 'purge'; variant: PurgeVariant; items: number; collections: number; name?: string }
+  /**
+   * `name`: the one row's title or name when exactly one is chosen; the sheet's title names it. `sessions`: the tutor sessions that go
+   * with the items, as main counted them, and `sessionItems` the items they belong to (T1a spec 6.2): the text says so when there are some.
+   */
+  | { kind: 'purge'; variant: PurgeVariant; items: number; collections: number; name?: string; sessions?: number; sessionItems?: number }
   | LibraryCheckPayload
   | BackupDoneSheet
   | RestoreDoneSheet;

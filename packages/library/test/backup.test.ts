@@ -59,12 +59,12 @@ describe('backup and restore (AC15 — files part)', () => {
     const { layout, db, repo } = await populated();
     const dest = path.join(tempDir('bk'), 'backup-1');
     const { manifest } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
-    expect(manifest).toMatchObject({ format: 'learn-backup', formatVersion: 1, schemaVersion: LATEST_SCHEMA_VERSION, counts: { items: 3, assets: 3, revisions: 3, collections: 0, collectionItems: 0, tags: 0, itemTags: 0, readingPositions: 0 } });
+    expect(manifest).toMatchObject({ format: 'learn-backup', formatVersion: 1, schemaVersion: LATEST_SCHEMA_VERSION, counts: { items: 3, assets: 3, revisions: 3, collections: 0, collectionItems: 0, tags: 0, itemTags: 0, readingPositions: 0, conversations: 0, messages: 0, messageSources: 0 } });
     expect(manifest.assets.filter((a) => a.included)).toHaveLength(2); // linked is reference-only
 
     const target = path.join(tempDir('restore'), 'Library');
     const result = await restoreBackup({ backupDir: dest, targetRoot: target });
-    expect(result).toEqual({ verifiedAssets: 2, missingAssets: [], hashMismatches: [], recordMismatches: [], counts: { items: 3, assets: 3, revisions: 3, collections: 0, collectionItems: 0, tags: 0, itemTags: 0, readingPositions: 0, trashedItems: 0, trashedCollections: 0 }, countsMatch: true, backupCreatedAt: manifest.createdAt, managedFiles: 2, problemItems: [] });
+    expect(result).toEqual({ verifiedAssets: 2, missingAssets: [], hashMismatches: [], recordMismatches: [], counts: { items: 3, assets: 3, revisions: 3, collections: 0, collectionItems: 0, tags: 0, itemTags: 0, readingPositions: 0, trashedItems: 0, trashedCollections: 0, conversations: 0, messages: 0, messageSources: 0 }, countsMatch: true, backupCreatedAt: manifest.createdAt, managedFiles: 2, problemItems: [] });
 
     const rdb = openDatabase(libraryLayout(target).dbFile);
     dbs.push(rdb);
@@ -140,6 +140,16 @@ describe('backup and restore (AC15 — files part)', () => {
     const target = path.join(tempDir('restore'), 'Library');
     const result = await restoreBackup({ backupDir: dest, targetRoot: target });
     expect(result.countsMatch).toBe(true);
+  });
+
+  it('reports a mismatch when the conversation count of the manifest differs from the restored one', async () => {
+    const { layout, db, repo } = await populated();
+    const dest = path.join(tempDir('bk'), 'backup-conv-counts');
+    const { manifest } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    const wrong = { ...manifest, counts: { ...manifest.counts, conversations: 5 } };
+    fs.writeFileSync(path.join(dest, 'manifest.json'), JSON.stringify(wrong, null, 2));
+    const result = await restoreBackup({ backupDir: dest, targetRoot: path.join(tempDir('restore'), 'Library') });
+    expect(result.countsMatch).toBe(false);
   });
 
   it('rejects manifest from a newer schema version', async () => {

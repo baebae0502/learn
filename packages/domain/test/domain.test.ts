@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  APP_ORIGIN, ANCHOR_SCHEMA_VERSION, ERROR_CODES, ERROR_COPY, IDLE_IMPORT_STATE, LIBRARY_COLUMN_IDS, LearnError, assetUrl, commandContextInput, createCollectionInput, createTagInput, fail, failureFrom, getItemsInput, importPathsInput,
+  APP_ORIGIN, ANCHOR_SCHEMA_VERSION, ERROR_CODES, type ErrorCode, ERROR_COPY, IDLE_IMPORT_STATE, LIBRARY_COLUMN_IDS, LearnError, assetUrl, commandContextInput, createCollectionInput, createTagInput, fail, failureFrom, getItemsInput, importPathsInput,
   VIDEO_FORMATS, absolutePathSchema, nameSchema, newId, nowIso, ok, pickAndImportInput, renameCollectionInput, renameTagInput, sheetResultInput, sourceAnchor, titleSchema, toLearnError, updateMetadataInput,
 } from '../src/index';
 
@@ -212,6 +212,11 @@ describe('ipc contract', () => {
   it('a stopped job is CANCELLED, which is not retryable (P-5)', () => {
     expect(ERROR_CODES).toContain('CANCELLED');
     expect(new LearnError('CANCELLED', '가져오기를 취소했습니다.').retryable).toBe(false);
+  });
+  it('the tutor codes: four can be retried, a lockdown cannot', () => {
+    const r = (c: ErrorCode) => new LearnError(c, 'x').retryable;
+    expect(['OFFLINE', 'AGENT_BUSY', 'AGENT_TIMEOUT', 'AGENT_EXITED'].map((c) => r(c as ErrorCode))).toEqual([true, true, true, true]);
+    expect(['TUTOR_CONSENT_REQUIRED', 'AGENT_NOT_READY', 'AGENT_LOGIN', 'AGENT_START_FAILED', 'AGENT_PROTOCOL', 'AGENT_LOCKDOWN'].map((c) => r(c as ErrorCode))).toEqual([false, false, false, false, false, false]);
   });
   it('the idle import queue: nothing to show, frozen', () => {
     expect(IDLE_IMPORT_STATE).toEqual({ state: 'idle', done: 0, total: 0, bytesDone: 0, bytesTotal: 0, percent: 0, current: null, cancels: 0 });

@@ -4,6 +4,7 @@ import { LearnError } from './errors';
 import { COLUMN_WIDTH_MAX, STORED_COLUMN_IDS_MAX, LIBRARY_SORT_COLUMNS } from './library-columns';
 import { libraryScopeSchema } from './organize';
 import { DEFAULT_TRANSLATION_PREFS, translationPrefsSchema } from './translation';
+import { DEFAULT_TUTOR_PREFS, tutorPrefsSchema } from './tutor';
 
 const storedColumnId = z.string().min(1).max(64);
 /**
@@ -59,6 +60,8 @@ export const SETTINGS = {
   'reader.pageColor': z.enum(PAGE_COLORS),
   /** The ground behind a picture (M7c): unset reads as the app theme's light or dark. */
   'reader.imageBackground': z.enum(IMAGE_BACKGROUNDS),
+  /** The reader's right panel mode (T1a spec 8.1): unset reads as 'tutor', so a first reader opens on the consent card. */
+  'reader.inspectorMode': z.enum(['info', 'tutor']),
   /** What the reader's sidebar lists (spec 4.7): unset reads as the thumbnails. */
   'reader.nav': z.enum(READER_NAVS),
   /** The fingerprint of the library check's list the user was last shown (spec 7.1): the same list never opens the sheet by itself again. */
@@ -109,6 +112,8 @@ export const prefsFields = {
   backupDir: z.string().min(1).nullable(),
   /** The reader's translation (ADR-0012): consent and languages. The merge is shallow, so a patch carries the whole object. */
   translation: translationPrefsSchema,
+  /** The tutor's consent and agent: main writes it (tutor:consent, tutor:chooseAgent); a page cannot set it. */
+  tutor: tutorPrefsSchema,
 };
 export const prefsSchema = z.object({
   theme: prefsFields.theme.default('system'),
@@ -117,6 +122,7 @@ export const prefsSchema = z.object({
   libraryRoot: prefsFields.libraryRoot.default(null),
   backupDir: prefsFields.backupDir.default(null),
   translation: prefsFields.translation.default(DEFAULT_TRANSLATION_PREFS),
+  tutor: prefsFields.tutor.default(DEFAULT_TUTOR_PREFS),
 });
 export type Prefs = z.infer<typeof prefsSchema>;
 /** All defaults: what a window falls back to when reading the prefs failed. */

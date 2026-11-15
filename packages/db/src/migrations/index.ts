@@ -2,6 +2,7 @@ import { sql as initial } from './001-initial';
 import { sql as organize } from './002-organize';
 import { sql as anchorsTranslation } from './003-anchors-translation';
 import { sql as imagesText } from './004-images-text';
+import { sql as tutor } from './005-tutor';
 
 export interface Migration {
   version: number;
@@ -16,5 +17,6 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 2, name: 'organize', sql: organize },
   { version: 3, name: 'anchors-translation', sql: anchorsTranslation },
   { version: 4, name: 'images-text', sql: imagesText, foreignKeysOff: true },
+  { version: 5, name: 'tutor', sql: tutor, foreignKeysOff: true },
 ];
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.at(-1)!.version;

@@ -17,5 +17,6 @@ import { sheets } from './sheets';
 import { toast } from './toast';
 import { translation } from './translation';
 import { trash } from './trash';
+import { tutor } from './tutor';
 
-export const t = { common, shell, library, reader, fatal, toast, sheets, palette, settings, drop, inspector, organize, jobs, trash, check, backup, restore, translation } as const;
+export const t = { common, shell, library, reader, fatal, toast, sheets, palette, settings, drop, inspector, organize, jobs, trash, check, backup, restore, translation, tutor } as const;

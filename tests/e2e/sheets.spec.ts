@@ -4,7 +4,7 @@ import { sheetMaxHeight } from '../../apps/desktop/src/main/sheet-geometry';
 import { acceleratorLabel } from '../../packages/domain/src/accelerator';
 import { COMMANDS } from '../../packages/domain/src/commands';
 import { expectNoSeriousA11y } from './a11y';
-import { FIXTURES, clickToCloseSheet, closeSheet, expectWindow, importFiles, importPaths, launch, mainWindow, menuItemEnabled, openSheetPages, runMenuCommand, sheetPrepared, windowKinds } from './helpers';
+import { FIXTURES, clickToCloseSheet, closeSheet, expectWindow, importFiles, importPaths, launch, mainWindow, menuItemEnabled, openSheetPages, runMenuCommand, sheetPrepared, windowKinds, windowReach } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 /** The keyboard focus ring (outline) of a button: 'none' or 'solid'. */
@@ -232,8 +232,8 @@ const tokenIn = (page: Page, name: string) =>
 
 /**
  * The ⌘/ sheet's rule, stated for any screen: its body scrolls exactly when its natural height is over the cap main
- * gives it (`sheetMaxHeight` of the parent's content height). The runner's 1024 × 768 screen clamps a 1440 × 900
- * window to 1024 × 684 (room 652), a real 1440 × 900 Mac has 774 and Linux 824. The natural height is the sheet's
+ * gives it (`sheetMaxHeight` of the parent's content height). The runner's 1024 × 768 screen stops a 1440 × 900
+ * window at 684 high (room 652), a real 1440 × 900 Mac has 774 and Linux 824. The natural height is the sheet's
  * height plus what its body hides; it is logged first, so a failing run still reports the number.
  */
 async function sheetRule(app: ElectronApplication, sheet: Page, parentHeight: number): Promise<{ natural: number; cap: number; scrolls: boolean }> {
@@ -418,7 +418,7 @@ test('sheet IPC belongs to the sheets: the main window has no sheet namespace (P
   }
 });
 
-test('the ⌘/ sheet lays its groups out in two columns, read down then across, none split, and fits a 1440 × 900 window', async ({}, testInfo) => {
+test('the ⌘/ sheet lays its groups out in two columns, read down then across, none split, and fits a 1440 × 900 window; in a smaller room its list scrolls', async ({}, testInfo) => {
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await (await mainWindow(s.app)).evaluate((w) => w.setContentSize(1440, 900));
@@ -445,12 +445,33 @@ test('the ⌘/ sheet lays its groups out in two columns, read down then across, 
     expect(new Set(columns[1]!.map((g) => g.left)).size).toBe(1);
     expect(columns[1]![0]!.left).toBeGreaterThan(columns[0]![0]!.right);
     // Short enough for every real 1440 × 900 room (Mac ≈ 806-tall parent, room 774): the bound below. Whether the body
-    // scrolls on THIS screen follows the rule (the runner's 1024 × 684 clamp has room 652 and scrolls).
+    // scrolls on THIS screen follows the rule (the runner's display stops the window at 684 high: room 652, and it scrolls).
     const { natural } = await sheetRule(s.app, sheet, await parentHeightOf(s.app));
     // No label wraps (a wrapped row would add a line each): the natural height is the rows' own, 28 + 1 apiece.
     expect(await sheet.locator('[data-testid="shortcut-row"]').evaluateAll((els) => els.filter((e) => e.getBoundingClientRect().height > 29).length)).toBe(0);
-    expect(natural).toBeLessThanOrEqual(770);
+    // The reader's 세션 보기 line (T1a ⌥⌘5) made it 772, over the 770 that left that room 4 px: it still fits a real 1440 × 900 Mac.
+    expect(natural).toBeLessThanOrEqual(774);
     await closeSheet(sheet, 'Escape');
+    // In a room under it (the 770 it kept to before, or less where the display cannot hold the parent that gives it — the macOS
+    // runner's 684), the rows keep their height and size and the list scrolls between the fixed title and foot: the body is the
+    // scroll region a key reaches, and its last row comes into view.
+    const platform = await s.app.evaluate(() => process.platform);
+    let parent = 600;
+    while (sheetMaxHeight(parent, platform) < 770) parent += 1;
+    parent = Math.min(parent, (await windowReach(s.app)).height);
+    await (await mainWindow(s.app)).evaluate((w, h) => w.setContentSize(1440, h), parent);
+    await expect.poll(() => parentHeightOf(s.app)).toBe(parent);
+    const short = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'app.shortcuts'));
+    expect((await sheetRule(s.app, short, parent)).scrolls).toBe(true);
+    const body = short.locator('.d-body');
+    await expect(body).toHaveAttribute('role', 'region');
+    await expect(body).toHaveAttribute('tabindex', '0');
+    expect(await short.locator('[data-testid="shortcut-row"]').evaluateAll((els) => els.filter((e) => e.getBoundingClientRect().height > 29).length)).toBe(0);
+    await body.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+    const last = short.locator('[data-testid="shortcut-row"]').last();
+    const [row, box] = await Promise.all([last.boundingBox(), body.boundingBox()]);
+    expect(row!.y + row!.height).toBeLessThanOrEqual(box!.y + box!.height + 0.5);
+    await closeSheet(short, 'Escape');
   } finally {
     await s.app.close();
   }

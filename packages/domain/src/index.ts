@@ -1,9 +1,11 @@
 export * from './accelerator';
+export * from './agents';
 export * from './body-search';
 export * from './anchor-geometry';
 export * from './anchor-text';
 export * from './anchors';
 export * from './backup';
+export * from './citations';
 export * from './commands';
 export * from './errors';
 export * from './event-channels';
@@ -21,4 +23,5 @@ export * from './settings';
 export * from './sheets';
 export * from './tag-colors';
 export * from './translation';
+export * from './tutor';
 export * from './web-annotation';

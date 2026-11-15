@@ -10,6 +10,13 @@
     color: var(--text-primary);
     font: var(--type-caption);
   }
+  /* A list row's tooltip, placed by the list (tutor/sessions/SessionRow.tsx RowTip) over everything, as an overlay's is. */
+  .tooltip.row-tip {
+    position: fixed;
+    z-index: 100; /* local: above the panes, as the overlay layer the other tooltips are portalled to */
+    pointer-events: none;
+    animation: fade-in var(--duration-fast) var(--ease-standard);
+  }
   .tooltip[data-entering] {
     animation: fade-in var(--duration-fast) var(--ease-standard);
   }
@@ -19,6 +26,11 @@
     flex: none;
     white-space: nowrap;
   }
+  /* A label alone may be a sentence (a status chip's explanation, spec 13): it wraps inside the 280 instead of running past the box. */
+  .tooltip-label:only-child {
+    flex: 0 1 auto;
+    white-space: normal;
+  }
   /* Reason of an icon button disabled with one, in the shortcut's place (ui/Tooltip.tsx). */
   .tooltip-reason {
     min-width: 0;
@@ -27,5 +39,15 @@
   .tooltip-shortcut {
     color: var(--text-tertiary);
     font-variant-numeric: tabular-nums;
+  }
+  /* A second line under the name (mockup .tooltip.multi): the two stack, the note in secondary colour and wrapping in the 280. */
+  .tooltip.has-note {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+    padding: var(--space-4) var(--space-8);
+  }
+  .tooltip-note {
+    color: var(--text-secondary);
   }
 }

@@ -2,8 +2,8 @@
 // stats line breaks only at its middots (design-spec 4). SHA-256 is named in the file section only (design-spec 9
 // 기술 값; strings.test.ts allows exactly fileSha and copySha).
 export const inspector = {
-  /** The right slot's name: the panel and its resize handle, as 사이드바 names the left one. */
-  panel: '항목 패널',
+  /** The right slot's name in both views (R22): the panel and its resize handle, as 사이드바 names the left one. */
+  panel: '오른쪽 패널',
   loading: '불러오는 중…',
   detailFailed: '자료 정보를 불러오지 못했습니다',
   /** Under detailFailed: no internal code, the retry is the next action. */

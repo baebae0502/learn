@@ -98,7 +98,10 @@ const VIEW = (platform: NodeJS.Platform): Shape => ({
     { id: 'app.palette', label: '명령 팔레트…', accelerator: 'CmdOrCtrl+K' },
     SEP,
     { id: 'view.toggleSidebar', label: '사이드바 보기/가리기', accelerator: platformAccelerator('Ctrl+Cmd+S', platform) },
-    { id: 'view.toggleInspector', label: '항목 패널 보기/가리기', accelerator: 'Alt+CmdOrCtrl+I' },
+    { id: 'view.toggleInspector', label: '오른쪽 패널 보기/가리기', accelerator: 'Alt+CmdOrCtrl+I' },
+    // The reader's right panel modes (T1a): between the toggle and the sort rows, by their order values.
+    { id: 'view.inspectorInfo', label: '정보 보기', accelerator: platformAccelerator('Ctrl+Cmd+1', platform) },
+    { id: 'view.inspectorTutor', label: '튜터 보기', accelerator: platformAccelerator('Ctrl+Cmd+2', platform) },
     // 보기 › 정렬 기준 ▸ (spec 5.2): the columns drawn by default, the sort in force and the two directions, each a row with its value.
     {
       id: 'library.sortBy', label: '정렬 기준', submenu: [
@@ -115,6 +118,7 @@ const VIEW = (platform: NodeJS.Platform): Shape => ({
     },
     { id: 'reader.showThumbnails', label: '썸네일 보기', accelerator: 'Alt+CmdOrCtrl+2' },
     { id: 'reader.showOutline', label: '목차 보기', accelerator: 'Alt+CmdOrCtrl+3' },
+    { id: 'reader.showSessions', label: '세션 보기', accelerator: 'Alt+CmdOrCtrl+5' },
     SEP,
     // ⌘+ / ⌘− / ⌘0; #1 is ⌘+'s hidden ⌘= twin (shape() does not carry `visible`).
     { id: 'view.textBigger', label: '글자 크게', accelerator: 'CmdOrCtrl+Plus' },
@@ -399,10 +403,10 @@ describe('state labels (design-spec 7.4: the menu names what ⌃⌘S does now)',
   it('names the item panel item by the reported inspector state, and neutrally without one', () => {
     const item = (labels?: { sidebar?: 'shown' | 'hidden'; inspector?: 'shown' | 'hidden' }) =>
       walk(buildAppMenu({ isDev: false, platform: 'darwin', commands: COMMANDS, enabled: ALL, onCommand: vi.fn(), ...(labels ? { labels } : {}) })).find((i) => i.id === 'view.toggleInspector')!;
-    expect(item({ sidebar: 'shown', inspector: 'shown' }).label).toBe('항목 패널 가리기');
-    expect(item({ sidebar: 'shown', inspector: 'hidden' }).label).toBe('항목 패널 보기');
-    expect(item({ sidebar: 'shown' }).label).toBe('항목 패널 보기/가리기'); // the empty library and the reader report none
-    expect(item().label).toBe('항목 패널 보기/가리기');
+    expect(item({ sidebar: 'shown', inspector: 'shown' }).label).toBe('오른쪽 패널 가리기');
+    expect(item({ sidebar: 'shown', inspector: 'hidden' }).label).toBe('오른쪽 패널 보기');
+    expect(item({ sidebar: 'shown' }).label).toBe('오른쪽 패널 보기/가리기'); // the empty library and the reader report none
+    expect(item().label).toBe('오른쪽 패널 보기/가리기');
   });
 });
 
@@ -436,6 +440,19 @@ describe('both panes\' state labels and the menu bar\'s item commands (P-2, P-3)
     expect(menuLabelsChanged(base, next({ view: 'viewer' }))).toBe(true); // ⌘+ is 확대 in the reader (P-9)
     expect(menuLabelsChanged(base, next({ blocked: true, textSize: 15 }))).toBe(false);
     expect(menuLabelsChanged(base, next({ pdfOpen: true }))).toBe(false);
+  });
+  it('carries a focused session row and relabels when it comes or goes (⌘⌫ is 세션 삭제 then)', () => {
+    expect(menuLabelState(next({ sessionFocused: true }))).toEqual({ sidebar: 'shown', inspector: 'shown', scope: 'all', view: 'library', sessionFocused: true });
+    expect(menuLabelState(next({ sessionFocused: false }))).toEqual(menuLabelState(base));
+    expect(menuLabelsChanged(base, next({ sessionFocused: true }))).toBe(true);
+    expect(menuLabelsChanged(next({ sessionFocused: true }), base)).toBe(true);
+    expect(menuLabelsChanged(menuLabelState(next({ sessionFocused: true })), menuLabelState(next({ sessionFocused: true })))).toBe(false);
+    const trash = commandById('item.trash');
+    const template = buildAppMenu({ isDev: false, platform: 'darwin', commands: [trash], enabled: ALL, onCommand: vi.fn(), labels: menuLabelState(next({ scope: 'trash', sessionFocused: true })) });
+    const byId = byIdOf(template);
+    expect(byId.get('item.trash')?.label).toBe('세션 삭제');
+    applyMenuLabels({ getMenuItemById: (id: string) => byId.get(id) ?? null }, 'darwin', menuLabelState(next({ scope: 'trash' })), [trash]);
+    expect(byId.get('item.trash')?.label).toBe('영구 삭제…');
   });
   it('relabels when a picture is drawn or goes, and carries that in the label state (한 쪽 전체 보기 is 창에 맞춤 for a picture)', () => {
     const reader = next({ view: 'viewer', inspector: undefined });

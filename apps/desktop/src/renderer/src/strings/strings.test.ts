@@ -95,12 +95,19 @@ describe('UI copy (design-spec 4, 9)', () => {
 
 /**
  * ‘<이름>’ + 조사 is one 어절 (design-spec 4): keep-all still breaks after a closing quote, so U+2060 sits between ’ and the
- * particle. A ’ right before a Hangul syllable is a break opportunity; one before U+2060 is not.
+ * particle. A ’ right before a Hangul syllable is a break opportunity; one before U+2060 is not. The same for a symbol a sentence
+ * names as a word (↩ + 로: "입력창에서 ↩로 보내세요"), whose particle would otherwise start the next line.
  */
 const QUOTE_THEN_HANGUL = /’(?=[가-힣])/;
+const SYMBOL_THEN_HANGUL = /[’↩⌘⌥⇧⌃](?=[가-힣])/;
 describe('a closing quote keeps its particle (design-spec 4)', () => {
   it('no copy string has ’ right before a Hangul syllable', () => {
     expect(copy.filter((s) => QUOTE_THEN_HANGUL.test(s.text)).map(show)).toEqual([]);
+  });
+  it('no copy string has a key symbol right before a Hangul syllable', () => {
+    expect(copy.filter((s) => SYMBOL_THEN_HANGUL.test(s.text)).map(show)).toEqual([]);
+    expect(SYMBOL_THEN_HANGUL.test('입력창에서 ↩로 보내세요')).toBe(true);
+    expect(SYMBOL_THEN_HANGUL.test('입력창에서 ↩\u2060로 보내세요')).toBe(false);
   });
   it.each([
     ['the empty collection', t.organize.empty.collectionBody('6장 · 신호 전달'), '’⁠로 끌어'],
@@ -125,6 +132,12 @@ describe('a closing quote keeps its particle (design-spec 4)', () => {
 });
 
 /**
+ * Main files whose Korean is sample data, not copy: the testing menu's (main's tests check that nothing shipped imports
+ * it) and the fake agent's answers, a sample of model output (the packaged app leaves the fake out).
+ */
+const SAMPLE_COPY = ['apps/desktop/src/main/menu/testing.ts', 'apps/desktop/src/main/tutor/fake-agent/fake-agent.ts'];
+
+/**
  * Korean string literals of the main process and the library package (no tests, comments removed first): error
  * messages become toasts and notices, dialog titles, buttons and filter names are on screen too (N-3, C-4).
  */
@@ -137,7 +150,7 @@ function mainProcessCopy(): Array<{ at: string; text: string }> {
       for (const e of fs.readdirSync(d, { withFileTypes: true })) {
         const p = path.join(d, e.name);
         if (e.isDirectory()) walk(p);
-        else if (/\.tsx?$/.test(e.name) && !/\.test\.tsx?$/.test(e.name) && path.relative(root, p) !== 'apps/desktop/src/main/menu/testing.ts') { // its Korean is sample data; main's tests check that nothing shipped imports it
+        else if (/\.tsx?$/.test(e.name) && !/\.test\.tsx?$/.test(e.name) && !SAMPLE_COPY.includes(path.relative(root, p))) {
           const code = fs.readFileSync(p, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/[^\n]*/g, '$1');
           for (const m of code.matchAll(literal)) {
             const text = m[1] ?? m[2] ?? m[3] ?? '';

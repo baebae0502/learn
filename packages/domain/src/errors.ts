@@ -6,10 +6,13 @@ export const ERROR_CODES = [
   // The reader's translation (ADR-0012): the cause is told apart so the panel can say what to do next.
   'TRANSLATION_OFFLINE', 'TRANSLATION_RATE_LIMITED', 'TRANSLATION_BLOCKED', 'TRANSLATION_UNAVAILABLE', 'TRANSLATION_BAD_RESPONSE',
   'TRANSLATION_DISABLED', 'TRANSLATION_TOO_LONG',
+  // The tutor (T1a): what stopped a question before or during its answer.
+  'TUTOR_CONSENT_REQUIRED', 'OFFLINE', 'AGENT_NOT_READY', 'AGENT_LOGIN', 'AGENT_START_FAILED', 'AGENT_BUSY', 'AGENT_TIMEOUT', 'AGENT_EXITED', 'AGENT_PROTOCOL',
+  'AGENT_LOCKDOWN',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
-const RETRYABLE: ReadonlySet<ErrorCode> = new Set<ErrorCode>(['DISK_FULL', 'PERMISSION_DENIED', 'TRANSLATION_OFFLINE', 'TRANSLATION_RATE_LIMITED', 'TRANSLATION_UNAVAILABLE']);
+const RETRYABLE: ReadonlySet<ErrorCode> = new Set<ErrorCode>(['DISK_FULL', 'PERMISSION_DENIED', 'TRANSLATION_OFFLINE', 'TRANSLATION_RATE_LIMITED', 'TRANSLATION_UNAVAILABLE', 'OFFLINE', 'AGENT_BUSY', 'AGENT_TIMEOUT', 'AGENT_EXITED']);
 
 export class LearnError extends Error {
   readonly code: ErrorCode;

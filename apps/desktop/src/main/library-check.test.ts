@@ -41,6 +41,7 @@ function put(file: string, bytes: number | Buffer): string {
   fs.writeFileSync(file, typeof bytes === 'number' ? Buffer.alloc(bytes, 5) : bytes);
   return file;
 }
+const NOW_RUN = '2026-11-10T10:00:00.000Z';
 const ORPHAN_ID = '0a1b2c3d-4e5f-4061-8172-8394a5b6c7d8';
 const EDIT = '단백질 접힘 정리 (수정본 2026-10-18 2210).pdf';
 const PARENT = { webContents: { id: 7 } } as never;
@@ -204,6 +205,44 @@ describe('startLibraryCheck (P-18: once the window exists, in the background)', 
     await runCheck(ctx, (ids) => void announced.push(ids));
     await runCheck(ctx, (ids) => void announced.push(ids));
     expect(announced).toEqual([[item.id]]);
+  });
+});
+
+describe('the tutor repair at startup (P-8)', () => {
+  it('repairs before it waits for the linked originals, and hands the purged ids over; without a startup it does not', async () => {
+    const ctx = await library();
+    const calls: string[] = [];
+    const conversations = { repairAtStartup: vi.fn((now: string, runStartedAt: string) => { calls.push(`repair ${runStartedAt}`); return { interrupted: 1, purged: ['c1', 'c2'], now }; }) };
+    const linked = vi.spyOn(ctx.repo, 'assetsByMode').mockImplementation((mode) => { calls.push(`linked ${mode}`); return []; });
+    const purged = vi.fn((ids: string[]) => void calls.push(`purged ${ids.join(',')}`));
+    const fake = { ...ctx, conversations: conversations as never } as typeof ctx;
+    await runCheck(fake, () => {}, { startup: true, tutor: { runStartedAt: '2026-11-10T10:00:00.000Z', purged } });
+    expect(calls.slice(0, 2)).toEqual(['repair 2026-11-10T10:00:00.000Z', 'purged c1,c2']);
+    expect(calls.some((c) => c.startsWith('linked'))).toBe(true);
+    conversations.repairAtStartup.mockClear();
+    await runCheck(fake, () => {}, { tutor: { runStartedAt: '2026-11-10T10:00:00.000Z', purged } });
+    expect(conversations.repairAtStartup).not.toHaveBeenCalled();
+    linked.mockRestore();
+  });
+
+  it('records only the code when the repair throws, and the check goes on', async () => {
+    const ctx = await library();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fake = { ...ctx, conversations: { repairAtStartup: () => { throw new Error('secret question text'); } } as never } as typeof ctx;
+    const check = await runCheck(fake, () => {}, { startup: true, tutor: { runStartedAt: NOW_RUN, purged: () => {} } });
+    expect(check).toBe(fake.check);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('INTERNAL'));
+    expect(warn.mock.calls.flat().join(' ')).not.toContain('secret');
+  });
+
+  it('really repairs the open library: a streaming answer becomes interrupted', async () => {
+    const ctx = await library();
+    const item = await add(ctx, pdf(temp('src'), 'a.pdf', 'a'));
+    const revisionId = ctx.db.prepare('SELECT id FROM source_revisions LIMIT 1').pluck().get() as string;
+    const t = ctx.conversations.beginTurn({ conversationId: null, itemId: item.id, revisionId, agent: 'fake', openedAtPage: 0,
+      user: { kind: 'question', text: 'q', sent: { selection: 0, replayedTurns: 0, preamble: true }, attached: null }, now: '2026-11-10T09:00:00.000Z' });
+    await runCheck(ctx, () => {}, { startup: true, tutor: { runStartedAt: NOW_RUN, purged: () => {} } });
+    expect(ctx.conversations.message(t.tutorMessageId)).toMatchObject({ status: 'failed' });
   });
 });
 

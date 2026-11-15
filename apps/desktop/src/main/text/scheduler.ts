@@ -15,6 +15,12 @@ export interface TextScheduler {
   libraryChanged(reason: LibraryChangeReason): void;
   /** E2E: 'now' skips the five seconds but still waits for the startup check. */
   control(mode: 'pause' | 'resume' | 'now'): void;
+  /**
+   * A question waits for this file's text: its queued job is taken next (a running job of another file finishes first),
+   * and it alone skips the first idle and the five seconds — the startup check and a busy work line still come first.
+   * Nothing while paused.
+   */
+  prioritize(sha256: string): void;
   /** E2E: holds the write of the batch after the one that brought the job's written pages to `afterPages` or more; null lets go and forgets. */
   hold(afterPages: number | null): void;
   held(): boolean;
@@ -57,7 +63,7 @@ export interface TextSchedulerEvent {
   what:
     | 'firstIdle' | 'startupChecked' | 'control' | 'start-waits' | 'delay' | 'begin' | 'kick-refused' | 'wake' | 'libraryChanged'
     | 'loop-start' | 'loop-end' | 'lane-wait' | 'lane-free' | 'job-start' | 'job-skip' | 'job-end' | 'loop-error'
-    | 'idle-wait' | 'idle-settled' | 'stop' | 'dispose';
+    | 'idle-wait' | 'idle-settled' | 'stop' | 'dispose' | 'prioritize';
   detail?: string;
 }
 
@@ -107,6 +113,8 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
   /** Files with no readable copy, left alone for the session. */
   const unavailable = new Set<string>();
   let current: { jobId: string; sha256: string } | null = null;
+  /** The file a question waits for: taken first, and the one job that may run before the first start. */
+  let preferred: string | null = null;
   /** The job whose run the trash or a purge stopped: its attempt is given back. */
   let stoppedByLibrary: string | null = null;
   let holdAfter: number | null = null;
@@ -166,8 +174,10 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
       maybeStart();
     });
   };
+  /** Before the first start only the file a question waits for may run, and not before the startup check. */
+  const mayRun = (): boolean => live || (preferred !== null && sawChecked);
   const kick = (): void => {
-    const refused = !live ? 'not-live' : looping ? 'looping' : disposed ? 'disposed' : paused ? 'paused' : null;
+    const refused = !mayRun() ? 'not-live' : looping ? 'looping' : disposed ? 'disposed' : paused ? 'paused' : null;
     if (refused !== null) {
       note('kick-refused', refused);
       return;
@@ -277,6 +287,10 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
           ended = disposed ? 'disposed' : paused ? 'paused' : 'no-repo';
           return;
         }
+        if (!mayRun()) {
+          ended = 'gated';
+          return;
+        }
         if (dirty) {
           dirty = false;
           repo.requeueInterrupted(now());
@@ -288,11 +302,18 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
           note('lane-free');
           continue;
         }
-        const job = repo.next(unavailable);
+        const job = repo.next(unavailable, preferred ?? undefined);
+        const asked = job !== undefined && job.sha256 === preferred;
+        // Nothing of that file is queued (done, failed, skipped or trashed): the usual order.
+        if (!asked) preferred = null;
         if (job === undefined) {
           ended = 'empty';
           d.progress();
           d.progressNow();
+          return;
+        }
+        if (!live && !asked) {
+          ended = 'gated';
           return;
         }
         let outcome: ExtractOutcome | null;
@@ -308,6 +329,7 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
           return;
         }
         if (outcome !== null) settle(repo, job, outcome);
+        if (preferred === job.sha256) preferred = null;
       }
     } catch (e) {
       lastError = errorCode(e);
@@ -331,6 +353,7 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
       sawChecked = true;
       note('startupChecked');
       maybeStart();
+      if (!live && preferred !== null) kick();
     },
     wake() {
       dirty = true;
@@ -373,6 +396,18 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
       } else {
         maybeStart();
       }
+    },
+    prioritize(sha256) {
+      if (disposed) return;
+      if (paused) {
+        note('prioritize', 'paused');
+        return;
+      }
+      note('prioritize');
+      preferred = sha256;
+      // The file may have no job yet: the run that takes it backfills first.
+      dirty = true;
+      kick();
     },
     hold(afterPages) {
       holdAfter = afterPages;

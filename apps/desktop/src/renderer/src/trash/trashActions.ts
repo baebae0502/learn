@@ -13,7 +13,7 @@ export interface TrashDeps {
   purge(rows: TrashRows): Promise<PurgedRows>;
   /** The trash as it is now: 휴지통 비우기… from another view has no read of it yet. */
   readTrash(): Promise<TrashView>;
-  /** The purge sheet (P-25): true when its destructive button was pressed. */
+  /** The purge sheet: true when its destructive button was pressed. `itemIds`: an items or mixed purge's items. */
   confirmPurge(input: ConfirmPurgeInput): Promise<boolean>;
   /** A live item's title, for the toast that names one item. */
   titleOf(itemId: string): string | undefined;
@@ -142,7 +142,9 @@ export function createTrashActions(deps: TrashDeps): TrashActions {
       const collections = collectionIds.length;
       if (items + collections === 0) return;
       const name = await nameOfOne({ itemIds, collectionIds });
-      if (!(await ask({ variant: purgeVariant(items, collections), items, collections, ...(name !== undefined ? { name } : {}) }))) return;
+      // The items go with the question: main counts their tutor sessions for the sheet (T1a spec 6.2).
+      const question: ConfirmPurgeInput = { variant: purgeVariant(items, collections), items, collections, ...(name !== undefined ? { name } : {}), ...(items > 0 ? { itemIds: [...itemIds] } : {}) };
+      if (!(await ask(question))) return;
       let done: PurgedRows;
       try {
         done = await deps.purge({ itemIds: [...itemIds], collectionIds: [...collectionIds] });

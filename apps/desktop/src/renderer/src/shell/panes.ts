@@ -11,9 +11,13 @@ const FOCUSABLE =
 
 /**
  * A grid (the library table, and the sidebar's tree) is one stop with a roving focus: F6 lands on its stop row (tabindex 0: the cursor, or the
- * first row before there is one), never on a header button or a column edge inside it (tabindex -1).
+ * first row before there is one), never on a header button or a column edge inside it (tabindex -1). A tablist is the same.
  */
-const landsOn = (el: Element): boolean => el.closest('[role="grid"], [role="treegrid"]') === null || el.getAttribute('tabindex') === '0';
+const landsOn = (el: Element): boolean => {
+  // A tablist is one stop too: the tab that is selected (the other one is reached with the arrow keys).
+  if (el.getAttribute('role') === 'tab') return el.getAttribute('tabindex') !== '-1';
+  return el.closest('[role="grid"], [role="treegrid"]') === null || el.getAttribute('tabindex') === '0';
+};
 
 /** The pane's element when F6 can visit it: there, not folded (inert or zero-wide); the toasts only with a toast. */
 function usablePane(name: (typeof PANES)[number]): HTMLElement | null {
@@ -22,9 +26,16 @@ function usablePane(name: (typeof PANES)[number]): HTMLElement | null {
   return usable ? el : null;
 }
 
-/** Where F6 lands in a pane: its first control that takes the focus now, else the pane itself. */
+/**
+ * A control a pane names as the place to land (`data-pane-landing`) goes first while it can take the focus: the tutor's text area,
+ * when the tutor shows a session (spec 8.11). It is passed over while it is off (the item still opening).
+ */
+const LANDING = '[data-pane-landing]:not(:disabled)';
+
+/** Where F6 lands in a pane: the control it names, else its first control that takes the focus now, else the pane itself. */
 function landIn(pane: HTMLElement): void {
-  for (const target of [...pane.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(landsOn)) {
+  const named = pane.querySelector<HTMLElement>(LANDING);
+  for (const target of [...(named ? [named] : []), ...[...pane.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(landsOn)]) {
     target.focus();
     // Landed once the focus is in the target (a grid hands its focus on to the stop row).
     if (target.contains(document.activeElement)) return;

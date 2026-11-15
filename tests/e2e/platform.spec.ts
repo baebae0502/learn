@@ -32,9 +32,9 @@ const topMenu = (menu: readonly MenuNode[], label: string): MenuNode[] => {
 };
 /** Submenu entries as [role, label]; a separator is ['-', '']. */
 const entries = (items: readonly MenuNode[]) => items.map((n) => [n.type === 'separator' ? '-' : roleOf(n), n.label]);
-/** 보기 up to its full-screen item: the palette, the sidebar and item panel toggles (the empty library reports no panel, so the neutral name), the text size group (with ⌘+'s hidden ⌘= twin), the reader's groups. */
+/** 보기 up to its full-screen item: the palette, the sidebar and right panel toggles (the empty library reports no panel, so the neutral name) and the reader's two panel modes, the reader sidebar's three lists, the text size group (with ⌘+'s hidden ⌘= twin), the reader's groups. */
 const VIEW_START = [
-  [null, '명령 팔레트…'], ['-', ''], [null, '사이드바 가리기'], [null, '항목 패널 보기/가리기'], [null, '정렬 기준'], [null, '썸네일 보기'], [null, '목차 보기'], ['-', ''],
+  [null, '명령 팔레트…'], ['-', ''], [null, '사이드바 가리기'], [null, '오른쪽 패널 보기/가리기'], [null, '정보 보기'], [null, '튜터 보기'], [null, '정렬 기준'], [null, '썸네일 보기'], [null, '목차 보기'], [null, '세션 보기'], ['-', ''],
   [null, '글자 크게'], [null, '글자 크게'], [null, '글자 작게'], [null, '기본 글자 크기'], ['-', ''],
   // The reader's: how the page fits, the rotation, then 쪽 색 ▸, 스크롤 ▸, 펼침 ▸ and 배경 ▸ (their rows are the groups', without marks).
   [null, '자동 맞춤'], [null, '너비에 맞춤'], [null, '한 쪽 전체 보기'], ['-', ''], [null, '시계 방향으로 회전'], [null, '반시계 방향으로 회전'], [null, '쪽 색'], [null, '스크롤'], [null, '펼침'], [null, '배경'], ['-', ''],

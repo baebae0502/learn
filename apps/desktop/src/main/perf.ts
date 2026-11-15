@@ -14,12 +14,16 @@ export function markPerf(name: 'ready' | 'firstPaint' | 'windowShown' | 'windowC
   if (perf[name] === 0) perf[name] = Date.now();
 }
 
-/** Main-side steps p1-perf.evidence.ts times (M6 spec 14): a purge's transaction, an emptied trash's, and the files after either. */
-export type TimedStep = 'purge' | 'emptyTrash' | 'purgeFiles';
+/**
+ * Main-side steps the evidence times: p1-perf.evidence.ts (M6 spec 14) a purge's transaction, an emptied trash's, and the files after
+ * either; tutor-perf.evidence.ts (T1a spec 15) tutor:ask up to its rows, an agent process from its start to its initialize answer, and
+ * a read_pdf_pages call with its record.
+ */
+export type TimedStep = 'purge' | 'emptyTrash' | 'purgeFiles' | 'tutorAsk' | 'tutorInitialize' | 'tutorReadPages';
 
 /**
  * The newest duration of each timed step, in ms (performance.now, fractional), read through app.evaluate
- * (globalThis.__learnLastMs). A step not run yet has no key. Kept in every build: two numbers, no names or paths.
+ * (globalThis.__learnLastMs). A step not run yet has no key. Kept in every build: numbers only, no names or paths.
  */
 export const lastMs: Partial<Record<TimedStep, number>> = {};
 (globalThis as { __learnLastMs?: typeof lastMs }).__learnLastMs = lastMs;

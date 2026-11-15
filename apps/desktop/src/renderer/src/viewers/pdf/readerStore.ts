@@ -3,6 +3,7 @@ import type { EventBus, PDFLinkService, PDFViewer } from 'pdfjs-dist/web/pdf_vie
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type { ReadingLocator, ReaderNav, ScrollModeName, SpreadModeName } from '@learn/domain';
 import { emptyHistory, type History } from './history';
+import type { OutlineCache } from './outlineCache';
 import type { ImageZoom, Rotation, Size } from '../image/imageFit';
 
 export type { ReaderNav };
@@ -36,6 +37,8 @@ export interface PdfViewHandle {
   goToPage(pageNumber: number): void;
   /** A jump (a thumbnail, the page field): the place left is recorded for back, then the page is placed. */
   jumpToPage(pageNumber: number): void;
+  /** The page a pressed citation points to (0-based), outlined for CITE_FLASH_MS (.cite-page): the page only, never a passage (spec 7). */
+  flashPage(pageIndex: number): void;
   historyBack(): void;
   historyForward(): void;
   next(): void;
@@ -58,6 +61,9 @@ export interface PdfViewHandle {
   eventBus(): EventBus | null;
   linkService(): PDFLinkService | null;
 }
+
+/** How long flashPage outlines its page. */
+export const CITE_FLASH_MS = 1500;
 
 /** A page to show once the reader is placed (a 본문 일치 row, spec 5.8), and what its find bar then searches for (one word of the query). */
 export interface PendingJump {
@@ -117,6 +123,12 @@ export interface ReaderStore {
    */
   pendingJump: PendingJump | null;
   setPendingJump(j: PendingJump | null): void;
+  /**
+   * The outline of the open document, resolved as far as the tutor or the outline pane has asked (outlineCache.ts); null until it is
+   * loaded and once the document goes.
+   */
+  outline: OutlineCache | null;
+  setOutline(c: OutlineCache | null): void;
   setNoPages(source: 'host' | 'reader', reason: NoPages | null): void;
   setPdf(p: Partial<PdfState> | null): void;
   setHandle(h: PdfViewHandle | null): void;
@@ -136,6 +148,8 @@ export function createReaderStore(): StoreApi<ReaderStore> {
     setHistory: (history) => set({ history }),
     pendingJump: null,
     setPendingJump: (pendingJump) => set({ pendingJump }),
+    outline: null,
+    setOutline: (outline) => set({ outline }),
     setNoPages: (source, reason) => set((s) => (s.noPages[source] === reason ? s : { noPages: { ...s.noPages, [source]: reason } })),
     setPdf: (p) => set((s) => ({ pdf: p === null ? null : { ...(s.pdf ?? INITIAL_PDF), ...p } })),
     setHandle: (handle) => set({ handle }),

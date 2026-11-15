@@ -14,13 +14,18 @@ const THIS_VERSION = `kind = 'extract' AND dedupe_key LIKE 'extract:%${KEY_SUFFI
 const LIVE_PDFS = `FROM items i JOIN item_assets ia ON ia.item_id = i.id AND ia.role = 'original'
                    JOIN assets a ON a.id = ia.asset_id WHERE i.type = 'pdf' AND i.deleted_at IS NULL`;
 
+/** The job j's file still has a PDF outside the trash. */
+const HAS_LIVE_PDF = `EXISTS (SELECT 1 FROM assets a JOIN item_assets ia ON ia.asset_id = a.id AND ia.role = 'original'
+         JOIN items i ON i.id = ia.item_id AND i.type = 'pdf' AND i.deleted_at IS NULL
+         WHERE a.sha256 = substr(j.dedupe_key, ${SHA_AT}, 64))`;
 /** The queued jobs, newest first, whose file still has a PDF outside the trash (exported for its query-plan test). */
 export const NEXT_JOB_SQL = `SELECT j.id, j.state, j.attempts, j.error, j.payload_json FROM jobs j
   WHERE j.state = 'queued' AND j.${THIS_VERSION.replace(/ AND /, ' AND j.')}
-    AND EXISTS (SELECT 1 FROM assets a JOIN item_assets ia ON ia.asset_id = a.id AND ia.role = 'original'
-         JOIN items i ON i.id = ia.item_id AND i.type = 'pdf' AND i.deleted_at IS NULL
-         WHERE a.sha256 = substr(j.dedupe_key, ${SHA_AT}, 64))
+    AND ${HAS_LIVE_PDF}
   ORDER BY j.created_at DESC, j.rowid DESC`;
+/** One file's queued job on NEXT_JOB_SQL's terms, looked up by its unique dedupe key (this version's key). */
+const PREFERRED_JOB_SQL = `SELECT j.id, j.state, j.attempts, j.error, j.payload_json FROM jobs j
+  WHERE j.dedupe_key = ? AND j.state = 'queued' AND ${HAS_LIVE_PDF}`;
 
 /** The PDF files that have no job yet, with the date of their newest item (exported for its query-plan test): each file's key is looked up in the unique index. */
 export const BACKFILL_FILES_SQL = `SELECT a.sha256, MAX(i.created_at) AS created FROM items i JOIN item_assets ia ON ia.item_id = i.id AND ia.role = 'original'
@@ -68,8 +73,12 @@ export class TextRepository {
     return this.db.prepare(`UPDATE jobs SET state = 'queued', updated_at = ? WHERE state = 'interrupted' AND ${THIS_VERSION}`).run(now).changes;
   }
 
-  /** The newest queued job whose file still has a PDF outside the trash. */
-  next(skip?: ReadonlySet<string>): ExtractJob | undefined {
+  /** The newest queued job whose file still has a PDF outside the trash; `prefer`'s queued job first when it has one and is not skipped. */
+  next(skip?: ReadonlySet<string>, prefer?: string): ExtractJob | undefined {
+    if (prefer !== undefined && !skip?.has(prefer)) {
+      const row = this.db.prepare(PREFERRED_JOB_SQL).get(extractKey(prefer)) as JobRow | undefined;
+      if (row) return toJob(row);
+    }
     const rows = this.db
       .prepare(NEXT_JOB_SQL)
       .iterate() as Iterable<JobRow>;
@@ -192,6 +201,13 @@ export class TextRepository {
       )
       .get() as { total: number; done: number };
     return { done: r.done, total: r.total };
+  }
+
+  /** The page rows from `from` to `to` (0-based, inclusive), in page order; a page with no row is left out. */
+  pages(sha256: string, from: number, to: number): Array<{ pageIndex: number; text: string }> {
+    return this.db
+      .prepare('SELECT page_index AS pageIndex, text FROM page_texts WHERE sha256 = ? AND page_index BETWEEN ? AND ? ORDER BY page_index')
+      .all(sha256, from, to) as Array<{ pageIndex: number; text: string }>;
   }
 
   pageCount(sha256: string): number {

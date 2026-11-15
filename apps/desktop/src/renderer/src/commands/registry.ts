@@ -59,6 +59,24 @@ export interface CommandEnv extends CommandContextState {
   toggleSidebar(): void;
   /** ⌥⌘I: the item panel, by the sidebar's rules (shell/layout.ts toggledInspector). */
   toggleInspector(): void;
+  /** ⌃⌘1 / ⌃⌘2: the reader's right panel shows 정보 or 튜터 (remembered; a folded panel opens; the tutor takes the focus). */
+  setInspectorMode(mode: 'info' | 'tutor'): void;
+  /** 에이전트 고르기…: this tab's tutor shows the chooser (the right panel opens on 튜터 if it is not). */
+  chooseAgent(): void;
+  /** 새 세션: this tab's tutor goes to a new empty session (the one it showed stays in the session list). */
+  newSession(): void;
+  /** 답 중지: the answer this tab's session receives stops (the panel's esc and 중지 do the same, as the panel's own keys). */
+  stopAnswer(): void;
+  /** 이름 바꾸기 on a session: its row in the sidebar becomes its name field (the reader's 세션 pane shown first when it is the tutor's). */
+  renameSession(conversationId: string): void;
+  /** 세션 삭제: at once, with 실행 취소; a tab that showed it goes to a new empty session. */
+  deleteSession(conversationId: string): void;
+  /** A library session row (spec 8.9): its item's tab the way 열기 opens it (an open edit asked first), on that session, the tutor shown. */
+  openSession(itemId: string, conversationId: string): void;
+  /** The session the active tab's tutor shows (null: a new empty one, or no reader). */
+  currentSession(): string | null;
+  /** The session of the sidebar row that has the focus, if one has. */
+  focusedSession(): string | null;
   /** ⌘/ (Task 6). */
   showShortcuts(): void;
   /** ⌘K (Task 9): opens the palette, or selects its field when it is already open. */
@@ -119,7 +137,7 @@ export interface CommandEnv extends CommandContextState {
   findSelection(): void;
   /** 선택한 글 번역 (palette): the reader's selection is translated, its pop-up shown again. */
   translateSelection(): void;
-  /** ⌥⌘2 / ⌥⌘3: the reader's sidebar shows the thumbnails or the outline (the sidebar opens if it is folded). */
+  /** ⌥⌘2 / ⌥⌘3 / ⌥⌘5: the reader's sidebar shows the thumbnails, the outline or the sessions (the sidebar opens if it is folded). */
   showReaderNav(kind: ReaderNav): void;
   /** 가져오기 취소 (the palette; the progress toast's 취소 does the same): main's queue stops (spec 3.5). */
   cancelImport(): void;
@@ -164,6 +182,8 @@ export interface CommandTarget {
   itemIds?: readonly string[];
   collectionIds?: readonly string[];
   tagIds?: readonly string[];
+  /** Tutor sessions: a session row's menu, or the row that has the focus. */
+  conversationIds?: readonly string[];
   args?: CommandArgs;
 }
 
@@ -182,6 +202,9 @@ const itemOf = (target: CommandTarget): string => target.itemIds![0]!;
 const collectionOf = (target: CommandTarget): string => target.collectionIds![0]!;
 /** The one tag a tag command acts on (its availability rule asks for exactly one). */
 const tagOf = (target: CommandTarget): string => target.tagIds![0]!;
+/** The session a session command acts on: its row's, else the focused row's (⌘⌫ from the menu bar), else — for 이름 바꾸기 from the palette — the tutor's. */
+const sessionOf = (env: CommandEnv, target: CommandTarget, orCurrent: boolean): string | null =>
+  target.conversationIds?.[0] ?? (env.sessionFocused ? env.focusedSession() : null) ?? (orCurrent ? env.currentSession() : null);
 /** A colour key: the tag at the slot goes on the items handed over (the table selection), or off them when all have it. */
 const colorAt = (slot: number): Handler => (env, t) => env.toggleTagPosition(slot, t.itemIds ?? []);
 
@@ -201,6 +224,11 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'translation.translateSelection': (env) => env.translateSelection(),
   'reader.showThumbnails': (env) => env.showReaderNav('thumbnails'),
   'reader.showOutline': (env) => env.showReaderNav('outline'),
+  'reader.showSessions': (env) => env.showReaderNav('sessions'),
+  'session.rename': (env, t) => {
+    const id = sessionOf(env, t, true);
+    if (id !== null) env.renameSession(id);
+  },
   'library.findEverywhere': (env) => env.findEverywhere(),
   'nav.back': (env) => env.back(),
   'item.open': (env, t) => env.openItems(t.itemIds ?? []),
@@ -228,8 +256,14 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'item.editInfo': (env, t) => env.editInfo(itemOf(t)),
   'collection.addItems': (env, target) => env.addToCollection(target.itemIds ?? [], target.args ?? {}),
   'collection.removeItems': (env, target) => env.removeFromCollection(target.itemIds ?? []),
-  // ⌘⌫: the trash view's rows are purged after the sheet (P-11); anywhere else the items go to the trash.
-  'item.trash': (env, t) => (env.scope === 'trash' ? env.purge(trashRowsOf(t)) : env.trashItems(t.itemIds ?? [])),
+  // ⌘⌫: a session row's session is deleted (its menu, or the row with the focus); else the trash view's rows are purged after
+  // the sheet (P-11), and anywhere else the items go to the trash.
+  'item.trash': (env, t) => {
+    const session = t.conversationIds !== undefined || env.sessionFocused ? sessionOf(env, t, false) : null;
+    if (session !== null) env.deleteSession(session);
+    else if (env.scope === 'trash') env.purge(trashRowsOf(t));
+    else env.trashItems(t.itemIds ?? []);
+  },
   'item.restore': (env, t) => env.restore(trashRowsOf(t)),
   'item.relink': (env, t) => env.relink(itemOf(t)),
   'collection.new': (env) => env.newCollection(),
@@ -257,6 +291,11 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'tags.clearFilter': (env) => env.clearTagFilter(),
   'view.toggleSidebar': (env) => env.toggleSidebar(),
   'view.toggleInspector': (env) => env.toggleInspector(),
+  'view.inspectorInfo': (env) => env.setInspectorMode('info'),
+  'view.inspectorTutor': (env) => env.setInspectorMode('tutor'),
+  'tutor.chooseAgent': (env) => env.chooseAgent(),
+  'tutor.newSession': (env) => env.newSession(),
+  'tutor.stop': (env) => env.stopAnswer(),
   'app.shortcuts': (env) => env.showShortcuts(),
   'app.palette': (env) => env.openPalette(),
   'app.settings': (env) => env.openSettings(),
@@ -323,6 +362,11 @@ export function contextOf(env: CommandEnv): CommandContextState {
     ...(env.translationOff ? { translationOff: true } : {}),
     ...(env.sidebar ? { sidebar: env.sidebar } : {}),
     ...(env.inspector ? { inspector: env.inspector } : {}),
+    ...(env.pdfOpen && env.inspectorMode ? { inspectorMode: env.inspectorMode } : {}),
+    ...(env.pdfOpen && env.tutorConsented ? { tutorConsented: true } : {}),
+    ...(env.pdfOpen && env.tutorHasMessages ? { tutorHasMessages: true } : {}),
+    ...(env.pdfOpen && env.tutorStreaming ? { tutorStreaming: true } : {}),
+    ...(env.sessionFocused ? { sessionFocused: true } : {}),
     ...(env.importRunning ? { importRunning: true } : {}),
     ...(env.backupRunning ? { backupRunning: true } : {}),
     ...(env.restoreRunning ? { restoreRunning: true } : {}),
@@ -333,12 +377,15 @@ export function contextOf(env: CommandEnv): CommandContextState {
 }
 
 /**
- * The targets of a command from the menu bar (its accelerator or a click) and the palette: a trash command takes the trash
- * view's selected rows there (P-10); an item command the table's selection, which only the library view shows (spec 6: off
- * in the reader, as main's availableMenuCommands judges it).
+ * The targets of a command from the menu bar (its accelerator or a click) and the palette: a session command takes the session row
+ * that has the focus (⌘⌫ is 세션 삭제 then, in any view); a trash command the trash view's selected rows there (P-10); an item
+ * command the table's selection, which only the library view shows (spec 6: off in the reader, as main's availableMenuCommands
+ * judges it).
  */
 export function menuTarget(id: CommandId, env: CommandEnv): CommandTarget {
   const contexts = COMMANDS.find((c) => c.id === id)?.contexts ?? [];
+  const focused = contexts.includes('session') && env.sessionFocused ? env.focusedSession() : null;
+  if (focused !== null) return { conversationIds: [focused] };
   if (contexts.includes('trash') && env.scope === 'trash' && env.view === 'library') return env.trashSelection();
   if (!contexts.includes('item')) return {};
   return { itemIds: env.view === 'library' ? env.selection() : [] };

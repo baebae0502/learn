@@ -24,6 +24,7 @@ afterEach(() => {
   for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 });
 
+const rows = (db: Db, ...names: string[]) => names.map((t) => db.prepare(`SELECT COUNT(*) FROM ${t}`).pluck().get() as number);
 const tables = (db: Db) =>
   (db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`).all() as { name: string }[]).map((r) => r.name);
 
@@ -39,7 +40,7 @@ describe('migrate', () => {
   it('creates the latest schema on an empty database', () => {
     const { db, file } = tempDb();
     expect(migrate(db, { dbFile: file })).toEqual({ from: 0, to: LATEST_SCHEMA_VERSION, backupFile: null });
-    expect(LATEST_SCHEMA_VERSION).toBe(4);
+    expect(LATEST_SCHEMA_VERSION).toBe(5);
     expect(tables(db)).toContain('page_texts');
     expect(tables(db)).toContain('reading_positions');
     expect(tables(db)).toContain('translation_cache');
@@ -169,7 +170,8 @@ describe('migration v2 (organize)', () => {
     db.prepare(`INSERT INTO tags (id, name) VALUES ('t1', 'old')`).run();
 
     expect(migrate(db, { dbFile: file, migrations: MIGRATIONS.filter((m) => m.version <= 2) })).toEqual({ from: 1, to: 2, backupFile: `${file}.pre-v2.bak` });
-    expect(repo.counts()).toMatchObject({ items: 2, assets: 2, revisions: 2, tags: 1, readingPositions: 0 });
+    // counts() also reads the tables of later versions, which this database does not have yet
+    expect(rows(db, 'items', 'assets', 'source_revisions', 'tags', 'reading_positions')).toEqual([2, 2, 2, 1, 0]);
     expect(db.prepare('SELECT position, color FROM tags WHERE id = ?').get('t1')).toEqual({ position: null, color: null });
     const snap = openDatabase(`${file}.pre-v2.bak`);
     dbs.push(snap);
@@ -211,7 +213,7 @@ describe('migration v2 (organize)', () => {
     const collections = new CollectionsRepository(db);
     expect(collections.list().map((c) => [c.id, c.parentId, c.itemCount])).toEqual([['c1', null, 1], ['c2', 'c1', 1]]);
     expect(collections.itemIds('c1', { includeSubcollections: true })).toEqual([i2, i1]);
-    expect(repo.counts()).toMatchObject({ tags: 2, itemTags: 3, collections: 2, collectionItems: 2 });
+    expect(rows(db, 'tags', 'item_tags', 'collections', 'collection_items')).toEqual([2, 3, 2, 2]);
 
     // The pre-v2 snapshot still has every v1 tag.
     const snap = openDatabase(`${file}.pre-v2.bak`);
@@ -254,7 +256,7 @@ describe('migration v3 (anchors-translation)', () => {
     db.prepare(`INSERT INTO anchors (id, revision_id, kind, locator_json, quote, schema_version) VALUES ('a1', ?, 'pdf', '{}', 'q', 1)`).run(revisionId);
     db.prepare(`INSERT INTO annotations (id, anchor_id, type, body_json, operation_id, created_at, updated_at) VALUES ('n1', 'a1', 'highlight', '{}', 'op', 'now', 'now')`).run();
 
-    expect(migrate(db, { dbFile: file })).toEqual({ from: 2, to: 4, backupFile: `${file}.pre-v3.bak` });
+    expect(migrate(db, { dbFile: file, migrations: MIGRATIONS.filter((m) => m.version <= 3) })).toEqual({ from: 2, to: 3, backupFile: `${file}.pre-v3.bak` });
     expect(db.prepare(`SELECT id, precision, text_json, quote FROM anchors`).all()).toEqual([{ id: 'a1', precision: 'span', text_json: null, quote: 'q' }]);
     expect(db.pragma('foreign_key_check')).toEqual([]);
     expect(tables(db)).toContain('translation_cache');
@@ -267,6 +269,7 @@ describe('migration v3 (anchors-translation)', () => {
 
 describe('migration v4 (images-text)', () => {
   const v3 = MIGRATIONS.filter((m) => m.version <= 3);
+  const upTo4 = MIGRATIONS.filter((m) => m.version <= 4);
   const rows = (db: Db, table: string) => db.prepare(`SELECT rowid AS _rowid, * FROM ${table} ORDER BY rowid`).all() as Record<string, unknown>[];
   const SAME = ['items', 'item_assets', 'source_revisions', 'collections', 'collection_items', 'tags', 'item_tags', 'reading_positions', 'annotations'];
 
@@ -296,7 +299,7 @@ describe('migration v4 (images-text)', () => {
     migrate(db, { dbFile: file, migrations: v3 });
     const { pdf } = seedV3(db);
     const before = Object.fromEntries([...SAME, 'assets', 'anchors'].map((t) => [t, rows(db, t)]));
-    expect(migrate(db, { dbFile: file })).toEqual({ from: 3, to: 4, backupFile: `${file}.pre-v4.bak` });
+    expect(migrate(db, { dbFile: file, migrations: upTo4 })).toEqual({ from: 3, to: 4, backupFile: `${file}.pre-v4.bak` });
     for (const t of SAME) expect(rows(db, t), t).toEqual(before[t]);
     expect(rows(db, 'assets')).toEqual(before.assets!.map((r) => ({ ...r, width: null, height: null })));
     expect(rows(db, 'anchors')).toEqual(before.anchors!.map((r) =>
@@ -365,5 +368,156 @@ describe('migration v4 (images-text)', () => {
     expect(hits('망원경')).toHaveLength(1);
     db.prepare('DELETE FROM page_texts').run();
     expect(hits('망원경')).toHaveLength(0);
+  });
+});
+
+describe('migration v5 (tutor)', () => {
+  const v4 = MIGRATIONS.filter((m) => m.version <= 4);
+  const rows = (db: Db, table: string) => db.prepare(`SELECT rowid AS _rowid, * FROM ${table} ORDER BY rowid`).all() as Record<string, unknown>[];
+  const KEPT = ['items', 'assets', 'item_assets', 'source_revisions', 'collections', 'collection_items', 'tags', 'item_tags', 'reading_positions', 'anchors', 'annotations', 'jobs', 'page_texts'];
+  const TUTOR_TABLES = ['conversations', 'messages', 'message_sources', 'conversation_context', 'tool_reads'];
+
+  function seedV4(db: Db) {
+    const repo = new LibraryRepository(db);
+    const pdf = seedItem(repo, 1);
+    const video = seedItem(repo, 2);
+    db.prepare(`UPDATE items SET type = 'video' WHERE id = ?`).run(video.itemId);
+    const image = seedItem(repo, 3);
+    db.prepare(`UPDATE items SET type = 'image' WHERE id = ?`).run(image.itemId);
+    const trashed = seedItem(repo, 4);
+    db.prepare(`UPDATE items SET deleted_at = '2026-11-01T00:00:00.000Z' WHERE id = ?`).run(trashed.itemId);
+    const anchor = db.prepare(`INSERT INTO anchors (id, revision_id, kind, locator_json, quote, schema_version, precision, text_json) VALUES (?, ?, ?, ?, ?, 2, ?, ?)`);
+    anchor.run('a-span', pdf.revisionId, 'pdf', JSON.stringify({ kind: 'pdf', revisionId: pdf.revisionId, precision: 'span', pageIndex: 0, quads: [[0, 0, 1, 0, 0, 1, 1, 1]], coordinateSpace: 'pdf-user-space' }), 'q', 'span', JSON.stringify({ quote: { exact: 'q', prefix: '', suffix: '' } }));
+    anchor.run('a-slides', pdf.revisionId, 'slides', JSON.stringify({ kind: 'slides', revisionId: pdf.revisionId, derivedRevisionId: pdf.revisionId, slideIndex: 0, quads: [] }), null, 'region', null);
+    anchor.run('a-image', image.revisionId, 'image', JSON.stringify({ kind: 'image', revisionId: image.revisionId, precision: 'region', rect: [0, 0, 1, 1] }), null, 'region', null);
+    anchor.run('a-bad', pdf.revisionId, 'pdf', 'not json', null, 'span', null);
+    db.prepare(`INSERT INTO annotations (id, anchor_id, type, body_json, operation_id, created_at, updated_at) VALUES ('n1', 'a-span', 'highlight', '{}', 'op', 'now', 'now')`).run();
+    db.prepare(`INSERT INTO page_texts (sha256, page_index, text) VALUES (?, 0, '현미경 관찰 기록')`).run('1'.repeat(64));
+    return { pdf, image };
+  }
+
+  it('upgrades a real v4 library: every row and rowid kept, foreign keys whole and on, five empty tutor tables, a v4 snapshot', () => {
+    const { db, file } = tempDb();
+    migrate(db, { dbFile: file, migrations: v4 });
+    seedV4(db);
+    const before = Object.fromEntries(KEPT.map((t) => [t, rows(db, t)]));
+    expect(migrate(db, { dbFile: file })).toEqual({ from: 4, to: 5, backupFile: `${file}.pre-v5.bak` });
+    for (const t of KEPT) expect(rows(db, t), t).toEqual(before[t]);
+    for (const t of TUTOR_TABLES) expect(rows(db, t), t).toEqual([]);
+    expect(db.pragma('foreign_key_check')).toEqual([]);
+    expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
+    const parents = (t: string) => (db.pragma(`foreign_key_list(${t})`) as { table: string }[]).map((r) => r.table).sort();
+    expect(parents('annotations')).toEqual(['anchors']);
+    expect(parents('message_sources')).toEqual(['anchors', 'messages']);
+    expect(parents('conversation_context')).toEqual(['anchors', 'conversations']);
+    expect(parents('tool_reads')).toEqual(['messages', 'source_revisions']);
+    const indexes = db.prepare(`SELECT name FROM sqlite_master WHERE type = 'index'`).pluck().all() as string[];
+    expect(indexes).toEqual(expect.arrayContaining(['anchors_revision', 'conversations_item', 'conversations_recent', 'conversations_parent', 'conversations_deleted',
+      'message_sources_message', 'message_sources_anchor', 'message_sources_cited_page', 'conversation_context_opened', 'conversation_context_anchor', 'tool_reads_revision']));
+    db.prepare(`UPDATE anchors SET precision = 'page' WHERE id = 'a-span'`).run(); // a PDF anchor may be a page
+    expect(() => db.prepare(`UPDATE anchors SET precision = 'page' WHERE id = 'a-image'`).run()).toThrow(/CHECK/); // an image may not
+    const snap = openDatabase(`${file}.pre-v5.bak`);
+    dbs.push(snap);
+    expect(currentVersion(snap)).toBe(4);
+  });
+
+  it('the new tables hold their rules', () => {
+    const { db } = tempDb();
+    migrate(db, { dbFile: null });
+    const repo = new LibraryRepository(db);
+    const { itemId, revisionId } = seedItem(repo, 1);
+    const run = (sql: string, ...args: unknown[]) => db.prepare(sql).run(...args);
+    const conv = (id: string, over: { title?: string | null; agent?: string; parent?: string | null } = {}) =>
+      run(`INSERT INTO conversations (id, item_id, parent_id, title, agent, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'now', 'now')`,
+        id, itemId, over.parent ?? null, over.title === undefined ? null : over.title, over.agent ?? 'claude');
+    const msg = (id: string, c: string, seq: number, role: string, kind: string, extra: { agent?: string | null; sent?: string | null; status?: string } = {}) =>
+      run(`INSERT INTO messages (id, conversation_id, seq, role, kind, text, status, agent, sent_json, created_at) VALUES (?, ?, ?, ?, ?, 't', ?, ?, ?, 'now')`,
+        id, c, seq, role, kind, extra.status ?? 'complete', extra.agent ?? null, extra.sent ?? null);
+    const page = (id: string, n: number) =>
+      run(`INSERT INTO anchors (id, revision_id, kind, locator_json, quote, schema_version, precision, text_json) VALUES (?, ?, 'pdf', ?, NULL, 2, 'page', NULL)`,
+        id, revisionId, JSON.stringify({ kind: 'pdf', revisionId, precision: 'page', pageIndex: n }));
+    conv('c1');
+    conv('c0', { title: '질문' });
+    expect(() => conv('c2', { title: '' })).toThrow(/CHECK/);
+    expect(() => conv('c3', { agent: 'Claude' })).toThrow(/CHECK/);
+    msg('m1', 'c1', 0, 'user', 'question');
+    expect(() => msg('m2', 'c1', 1, 'user', 'answer')).toThrow(/CHECK/);
+    expect(() => msg('m3', 'c1', 1, 'tutor', 'answer', { agent: 'claude', sent: '{}' })).toThrow(/CHECK/);
+    msg('m4', 'c1', 1, 'tutor', 'answer', { agent: 'claude' });
+    page('p1', 41);
+    page('p2', 42);
+    const source = db.prepare(`INSERT INTO message_sources (message_id, role, ordinal, anchor_id, page_index, label, quote_snapshot) VALUES ('m4', ?, ?, ?, ?, ?, ?)`);
+    source.run('cited', 0, 'p1', 41, '42쪽', null);
+    expect(() => source.run('cited', 1, 'p2', 41, '42쪽', null)).toThrow(/UNIQUE/); // one cited row per page
+    source.run('cited', 1, 'p2', 42, '43쪽', null);
+    source.run('attached', 0, 'p2', 42, '43쪽', '붙인 글'); // positive control: an attached row may carry its snapshot
+    expect(() => source.run('cited', 2, 'p2', 43, '44쪽', '붙인 글')).toThrow(/CHECK/); // a cited row may not
+    run(`INSERT INTO conversation_context (conversation_id, anchor_id, role, created_at) VALUES ('c1', 'p1', 'opened_from', 'now')`);
+    expect(() => run(`INSERT INTO conversation_context (conversation_id, anchor_id, role, created_at) VALUES ('c1', 'p2', 'opened_from', 'now')`)).toThrow(/UNIQUE/);
+    const read = (seq: number, outcome: string, from: number | null, to: number | null) =>
+      run(`INSERT INTO tool_reads (message_id, seq, tool, outcome, revision_id, page_from, page_to, ms, created_at) VALUES ('m4', ?, 'read_pages', ?, ?, ?, ?, 1, 'now')`,
+        seq, outcome, revisionId, from, to);
+    read(0, 'ok', 3, 4); // positive control before the rejections
+    expect(() => read(1, 'ok', 3, null)).toThrow(/CHECK/);
+    expect(() => read(2, 'ok?', 3, 3)).toThrow(/CHECK/);
+    expect(() => read(0, 'ok', 5, 5)).toThrow(/UNIQUE/);
+
+    run('DELETE FROM anchors WHERE id = ?', 'p1');
+    expect(db.prepare(`SELECT anchor_id, label FROM message_sources WHERE ordinal = 0`).get()).toEqual({ anchor_id: null, label: '42쪽' });
+    expect(db.prepare('SELECT COUNT(*) FROM conversation_context').pluck().get()).toBe(0);
+
+    conv('c5', { parent: 'c1' });
+    run('DELETE FROM conversations WHERE id = ?', 'c1');
+    expect(db.prepare(`SELECT parent_id FROM conversations WHERE id = 'c5'`).get()).toEqual({ parent_id: null });
+
+    conv('c6');
+    msg('m6', 'c6', 0, 'tutor', 'answer', { agent: 'claude' });
+    page('p3', 1);
+    run(`INSERT INTO message_sources (message_id, role, ordinal, anchor_id, page_index, label) VALUES ('m6', 'cited', 0, 'p3', 1, '2쪽')`);
+    run(`INSERT INTO tool_reads (message_id, seq, tool, outcome, ms, created_at) VALUES ('m6', 0, 'read_pages', 'ok', 1, 'now')`);
+    run('DELETE FROM items WHERE id = ?', itemId);
+    for (const t of ['conversations', 'messages', 'message_sources', 'tool_reads']) expect(db.prepare(`SELECT COUNT(*) FROM ${t}`).pluck().get(), t).toBe(0);
+  });
+
+  it('deleting a source revision removes its tool reads', () => {
+    const { db } = tempDb();
+    migrate(db, { dbFile: null });
+    const { itemId, revisionId } = seedItem(new LibraryRepository(db), 1);
+    db.prepare(`INSERT INTO conversations (id, item_id, agent, created_at, updated_at) VALUES ('c1', ?, 'claude', 'now', 'now')`).run(itemId);
+    db.prepare(`INSERT INTO messages (id, conversation_id, seq, role, kind, text, status, agent, created_at) VALUES ('m1', 'c1', 0, 'tutor', 'answer', 't', 'complete', 'claude', 'now')`).run();
+    db.prepare(`INSERT INTO tool_reads (message_id, seq, tool, outcome, revision_id, page_from, page_to, ms, created_at) VALUES ('m1', 0, 'read_pages', 'ok', ?, 0, 0, 1, 'now')`).run(revisionId);
+    expect(db.prepare('SELECT COUNT(*) FROM tool_reads').pluck().get()).toBe(1);
+    db.prepare('DELETE FROM source_revisions WHERE id = ?').run(revisionId);
+    expect(db.prepare('SELECT COUNT(*) FROM tool_reads').pluck().get()).toBe(0);
+  });
+
+  it('a foreign-keys-off failure leaves v4', () => {
+    const { db, file } = tempDb();
+    migrate(db, { dbFile: file, migrations: v4 });
+    seedItem(new LibraryRepository(db), 1);
+    const broken = [...v4, { version: 5, name: 'orphan', sql: 'DELETE FROM items;', foreignKeysOff: true as const }];
+    expect(() => migrate(db, { dbFile: file, migrations: broken })).toThrow(/^v5 업데이트에 실패했습니다\. 데이터베이스는 v4 상태입니다\./);
+    expect(currentVersion(db)).toBe(4);
+    expect(db.prepare('SELECT COUNT(*) FROM items').pluck().get()).toBe(1);
+    expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
+  });
+
+  it('10,000 anchors rebuild within a second', () => {
+    const { db } = tempDb();
+    migrate(db, { dbFile: null, migrations: v4 });
+    const { revisionId } = seedItem(new LibraryRepository(db), 1);
+    const insert = db.prepare(`INSERT INTO anchors (id, revision_id, kind, locator_json, quote, schema_version, precision, text_json) VALUES (?, ?, 'pdf', ?, 'q', 2, 'span', ?)`);
+    db.transaction(() => {
+      for (let i = 0; i < 10_000; i++) {
+        insert.run(newId(), revisionId, JSON.stringify({ kind: 'pdf', revisionId, precision: 'span', pageIndex: i % 50, quads: [[0, 0, 1, 0, 0, 1, 1, 1]], coordinateSpace: 'pdf-user-space' }),
+          JSON.stringify({ quote: { exact: 'q', prefix: '', suffix: '' } }));
+      }
+    })();
+    const t0 = performance.now();
+    migrate(db, { dbFile: null });
+    const ms = performance.now() - t0;
+    console.log('[measure] migrate-005', ms);
+    expect(ms).toBeLessThan(1000);
+    expect(db.prepare('SELECT COUNT(*) FROM anchors').pluck().get()).toBe(10_000);
   });
 });

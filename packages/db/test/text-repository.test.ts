@@ -58,6 +58,40 @@ describe('next', () => {
     expect(texts.next()?.sha256).toBe(c.asset.sha256);
     expect(texts.next(new Set([c.asset.sha256, a.asset.sha256]))).toBeUndefined();
   });
+
+  it('gives a preferred sha\'s queued job before the newest; skipped, not queued, trashed or unknown, the order is as it was', () => {
+    const a = seedItem(db);
+    const b = seedItem(db);
+    const c = seedItem(db);
+    for (const [x, n] of [[a, 1], [b, 3], [c, 2]] as const) {
+      texts.backfill(T(n));
+      db.prepare('UPDATE jobs SET created_at = ? WHERE dedupe_key = ?').run(T(n), extractKey(x.asset.sha256));
+    }
+    expect(texts.next()?.sha256).toBe(b.asset.sha256); // the positive control: newest first
+    expect(texts.next(undefined, a.asset.sha256)?.sha256).toBe(a.asset.sha256);
+    expect(texts.next(new Set<string>(), c.asset.sha256)?.sha256).toBe(c.asset.sha256);
+    expect(texts.next(new Set([a.asset.sha256]), a.asset.sha256)?.sha256).toBe(b.asset.sha256);
+    expect(texts.next(new Set([b.asset.sha256]), a.asset.sha256)?.sha256).toBe(a.asset.sha256); // the skip still holds for the rest
+    expect(texts.next(undefined, 'f'.repeat(64))?.sha256).toBe(b.asset.sha256);
+    texts.start(texts.next(undefined, a.asset.sha256)!.id, T(4));
+    expect(texts.next(undefined, a.asset.sha256)?.sha256).toBe(b.asset.sha256); // running, not queued
+    new LibraryRepository(db).trash([c.itemId]);
+    expect(texts.next(undefined, c.asset.sha256)?.sha256).toBe(b.asset.sha256);
+  });
+});
+
+describe('pages', () => {
+  it('gives the rows of a range, 0-based and inclusive, in page order; a page with no row is left out', () => {
+    const sha = 'b'.repeat(64);
+    const insert = db.prepare('INSERT INTO page_texts (sha256, page_index, text) VALUES (?, ?, ?)');
+    for (const i of [3, 0, 1, 4]) insert.run(sha, i, `page ${i}`); // out of order, and no page 2
+    insert.run('c'.repeat(64), 2, 'another file');
+    expect(texts.pages(sha, 1, 3)).toEqual([{ pageIndex: 1, text: 'page 1' }, { pageIndex: 3, text: 'page 3' }]);
+    expect(texts.pages(sha, 0, 0)).toEqual([{ pageIndex: 0, text: 'page 0' }]);
+    expect(texts.pages(sha, 0, 9).map((p) => p.pageIndex)).toEqual([0, 1, 3, 4]);
+    expect(texts.pages(sha, 5, 9)).toEqual([]);
+    expect(texts.pages('d'.repeat(64), 0, 9)).toEqual([]);
+  });
 });
 
 describe('requeue', () => {

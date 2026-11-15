@@ -10,7 +10,7 @@ const item = (id: string, over: Partial<LibraryItem> = {}): LibraryItem => ({
 const LIST = [item('a'), item('b'), item('c')];
 
 function setup(over: { list?: LibraryItem[] | undefined; refetching?: boolean; fresh?: (ids: string[]) => Promise<LibraryItem[]> } = {}) {
-  const calls = { all: 0, organize: 0, trash: 0, texts: 0, detail: [] as string[], body: 0, reading: [] as Array<string[] | null>, items: [] as string[], put: [] as (readonly LibraryItem[])[], getItems: [] as string[][] };
+  const calls = { all: 0, organize: 0, trash: 0, texts: 0, sessions: 0, detail: [] as string[], body: 0, reading: [] as Array<string[] | null>, items: [] as string[], put: [] as (readonly LibraryItem[])[], getItems: [] as string[][] };
   let list: readonly LibraryItem[] | undefined = 'list' in over ? over.list : LIST;
   // A clock, timers and idle callbacks that the test runs by hand.
   const clock = { t: 0 };
@@ -35,6 +35,7 @@ function setup(over: { list?: LibraryItem[] | undefined; refetching?: boolean; f
     invalidateTexts: () => void (calls.texts += 1),
     invalidateDetail: (id) => void calls.detail.push(id),
     invalidateBody: () => void (calls.body += 1),
+    invalidateSessions: () => void (calls.sessions += 1),
     invalidateReading: (ids) => void calls.reading.push(ids),
     whenIdle: (fn) => {
       const id = nextId++;
@@ -109,6 +110,23 @@ describe('the library list after a change notice (spec 10.3)', () => {
     handle({ reason: 'metadata', itemIds: ['a'] });
     await settle();
     expect(calls.body).toBe(0); // positive control: the others are not all that read it
+  });
+
+  it('trash, restore and purge make the tutor\'s sessions stale once (a trashed item\'s sessions are not shown, spec 6.2, 12); nothing else does', async () => {
+    for (const reason of ['trash', 'restore', 'purge'] as const) {
+      const { handle, calls } = setup();
+      handle({ reason, itemIds: ['a', 'b'] });
+      await settle();
+      expect(calls.sessions, reason).toBe(1);
+    }
+    for (const reason of ['import', 'metadata', 'relink', 'availability', 'opened', 'position', 'text', 'tags', 'collections'] as const) {
+      const { handle, calls, time } = setup();
+      handle({ reason, itemIds: ['a'] });
+      time.idle();
+      time.advance(BODY_READ_GAP_MS);
+      await settle();
+      expect(calls.sessions, reason).toBe(0);
+    }
   });
 
   it('collections and tags read only the organize snapshot, whatever items they name; collections the trash view too', async () => {

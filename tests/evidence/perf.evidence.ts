@@ -6,13 +6,14 @@
 // Marks (epoch ms, main/perf.ts): processStart (performance.timeOrigin of the main process), ready (app 'ready'),
 // firstPaint (the main window's first 'ready-to-show': its page has painted, the window code shows it then),
 // windowShown (its first 'show'), and the renderer's app-ready data-at (the first render with a settled list, R-18).
+// T1a: no launch starts an agent — at app-ready the tutor's processes are 0, and have been 0 since the start.
 // M4: a library of 10,000 items against spec 9's budgets (library-perf.json; Linux CI fails beyond twice each), and the
 // drop's long animation frames with the cause the fix for the stall is picked by (drop-import.json longFrames, stall).
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, ROOT, closeSheet, drag, dropSource, expectWindow, importPaths, ipcCalls, launch, renderCounts, runMenuCommand, seedBodyText, seedRows, sheetPrepared, watchRenders } from '../e2e/helpers';
+import { FIXTURES, ROOT, closeSheet, drag, dropSource, expectWindow, importPaths, ipcCalls, launch, renderCounts, runMenuCommand, seedBodyText, seedRows, sheetPrepared, tutorProcesses, watchRenders } from '../e2e/helpers';
 import { writeJson } from './capture';
 import { stallCause, summarizeLongFrames, type LongFrame, type Mark } from './long-frames';
 import { coldFirstOpens, openTimer } from './open-latency';
@@ -43,6 +44,9 @@ test('cold start to app-ready, 5 launches, and the renderer bundle', { tag: '@pe
         const appReadyAt = Number(await s.page.getByTestId('app-ready').getAttribute('data-at'));
         const m = await s.app.evaluate(() => (globalThis as { __learnPerf?: Marks }).__learnPerf!);
         expect(m.ready * m.firstPaint * m.windowShown * appReadyAt, `every mark was reached: ${JSON.stringify({ ...m, appReadyAt })}`).toBeGreaterThan(0);
+        // The tutor starts nothing at launch (T1a spec 4.2, 15): no agent process until a composer takes the focus.
+        const agents = await tutorProcesses(s.app);
+        expect(agents, 'no agent process at app-ready').toMatchObject({ count: 0, max: 0 });
         runs.push({
           wallIncludingPlaywright: wall,
           mainReady: m.ready - m.processStart,

@@ -4,7 +4,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
-import { FIXTURES, importPaths, launch, openDialogCalls, runMenuCommand, stubOpenDialog } from './helpers';
+import { FIXTURES, importPaths, ipcCalls, launch, openDialogCalls, openItem, runMenuCommand, settled, stubOpenDialog, tutorFakeLog, tutorFakeScript } from './helpers';
+import { consentAndChoose } from './tutor-helpers';
 
 test('palette: ↓, Enter and Escape during a composition neither move, run nor close; after commit ↩ runs once', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
@@ -91,6 +92,53 @@ test('palette: the 자료 group follows the composition; ↩ while composing ope
     await expect(input).toHaveValue('ㅅㅎ');
     await page.keyboard.press('Enter');
     await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText('세포 신호');
+  } finally {
+    await app.close();
+  }
+});
+
+test('the tutor composer: ↩ during a composition sends nothing and after the commit sends once; esc during a composition (keyCode 229) does not stop the answer', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { env: { LEARN_E2E_SETTINGS: '' } });
+  try {
+    await importPaths(page, [path.join(FIXTURES, 'paper-100.pdf')]);
+    await openItem(page, 'paper-100');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
+    await consentAndChoose(page, 'fake');
+    await tutorFakeScript(app, 'slow');
+    const box = page.getByTestId('tutor-input');
+    const prompts = async () => (await tutorFakeLog(app)).filter((e) => e.t === 'prompt').length;
+    const asks = async () => (await ipcCalls(app))['tutor:ask'] ?? 0;
+    await box.click();
+    const cdp = await page.context().newCDPSession(page);
+    // ↩ that confirms a syllable is the IME's: nothing is sent, the text stays editable.
+    await cdp.send('Input.imeSetComposition', { text: '질문', selectionStart: 2, selectionEnd: 2 });
+    await page.keyboard.press('Enter');
+    // A send would have called main from the key's own handler: once a later call to main has come back, it would have been counted.
+    await settled(page);
+    expect(await asks()).toBe(0);
+    await expect(page.getByTestId('tutor-question')).toHaveCount(0);
+    await expect(box).not.toHaveAttribute('readonly');
+    // The same key once the composition is committed sends it, once (the control).
+    await cdp.send('Input.insertText', { text: '질문' });
+    await expect(box).toHaveValue(/질문/);
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('tutor-question')).toHaveCount(1);
+    await expect.poll(prompts).toBe(1);
+    expect(await asks()).toBe(1);
+    // While the answer comes, an esc that belongs to a composition (macOS IMEs send keyCode 229) does not stop it.
+    const answer = page.getByTestId('tutor-answer');
+    await expect(answer).toHaveAttribute('data-status', 'streaming');
+    await box.focus();
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 229, nativeVirtualKeyCode: 229 });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 229, nativeVirtualKeyCode: 229 });
+    // As above: a stop is sent from the key's own handler, so it would be counted once a later call to main has come back.
+    await settled(page);
+    expect((await ipcCalls(app))['tutor:stop'] ?? 0).toBe(0);
+    await expect(answer).toHaveAttribute('data-status', 'streaming');
+    // The control: esc itself stops it.
+    await page.keyboard.press('Escape');
+    await expect(answer).toHaveAttribute('data-status', 'stopped');
+    expect((await ipcCalls(app))['tutor:stop']).toBe(1);
   } finally {
     await app.close();
   }

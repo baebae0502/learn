@@ -1,6 +1,6 @@
 # ADR-0010: 튜터 백엔드 — ACP 우선, 사용자 구독, 튜터의 두뇌는 Learn에
 
-- 상태: 제안 (2026-10-22) · T1에서 채택 · 관련: 명세 07·10·12·13·14(AC10·AC11·AC14·AC19·AC20)·15, ADR-0007 §6(비밀값), ADR-0009(앵커 허브), ADR-0011(라이선스), `docs/spec-amendments.md` 2–4절, `docs/design/design-spec.md` 2.5
+- 상태: 채택 (2026-11-10, T1a 스파이크 뒤 — T1a는 Claude Code만, 아래 "T1a 스파이크 결과") · T1a 구현 뒤 기록 2026-11-15(아래 "T1a 실제 에이전트 시험", "T1a 앱 전체 실제 시험", "알아 둘 사실과 남는 위험 (T1a)") · 제안 2026-10-22 · 관련: 명세 07·10·12·13·14(AC10·AC11·AC14·AC19·AC20)·15, ADR-0007 §6(비밀값), ADR-0009(앵커 허브), ADR-0011(라이선스), `docs/spec-amendments.md` 2–4절, `docs/design/design-spec.md` 2.5
 - 근거 합의: 2026-10-22 제품 방향 합의 3a·3c·3d·3e. 공급사 정책은 2026-10-22에 확인했다.
 
 ## 맥락
@@ -32,7 +32,7 @@
   - Claude: `session/new`의 `_meta.claudeCode.options`로 `tools: []`, `settingSources: []`
   - Codex: `CODEX_CONFIG`로 `features.shell_tool = false`, `sandbox_mode = "read-only"`, `web_search = "disabled"`
   - Gemini CLI: `tools.core`(허용 목록) / `tools.exclude`
-  - 공통: `session/request_permission`은 거절로 답한다.
+  - 공통: `session/request_permission`은 예외 없이 모두 거절로 답하고, Learn 도구는 에이전트 설정으로 미리 허용해 권한 요청 자체가 없게 한다(아래 "T1a 스파이크 결과"의 "권한 요청").
   - 손잡이가 실제로 도구를 모두 없애는지(예: Codex `apply_patch`)는 T1에서 에이전트마다 확인한다.
 - **사용자 에이전트 설정을 격리한다.** 에이전트는 기본으로 사용자의 `~/.claude`(CLAUDE.md, skills, hooks, MCP)와 `~/.codex`를 읽고, 대화 기록도 그 아래(`~/.claude/projects/…`)에 쓴다. 격리 방법은 T1에서 정한다. `CLAUDE_CONFIG_DIR`/`CODEX_HOME`으로 격리하면 로그인도 격리되어 사용자가 한 번 더 로그인해야 한다.
 - **에이전트에 여는 도구는 Learn의 읽기 전용 MCP 서버뿐이다.** ACP는 세션을 만들 때 클라이언트가 MCP 서버를 넘길 수 있다("Clients **MAY** use this ability to provide tools directly to the underlying language model by including their own MCP server.", https://agentclientprotocol.com/protocol/v1/session-setup). 도구는 그 세션에 허용된 범위만 본다.
@@ -135,6 +135,107 @@ P3 정의, AC11 범위, 키체인 시점은 `docs/spec-amendments.md` 2–4절�
 - 답의 품질과 동작이 에이전트·버전마다 다르다. 잠금과 범위는 에이전트마다 T1 테스트로 확인한다.
 - T1에서 채울 빈칸: 대화마다 고정된 MCP 범위 토큰, claude.ai 커넥터 끄기, 에이전트별 최소 버전(격리 손잡이가 없으면 튜터를 막는다), 로그인 상태 카드, 대화마다 빈 작업 폴더, 프로세스 감독·취소 시한, 프록시의 루프백 가로채기, 에이전트 자신의 대화 기록 고지 — 근거는 [`docs/research/llm-for-zotero.md`](../research/llm-for-zotero.md) 3절(2026-10-27 조사).
 - 재검토 조건: Anthropic이 서면으로 거절할 때, ACP v2가 안정판이 되어 v1과 호환되지 않을 때, 공급사가 이 사용 방식을 막을 때.
+
+## T1a 스파이크 결과 (2026-11-10)
+- 상태를 "채택 (2026-11-10)"으로 바꿨다. 스파이크가 소유자 조건(T1a 명세 3.1)의 **"어떤 에이전트를 잠글 수 없음"에 걸려**(Codex S5, 아래) 소유자에게 물었고, 답은 **Codex를 T1a에서 뺀다**였다 — T1a는 Claude Code만 지원하고, Codex는 연결 도구에 남는 도구를 끄는 설정이 생기면 T1b 이후에 다시 시험한다. Claude Code 쪽은 모든 확인을 통과했다.
+- 전체 기록: 개발 서버의 스파이크 폴더 `~/spikes/t1a-acp-2026-11-10/RESULTS.md`(저장소 밖, 소유자 조건). 측정은 개발 서버(Linux, 부하 평균 약 80 / 40코어)에서 했고 시간·메모리는 보고값이다.
+- **판과 공식 여부**(S1·S2): `@agentclientprotocol/claude-agent-acp@0.103.0`, `@agentclientprotocol/codex-acp@2.6.0` — 둘 다 agentclientprotocol 조직의 저장소, GitHub Actions OIDC 게시, Apache-2.0, 설치 스크립트 없음(의존성 125개 모두), 진입 파일은 Node 스크립트(`dist/index.js`). 네이티브 바이너리는 내려받는 코드가 아니라 npm의 플랫폼별 선택 의존성으로 온다 — Claude SDK의 `claude` 342 MB, Codex `@openai/codex` 0.166.0의 바이너리 456 MB. 개발 서버 CLI: `claude` 2.1.318, `codex-cli` 0.167.0.
+- **실행 환경**: 프롬프트를 보내는 확인은 기존 로그인과 기본 설정 폴더 + 모든 잠금 손잡이로, 격리 확인은 빈 Learn 전용 폴더로 프롬프트 없이(Claude는 `session/new`가 성공해 로그인 상태를 보려고 하나만) 했다. 보낸 글은 명세의 시험 문장뿐이고, Learn 도구는 고정된 짧은 글을 돌려주는 가짜 MCP 서버였다. 클라이언트는 의존성 없는 스크립트다 — SDK 없이 말할 수 있다(명세 21절 질문 2는 닫힌다).
+
+| # | Claude Code | Codex |
+|---|---|---|
+| S1 패키지 | 통과 | 통과 |
+| S2 실행 형태 | Node 스크립트 | Node 스크립트 |
+| S3 Electron의 Node | 통과(사용자 Node도) | 통과(사용자 Node도) |
+| S4 실행 파일 | 통과 — `CLAUDE_CODE_EXECUTABLE`이 가리킨 `claude`가 뜬다(없으면 SDK 바이너리) | 해당 없음 — 같은 자리의 손잡이는 `CODEX_PATH`(없으면 연결 도구에 딸린 0.166.0) |
+| S5 내장 도구 끄기 | **통과** — 모델이 받는 도구는 Learn 셋뿐, 다섯 문장에서 도구 호출 0 | **실패** — `apply_patch`, MCP 리소스 도구 셋, `clock`, `wait`, 다중 에이전트 도구가 남고, 모델이 `list_mcp_resources`·`list_mcp_resource_templates`·`apply_patch`(권한 요청으로 막힘)를 불렀다 |
+| S6 설정 격리 | 통과 — 사용자 설정·로그인 파일을 열지 않음(고정 경로 `~/.claude/state/unattended-serving-consent.json`을 열려다 ENOENT) | 통과 |
+| S7 격리와 로그인 | 로그인 필요 — 첫 `session/prompt`가 −32000 "Authentication required" | 로그인 필요 — `session/new`가 −32000 "Authentication required" |
+| S8 자신의 기록 | `<설정 폴더>/projects/<작업 폴더 이름>/<sessionId>.jsonl` — 작업 폴더별 | `<CODEX_HOME>/sessions/YYYY/MM/DD/rollout-<시각>-<sessionId>.jsonl` — 날짜별 |
+| S9 다른 MCP | 통과 — `ENABLE_CLAUDEAI_MCP_SERVERS=false`나 `strictMcpConfig` 하나만 있어도 claude.ai 커넥터가 붙지 않는다(둘 다 없으면 붙음) | 기본 폴더에서는 사용자 설정의 MCP 서버·플러그인을 띄운다. 격리 폴더 + Learn이 쓰는 `config.toml`에서는 없음 |
+| S10 MCP 전송 | MCP-over-ACP 버림(도구 0), HTTP·stdio 통과 | MCP-over-ACP −32602, HTTP·stdio 통과 |
+| S11 Learn 도구 미리 허용 | 통과(`allowedTools` + 모드 `default`) | 통과(모드 `read-only` + 도구 주석 `readOnlyHint: true`) |
+| S12 시스템 지시 | 통과(ACP `systemPrompt` append), 이어 가기에 다시 주면 적용 | 통과, 이어 가기에도 적용 |
+| S13 그림 | 프롬프트 이미지·MCP 결과 이미지 모두 모델에 닿음 | 같음 |
+| S14 이어 가기 | `session/resume`(재생 없음)·`session/load` 모두 기억 | 같음 |
+| S15 중지 | 91 ms에 `cancelled` | 35 ms에 `cancelled` |
+| S16 프로세스 묶음 | 그룹 SIGTERM으로 0.9초 안에 모두 끝남 | 0.05초. 기본 폴더의 stdio MCP·로그인 셸은 별도 그룹이지만 부모와 함께 끝남 |
+| S17 자원 | 띄우기 → `initialize` 0.6–0.9초, `session/new` 0.7–1.6초, RSS 0.32–0.43 GB | 0.6–1.3초, 0.6–1.3초, RSS 0.7–0.9 GB(연결 도구에 딸린 0.166) / 0.37–0.44 GB(사용자 0.167) |
+| S18 실패 모양 | CLI 죽음 −32603 "…process exited unexpectedly…" 뒤 세션 −32002, 네트워크 없음 약 3분 뒤 −32603 "…ECONNREFUSED" | 앱 서버 죽음 1001(`restartable: true`) 뒤 같은 세션 계속, 네트워크 없음은 `stopReason: "end_turn"`과 오류 글(JSON-RPC 오류 아님) |
+| S19 모델·사용량 | `usage`, `_meta.quota.model_usage[].model`(`token_count`는 객체 — 아래 "실제 에이전트 시험") | `models.currentModelId`, `usage`, `_meta.quota.model_usage` |
+| S20 최소 판 | `claude` 2.1.318 + `claude-agent-acp` 0.103.0 | 없음(잠금 미확인) |
+
+- **고른 전송**(T1a 명세 5.6, J32): MCP-over-ACP는 두 연결 도구 모두 받지 않는다(Claude는 말없이 버리고, Codex는 −32602 "Codex doesn't support MCP ACP transport protocol"). 루프백 HTTP와 stdio 다리는 둘 다 통과했고 왕복(서버가 받은 때 → ACP 완료 알림)은 Claude 19–31 ms, Codex 3–8 ms였다. 규칙(A > B > C)대로 **B. 루프백 HTTP**를 고른다. 사실: Claude는 첫 요청으로 `server/discover`(머리 `MCP-Protocol-Version: 2026-07-28`)를 보내고 −32601이면 `initialize`(2025-11-25)로 내려오며 `GET`(405)도 한 번 보낸다. Codex는 `initialize`(2025-06-18)부터. 둘 다 `Origin` 없이 `Host: 127.0.0.1:<포트>`와 Bearer 머리를 보냈다. Claude는 MCP 서버 설정을 CLI 명령줄 인자로 넘기므로 Bearer 토큰이 그 프로세스가 사는 동안 `ps`로 보인다.
+- **잠금 손잡이**(통과한 조합):
+  - Claude: 환경 `CLAUDE_CODE_EXECUTABLE=<감지한 claude>`, `ENABLE_CLAUDEAI_MCP_SERVERS=false`, `DISABLE_AUTOUPDATER=1`, `CLAUDE_CONFIG_DIR=<Learn 전용 폴더>`. `session/new`(이어 가기도)의 `_meta.claudeCode.options = { tools: [], settingSources: [], strictMcpConfig: true, allowedTools: ['mcp__learn__get_context', 'mcp__learn__get_outline', 'mcp__learn__read_pdf_pages'], allowDangerouslySkipPermissions: false, promptSuggestions: false }`, 그리고 `session/new` 뒤 `session/set_mode { modeId: 'default' }` — 연결 도구의 기본 모드 `auto`에서는 허용 목록 밖의 MCP 도구도 권한 요청 없이 돌았다. 지시는 ACP `systemPrompt { mode: 'append' }`.
+  - Codex(잠금은 실패, 나머지는 통과): `CODEX_HOME=<Learn 전용 폴더>`와 그 안에 Learn이 쓰는 `config.toml`(`features.plugins = false`, `features.shell_snapshot = false` 등 — 앱 서버 수준 설정은 이것으로만 바뀐다), `CODEX_CONFIG`(스레드 설정: `features.shell_tool/unified_exec/view_image/... = false`, `web_search = "disabled"`, `tools.experimental_request_user_input.enabled = false`), `INITIAL_AGENT_MODE=read-only`, Learn 도구 주석 `readOnlyHint: true`. 기본 모드 `agent`("Auto review")는 Learn 도구 호출마다 "Guardian Review" 도구 호출(`kind: "think"`)을 붙인다.
+- **Learn 도구 호출의 표지**(잠금 감시 J20):
+  - Claude: `tool_call`의 `kind: "other"`, `title: "mcp__learn__<도구>"`(`_meta.claudeCode.toolName`도 같음). `rawInput`은 처음에 `{}`이고 인자는 뒤의 `tool_call_update`로 온다 — 표지로 쓰지 않는다.
+  - Codex: `kind: "execute"`, `title: "mcp.learn.<도구>"`, `rawInput: { server: "learn", tool: "<도구>", arguments }`, `_meta.is_mcp_tool_call: true`. 내장 도구도 `mcp.codex.*`·`is_mcp_tool_call: true`로 오므로 `rawInput.server === "learn"`으로 가른다.
+- **권한 요청**: 2절 "공통: `session/request_permission`은 거절"은 **예외 없이 모두 거절하고, Learn 도구는 위 손잡이로 미리 허용한다**는 뜻이다. 두 연결 도구 모두 위 손잡이와 함께 Learn 도구에 권한 요청을 보내지 않았고, 클라이언트에게 `fs/*`·`terminal/*`를 요청하지 않았다.
+- **최소 판**(J13): Claude Code `claude` 2.1.318 + `@agentclientprotocol/claude-agent-acp` 0.103.0. Codex는 잠금을 확인한 판이 없어 최소 판이 없다.
+- **중복 표시의 해석**(T1a 명세 5.2, J27): 같은 ACP 세션에서 이미 돌려준 쪽을 `duplicate: true`로 다시 돌려준 것도 그 턴에 도구가 돌려준 쪽으로 센다 — 그 턴에 도구 호출은 있었고 글은 같은 세션의 앞 호출에서 이미 받았기 때문이다. 스파이크는 이 해석을 바꿀 사실을 찾지 못했다.
+- **이 ADR에서 바뀌는 사실**: Electron의 Node(`ELECTRON_RUN_AS_NODE`)로 두 연결 도구를 돌릴 수 있다(결과와 위험 둘째 줄의 미확인을 닫는다). `CLAUDE_CODE_EXECUTABLE`이 없으면 SDK 바이너리를 쓴다는 것은 확인했다. 세션 프로세스 묶음 하나의 메모리는 Claude 약 0.32–0.43 GB, Codex 약 0.4–0.9 GB로 6절의 "약 250 MB"보다 크다.
+- **소유자 답 (2026-11-10)**: (1) Codex 잠금 실패 → **Codex를 T1a에서 뺀다**. (2) 격리 폴더는 로그인이 따로 필요하다 → **개발 서버의 Learn 전용 시험 폴더에 Claude Code 로그인을 만든다** — 실제 에이전트 시험(T1a 명세 16.4)은 격리된 채 돈다.
+
+## T1a 실제 에이전트 시험 (2026-11-11)
+- `acp.live.test.ts`(T1a 명세 16.4)를 컨트롤러가 개발 서버에서 세 번 돌렸다. Learn의 실제 백엔드·서비스·MCP 서버 그대로, Learn 전용 로그인 폴더(`~/.learn-live`)로 격리해서 돌렸다. 대상은 Claude Code CLI 2.1.318 + `claude-agent-acp` 0.103.0이다. 측정은 부하 평균 약 80 / 40코어에서 했고 시간·메모리는 보고값이다.
+- **시험 1**: 5개 통과, 2개 실패. 정상으로 끝난 답이 모두 `AGENT_PROTOCOL`로 실패했다. 원인은 프롬프트 결과의 `_meta.quota.model_usage[].token_count`가 숫자가 아니라 객체(`{ totalTokens, inputTokens, cachedInputTokens, cachedWriteTokens, outputTokens, reasoningOutputTokens }`)인 것이다. 스파이크 기록에도 같은 모양이 있었다. 고친 것은 둘이다.
+  - 화면에만 쓰는 필드(`usage`, `_meta.quota`)는 틀린 타입이면 없는 것으로 본다. 모델 이름은 `totalTokens`가 가장 큰 항목의 것이다(명세 판정 R17).
+  - 스파이크에서 기록한 실제 어댑터 메시지 29가지 모양을 `acp/__fixtures__/claude-agent-acp-0.103.0.jsonl`로 남겼다. 로그인 표시의 주소는 `x@example.com`으로 바꿨다. 이것을 Learn의 클라이언트에 그대로 흘려 보는 단위 시험 `acp/spike-replay.test.ts`를 더했다. 다른 모양은 모두 통과했다.
+- **시험 2**: 7개 모두 통과했다. 그다음 주입 시험 하나를 `strace -f`(프로세스·`openat`·`mkdir`·`unlink`·`rename`)로 감싸 돌렸다.
+  - 잠금: S5의 다섯 문장 모두 Learn 밖의 도구 호출이 0이었다. 첫 글까지 1.3–9.7초였다.
+  - 논문 질문: Learn 도구로 읽고 확인된 인용이 하나 이상 나왔다. 첫 글은 11.1초에 나왔고, 글 전체가 그 뒤 28 ms 안에 왔다. 프로세스 묶음 RSS는 324 MB였다.
+  - 주입 자료: 범위 밖 읽기 0. 읽은 도구는 `get_context`·`get_outline`·`read_pdf_pages`였다.
+  - 중지: 51 ms 만에 `cancelled`로 끝났다.
+  - 이어 가기: 새 프로세스가 저장된 세션을 `session/resume`으로 이었고, 첫 글은 7.0초, 인용 표기도 지켜졌다.
+  - 띄우기 → `initialize`: 처음 3.1초(시험 1), 그 뒤 0.52–0.64초였다.
+- **R1(세션 머리)**: Claude는 MCP 요청 43개 가운데 각 MCP 세션의 첫 두 요청(`server/discover`, `initialize`)만 빼고 모두 소문자 `mcp-session-id`를 실어 보냈다(세션 6개 × 2 = 12개). `server/discover`에는 `mcp-method`·`mcp-protocol-version` 머리가 붙는다. SSE를 열려는 `GET /mcp`는 405로 답했다. `DELETE /mcp`는 보내지 않았고 400·403·404는 0이었다. 그래서 카탈로그의 `mcpSessionBinding`은 `true`로 둔다.
+- **R4(임시 폴더)**: CLI는 `CLAUDE_CODE_TMPDIR`로 준 `<userData>/Tutor/tmp/claude-<uid>`만 썼다. `/tmp/claude-<uid>`에는 새것이 없었다.
+- **P-40(기록 자리)**: 대화마다 생기는 자리는 셋이다.
+  - `<에이전트 폴더>/projects/<작업 폴더 이름>/`(대화 기록 `.jsonl`과 `memory/`)
+  - `~/.cache/claude-cli-nodejs/<작업 폴더 이름>/`(`mcp-logs-learn/*.jsonl`)
+  - 작업 폴더 이름은 경로의 `/`·`.`를 `-`로 바꾼 것이다. 이 시험의 경로로는 R16의 두 규칙이 구별되지 않아, Mac 확인으로 남긴다.
+  - 세션을 영구 삭제하면 Learn이 이 자리들을 지운다.
+- **시험 2에서 찾은 격리의 빈틈과 고침(명세 판정 R18)**:
+  - 무엇이 일어났나: Claude Code는 `cwd`에서 위로 올라가며 처음 만난 `.git`을 프로젝트 뿌리로 삼는다. 빈 폴더여도 그렇다. 개발 서버의 `/tmp/.git`(2026-10-21에 생긴 빈 폴더) 때문에 `/tmp` 아래 Learn 폴더의 뿌리가 `/tmp`가 되었다. 그러자 CLI가 `/tmp`를 나열하고 최상위 `*.sh` 7개를 읽었다(`.sh`만 읽었고, `.py` 102개 등은 읽지 않았다). 기억 폴더도 `projects/-tmp/memory`로 잡혔다.
+  - 실제 앱이라면: 이 서버에는 `~/.git`도 있다. 실제 앱의 폴더는 `~/.config/Learn`·`~/Library/Application Support/Learn` 아래라서, 홈이 git 저장소인 사용자라면 홈이 뿌리가 된다.
+  - 실험: 확인용 폴더에 빈 `.git`을 두자 탐색이 거기서 멈췄다.
+  - 고침: Learn이 에이전트에 주는 모든 `cwd`(`Tutor/idle`·`Tutor/probe`·`Tutor/work/<id>`)에 빈 `.git`(0700)을 만든다. git 실행 파일은 빈 `.git`을 건너뛰고 위로 올라가므로, 환경에 `GIT_CEILING_DIRECTORIES=<userData>/Tutor`도 준다. 어댑터가 `git worktree list`를 부른다 — 여기서는 git이 PATH에 없어 ENOENT였지만 Mac에는 있다.
+- **시험 3**(고친 뒤, 파일 전체를 `strace -f`로): 7개 모두 통과했다. 바뀐 것과 남은 것은 다음과 같다.
+  - 고침의 효과: `/tmp/.git`·`/tmp` 나열·`*.sh` 읽기가 0이 되었다. 기억 폴더는 작업 폴더마다 따로(`projects/<작업 폴더>/memory`) 생긴다.
+  - 실행된 것: 셸 `execve`는 0이었다. 에이전트 프로세스 묶음이 띄운 것은 연결 도구, `claude auth status --json`, CLI, 작업 폴더에 대한 `rg --no-config --files --hidden <cwd>`, git 시도(ENOENT)뿐이었다.
+  - 건드리지 않은 곳: `~/.ssh`는 0이었다. `~/.claude`는 없는 고정 경로 하나(`state/unattended-serving-consent.json`, ENOENT)만 열려 했다.
+  - 측정: 첫 글까지 잠금 문장은 1.3–10.5초, 논문 질문은 11.9초였다. 중지는 52 ms, 이어 간 뒤 첫 글은 7.1초, RSS는 330 MB였다. 띄우기 → `initialize`는 0.88–0.94초로, strace 때문에 느려졌다.
+- **남은 바깥 읽기**(명세 16.3의 이름 붙인 예외, 판정 R19):
+  - ripgrep이 전역 git 무시 규칙을 찾느라 `~/.gitconfig`·`~/.config/git/{config,ignore}`를 연다. 내용은 모델에 가지 않는다.
+  - CLI가 자기 설치 상태 폴더 `~/.local/share/claude/versions`·`~/.local/state/claude/locks`·`~/.cache/claude/staging`을 본다.
+  - 없으면 그만인 고정 경로도 연다: `~/.config/anthropic/{active_config,configs/default.json}`, `/etc/claude-code/{managed-settings.json,managed-settings.d,CLAUDE.md,.claude/*}`, `/home/claude/.claude/remote/*`.
+  - 시스템 파일: `/etc/ssl`, `/etc/localtime`, `/etc/gai.conf`, `/etc/os-release`, `/etc/machine-id`.
+  - **남는 위험**: 사용자의 `~/.config/anthropic` 설정이나 관리자의 `/etc/claude-code/managed-settings*`가 있으면 Learn의 에이전트에도 적용된다. 이것까지 막으려면 에이전트의 `HOME`을 바꿔야 하는데, 스파이크가 시험하지 않았고 Mac 키체인 로그인이 깨질 수 있어 T1a는 바꾸지 않는다. 소유자의 Mac 확인(명세 16.6)에서 본다.
+- **P-50(미룸)**: Learn이 CLI를 강제로 끝내면(SIGKILL — 잠금, 종료 시한, 다시 띄우기) Learn 전용 폴더의 `sessions/<pid>.json`과 `<pid>.<hash>.key`(0600)가 남는다. 다음 CLI는 그 pid가 죽었는지(`kill 0` → ESRCH)만 보고 파일을 지우지 않는다. Learn 전용 폴더 안의 일이라 T1a는 그대로 두고 Mac 확인 때 다시 본다.
+
+## T1a 앱 전체 실제 시험 (2026-11-12)
+- `tests/e2e/tutor-live.spec.ts`(T1a 명세 16.4 — 앱 전체로 질문 하나와 확인된 인용 칩)를 컨트롤러가 개발 서버에서 두 번 돌렸다. 위 시험과 같은 격리 로그인 폴더와 같은 CLI · 연결 도구(Claude Code 2.1.318 + `claude-agent-acp` 0.103.0)이고, 시험이 찾는 자리를 스스로 넘긴다(E2E의 빈 찾는 자리가 이기지 않게). 측정은 부하 평균 약 80 / 40코어에서 했고 시간은 보고값이다.
+- **300f680**: 35.6초에 통과했다.
+  - 도구: `get_context` → `get_outline` → `read_pdf_pages` 1–5쪽(도구 기록으로는 0부터 센 0–4).
+  - 답은 끝까지 왔다: `end_turn`, 모델 `claude-opus-5-5`, 출력 1,422토큰. 확인된 출처 다섯(1–5쪽).
+  - 찾은 것: Claude가 도구 앞에 쓴 영어 말이 한국어 답의 앞에 붙어 한 문단이 되었다. 이것이 판정 R33이다 — (1) 지시문에 "도구 호출 앞·사이에 아무것도 쓰지 말고, 마지막 도구 호출 뒤에 질문의 언어로 답하라"는 한 줄을 더하고, (2) main의 턴 글은 도구 호출로 갈라진 메시지 글 사이에 문단 나눔(`\n\n`)을 둔다 — 그래도 오는 말은 제 문단이 되고 버리는 글은 없다(명세 4.5, 7절).
+- **43e0966**(R33을 넣은 뒤): 24.6초에 통과했다.
+  - 도구는 같다.
+  - 답은 끝까지 왔다: 출력 1,403토큰. 도구 앞의 말 없이 곧바로 한국어 답으로 시작했다 — R33의 지시가 지켜졌다.
+  - 확인된 출처 다섯.
+- 두 실행 모두 에이전트는 종료 코드 0으로 끝났다.
+
+## 알아 둘 사실과 남는 위험 (T1a)
+- **알아 둘 사실 셋**
+  - **세션 제목을 짓는 모델 호출**: Claude Code는 첫 턴에 세션 제목을 짓는 모델 호출을 따로 하고, 이것은 끌 수 없다. 그 토큰은 그 사용자의 요금제에서 나간다(스파이크 RESULTS 5.2). Learn은 그 제목을 쓰지 않는다 — 세션 이름은 첫 질문의 첫 줄이거나 사용자가 바꾼 이름이다.
+  - **설정 폴더 밖의 고정 경로**: 격리해도 CLI는 설정 폴더 밖의 고정 경로 `~/.claude/state/unattended-serving-consent.json`을 읽으려 한다. 없으면 ENOENT로 그만이다(RESULTS 5.4, 위 S6와 시험 3). 명세 16.3의 이름 붙인 예외에 든다.
+  - **토큰 묶기**: 연결 도구는 Learn MCP 서버의 설정을 Bearer 토큰째 CLI 명령줄 인자로 넘긴다. 그래서 같은 기기의 다른 사용자가 그 프로세스가 사는 동안 `ps`로 토큰을 볼 수 있다. Learn은 토큰을 그 토큰으로 처음 연 MCP 세션 하나에 묶는다(계획의 컨트롤러 결정 R1, T1a 명세 5.6): 첫 `initialize` 뒤의 요청에 `Mcp-Session-Id` 머리가 없으면 400, 다른 세션 id면 404, 같은 토큰의 둘째 `initialize`는 403, `DELETE /mcp`는 405. 실제 시험 1에서 Claude는 각 MCP 세션의 첫 두 요청(`server/discover`, `initialize`) 밖의 모든 요청에 소문자 `mcp-session-id` 머리를 실었고 `DELETE`는 보내지 않았다(위 "R1(세션 머리)").
+- **남는 위험 둘**(계획 재검토 N5·N6)
+  - **묶기 경합(N5)**: 같은 기기의 다른 사용자가 `ps`로 토큰을 읽고 CLI의 첫 `initialize`보다 먼저 보내면 묶기를 차지한다. 그러면 CLI의 Learn 도구 호출이 실패하고, 그 턴 동안 그 자료 하나가 그 사용자에게 읽힌다. 토큰은 ACP 세션마다 바뀌고 범위는 그 자료뿐이다.
+  - **API·네트워크 오류는 `AGENT_EXITED`로 보인다(N6)**: Claude가 API나 네트워크 오류를 `data.errorKind: 'server_error'`로 알리면, 명세 8.8에 더 가까운 코드가 없어 `AGENT_EXITED`로 분류된다. 그래서 화면은 "…멈췄습니다"라고 말한다(답 전이면 "답하기 전에 멈췄습니다", 도중이면 "답하는 도중 멈췄습니다").
+- **T1에서 채울 빈칸의 자리**(위 "결과와 위험"의 넷째 줄): 대화마다 고정된 MCP 범위 토큰 → T1a 명세 5.4(ACP 세션마다 바뀌고 MCP 세션 하나에 묶임 — R1), claude.ai 커넥터 끄기 → 스파이크 S9와 명세 4.4, 에이전트별 최소 버전 → 명세 4.3 J13(Claude Code 2.1.318 + 연결 도구 0.103.0), 로그인 상태 카드 → 명세 4.3·8.7(고르기 행의 "로그인 필요"와 Learn 전용 로그인 명령), 대화마다 빈 작업 폴더 → 명세 4.4 J16(Learn의 빈 `.git` 하나만 — R18), 프로세스 감독·취소 시한 → 명세 4.2 J18, 프록시의 루프백 가로채기 → 명세 4.4 `NO_PROXY=127.0.0.1,localhost`, 에이전트 자신의 대화 기록 고지 → 명세 8.6 동의 카드의 "Learn 전용 설정" 줄과 영구 삭제 때 기록 자리 지우기(명세 6.2). ACP 판은 v1(J7), 인용 표기는 `[[p42]]`(J39)로 정했다.
 
 ## 검증 (T1)
 - AC10: 인용 칩 클릭 → 같은 revision의 쪽·시간, 없는 ID는 유효 출처가 아님(가짜 백엔드 계약 테스트).

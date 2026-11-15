@@ -5,10 +5,11 @@ import { createReaderStore, type ImageState, type ReaderStore } from './pdf/read
 import { readWindowParams } from '../ui/platform';
 import { createSelectionStore, type SelectionStore } from '../translation/useSelectionText';
 import { createTranslationStore, type TranslationStore } from '../translation/store';
+import { createTutorTabStore, forgetTutorTab, type TutorTabStore } from '../tutor/tutorStore';
 
 /**
  * Everything one open document keeps on screen: its reader state, its find bar, its text selection and the translation of it,
- * and the toolbar's page field. Several readers can be mounted at once; each has its own scope.
+ * its tutor panel's state, and the toolbar's page field. Several readers can be mounted at once; each has its own scope.
  */
 export interface ReaderScope {
   readonly id: string;
@@ -16,6 +17,8 @@ export interface ReaderScope {
   readonly find: StoreApi<FindStore>;
   readonly selection: StoreApi<SelectionStore>;
   readonly translation: StoreApi<TranslationStore>;
+  /** The tutor panel's own state for this tab (the session it shows, its live answer, the chooser asked for). */
+  readonly tutor: StoreApi<TutorTabStore>;
   readonly pageField: { current: HTMLInputElement | null };
   /** The picture point at the image stage's centre (0–1), kept by the image reader as it moves; not state, so a scroll re-renders nothing. */
   readonly imageCentre: { current: { cx: number; cy: number } | null };
@@ -23,7 +26,7 @@ export interface ReaderScope {
 
 export function createReaderScope(id: string): ReaderScope {
   return {
-    id, reader: createReaderStore(), find: createFindStore(), selection: createSelectionStore(), translation: createTranslationStore(), pageField: { current: null }, imageCentre: { current: null },
+    id, reader: createReaderStore(), find: createFindStore(), selection: createSelectionStore(), translation: createTranslationStore(), tutor: createTutorTabStore(id), pageField: { current: null }, imageCentre: { current: null },
   };
 }
 
@@ -45,6 +48,7 @@ export const readerScopes = (() => {
       const scope = all.get(id);
       if (!scope) return;
       all.delete(id);
+      forgetTutorTab(id);
       if (active === scope) setActiveReaderScope(null);
     },
     ids: (): string[] => [...all.keys()],
@@ -177,9 +181,12 @@ declare global {
     __learnReader?: ReturnType<typeof learnReaderHook>;
     /** E2E only: what the image reader shows. */
     __learnImage?: ReturnType<typeof learnImageHook>;
+    /** E2E only: whether the active reader holds a selection of its page (the range the translation pop-up and the tutor take). */
+    __learnSelection?: { hasRange(): boolean };
   }
 }
 if (typeof window !== 'undefined' && readWindowParams(window.location.search).e2e) {
   window.__learnReader = learnReaderHook();
   window.__learnImage = learnImageHook();
+  window.__learnSelection = { hasRange: () => currentScope().selection.getState().range !== null };
 }

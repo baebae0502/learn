@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { ChevronDown, ChevronRight, ListTree, SearchX } from 'lucide-react';
 import { Button, ListLayout, Tree, TreeItem, TreeItemContent, Virtualizer, type Key } from 'react-aria-components';
 import { usePrefs } from '../../data/queries';
@@ -9,47 +8,29 @@ import { Icon } from '../../ui/Icon';
 import { Kbd } from '../../ui/Kbd';
 import { PaneEmpty } from '../../ui/PaneEmpty';
 import { SearchField } from '../../ui/SearchField';
-import { currentOutlineId, filterOutline, flattenOutline, OUTLINE_FOLLOW_PAUSE_MS, outlinePages, outlineRows, outlineScrollTarget, type OutlineRow } from './outline';
+import { useReaderScope } from '../readerScope';
+import { currentOutlineId, filterOutline, flattenOutline, OUTLINE_FOLLOW_PAUSE_MS, outlineScrollTarget, type OutlineRow } from './outline';
+import { ensureOutline } from './outlineCache';
 import { useReader } from './readerStore';
 
 const indent = ({ level }: { level: number }) => ({ '--indent': level - 1 }) as CSSProperties;
 
 type Loaded = { status: 'loading' } | { status: 'ready'; rows: OutlineRow[]; pages: ReadonlyMap<string, number> };
 const LOADING: Loaded = { status: 'loading' };
-type Held = { doc: PDFDocumentProxy | null; state: Loaded };
 
-/** The entries of a document's outline, loaded once for the open document (and the page each one goes to, a batch at a time). */
+/**
+ * The entries of the open document's outline and the page each one goes to, from the tab's outline cache (outlineCache.ts): shown, the
+ * pane asks for every page, resolved a batch at a time from where the tutor's first 300 left off. The cache goes with its document, so
+ * nothing read from another document is shown for this one.
+ */
 function useOutline(): Loaded {
-  const handle = useReader((s) => s.handle);
-  const doc = handle?.document() ?? null;
-  const [held, setHeld] = useState<Held>({ doc, state: { status: 'loading' } });
+  const scope = useReaderScope();
+  const doc = useReader((s) => s.handle)?.document() ?? null;
+  const cache = useReader((s) => s.outline);
   useEffect(() => {
-    if (!doc) return;
-    let cancelled = false;
-    const put = (state: Loaded) => setHeld({ doc, state });
-    put({ status: 'loading' });
-    void doc.getOutline().then(
-      (nodes) => {
-        if (cancelled) return;
-        const rows = outlineRows(nodes);
-        put({ status: 'ready', rows, pages: new Map() });
-        void outlinePages(doc, rows, () => cancelled, (pages) => {
-          if (!cancelled) put({ status: 'ready', rows, pages });
-        });
-      },
-      (e: unknown) => {
-        // A document that closes under the request is not an outline that failed to load; anything else is "no outline".
-        if (cancelled) return;
-        console.warn(`[pdf] outline failed: ${(e as Error)?.name ?? 'Error'}`);
-        put({ status: 'ready', rows: [], pages: new Map() });
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [doc]);
-  // What was read from another document is not shown for this one, not even for the render before the effect runs.
-  return held.doc === doc ? held.state : LOADING;
+    if (doc) ensureOutline(scope, doc, 'all');
+  }, [scope, doc]);
+  return useMemo(() => (cache === null ? LOADING : { status: 'ready', rows: cache.rows, pages: cache.pages }), [cache]);
 }
 const ancestorsOf = (id: string): string[] => id.split('.').slice(0, -1).map((_, i, parts) => parts.slice(0, i + 1).join('.'));
 

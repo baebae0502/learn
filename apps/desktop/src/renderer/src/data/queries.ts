@@ -1,5 +1,5 @@
 import { useQuery, type QueryClient } from '@tanstack/react-query';
-import type { LibraryItem, Prefs } from '@learn/domain';
+import type { LibraryItem, Prefs, SessionsChanged } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { useLearnEvent } from '../events';
 import { carrySearchIndex } from '../library/search';
@@ -43,6 +43,12 @@ export const keys = {
   bodyPages: (itemId: string, query: string) => ['search', 'pages', itemId, query] as const,
   /** How far the body index is: main's search:progress notices put each new count here. */
   bodyProgress: ['search', 'progress'] as const,
+  /** The tutor's agents report of this run (tutor:agents): kept for the run, read again by the chooser's buttons and after a failed login or lockdown. */
+  tutorAgents: ['tutor', 'agents'] as const,
+  /** The tutor's sessions (spec 12): an item's list, the recent ones, one session's thread. sessions:changed and an item's trash, restore and purge mark all of them stale. */
+  sessionsList: (itemId: string) => ['sessions', 'list', itemId] as const,
+  sessionsRecent: ['sessions', 'recent'] as const,
+  sessionThread: (conversationId: string) => ['sessions', 'get', conversationId] as const,
 };
 
 export const useAppInfo = () => useQuery({ queryKey: keys.info, queryFn: () => unwrap(api().app.info()) });
@@ -111,6 +117,7 @@ export const libraryChanges = createChangeHandler({
     else for (const id of ids) void queryClient.invalidateQueries({ queryKey: keys.reading(id) });
   },
   invalidateBody: () => void queryClient.invalidateQueries({ queryKey: ['search'] }),
+  invalidateSessions: () => void queryClient.invalidateQueries({ queryKey: ['sessions'] }),
   whenIdle,
   setTimer: (fn, ms) => setTimeout(fn, ms),
   clearTimer: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
@@ -118,6 +125,29 @@ export const libraryChanges = createChangeHandler({
 });
 export function useLibrarySync(): void {
   useLearnEvent('libraryChanged', libraryChanges.onChange);
+}
+
+/**
+ * sessions:changed: main created, ended, renamed, deleted or restored a session (spec 12). The lists and the recent sessions are read
+ * again where they are shown, and of the threads only the named sessions'.
+ *
+ * A list read already on its way may have started before this write: once the list has data it is cancelled and read again (a kept
+ * one would end the query's staleness with the older list, and nothing would read it again). Lists are cheap. TanStack Query v5
+ * cancels an in-flight fetch only when the query already has data (query-core's `cancelRefetch` branch in `Query.fetch`): a list's
+ * first read, just mounted, is reused. Accepted: a notice for a write that this first read may predate is then missed until the
+ * next notice or a remount.
+ *
+ * A thread read already on its way is kept: the one there is at a notice is the window's own read at a turn's end, which starts
+ * once main has committed that end, and main's notice of the same end must not cancel it for a second whole read. Accepted: a
+ * notice of another write to that session that lands during an unrelated read of its thread is missed until the next one.
+ */
+export function invalidateSessions(client: QueryClient, e: SessionsChanged): void {
+  void client.invalidateQueries({ queryKey: ['sessions', 'list'] });
+  void client.invalidateQueries({ queryKey: keys.sessionsRecent });
+  for (const id of e.conversationIds) void client.invalidateQueries({ queryKey: keys.sessionThread(id) }, { cancelRefetch: false });
+}
+export function useSessionsSync(): void {
+  useLearnEvent('sessions:changed', (e) => invalidateSessions(queryClient, e));
 }
 
 /** prefsChanged carries the whole new prefs object (any window may have changed them). */

@@ -4,7 +4,9 @@ import { useLearnEvent } from '../events';
 import { afterPaint, type Pending } from '../ui/afterPaint';
 import { Kbd } from '../ui/Kbd';
 import { currentPlatform } from '../ui/platform';
+import { useSessionRowFocused } from '../tutor/sessions/useSessionFocus';
 import { commandPill, keyPill, shortcutPill, type DemoPill, type KeyPlace } from './demoPill';
+import { tagSpot } from './demoTag';
 import { useSidebarHidden } from './useSidebar';
 
 /** How long a pill stays (a new one replaces it at once); a held ⌥ stays until released. */
@@ -55,6 +57,12 @@ function placeOf(e: KeyboardEvent): KeyPlace {
   if (target?.closest('[data-testid="item-row"]')) return 'row'; // ↩ on a table row opens it
   return 'other';
 }
+
+/**
+ * The toasts stand beside the tutor (Shell's --toasts-right): their column then reaches into the centred pill band, so a pill shown
+ * meanwhile goes aside, or it would sit on the toast it brought (⌘⌫'s undo toast).
+ */
+const toastsBeside = (): boolean => (parseFloat(document.documentElement.style.getPropertyValue('--toasts-right')) || 0) > 0;
 
 const later = (fn: () => void, ms: number): Pending => {
   const id = setTimeout(fn, ms);
@@ -129,18 +137,24 @@ export function DemoOverlay() {
   });
   const lastPointer = useRef<{ x: number; y: number } | null>(null);
   const ringTimers = useRef<Pending[]>([]);
-  // The sidebar state as last drawn, i.e. before a ⌃⌘S that is arriving now: the pill names what the command did.
+  // The sidebar state and the session row's focus as last drawn, i.e. before a ⌃⌘S or ⌘⌫ that is arriving now: the pill names what
+  // the command did, as the menu named it (사이드바 가리기, 세션 삭제).
   const hidden = useSidebarHidden();
   const drawnHidden = useRef(hidden);
+  const sessionFocused = useSessionRowFocused();
+  const drawnSessionFocused = useRef(sessionFocused);
   useEffect(() => {
     drawnHidden.current = hidden;
+    drawnSessionFocused.current = sessionFocused;
   });
-  // Its place is fixed here, when it appears (aside under a sheet, or for a command that opens one): a pill on screen
-  // never moves (critique round 3 m1).
+  // Its place is fixed here, when it appears (aside under a sheet, for a command that opens one, or while the toasts stand beside
+  // the tutor): a pill on screen never moves (critique round 3 m1).
   const pillFor = (p: DemoPill | null) => {
-    if (p) showPill(sheetOpen.current && !p.aside ? { ...p, aside: true } : p, p.held ? null : PILL_MS);
+    if (p) showPill((sheetOpen.current || toastsBeside()) && !p.aside ? { ...p, aside: true } : p, p.held ? null : PILL_MS);
   };
-  useLearnEvent('menuCommand', ({ commandId }) => pillFor(commandPill(commandId, currentPlatform(), drawnHidden.current ? 'hidden' : 'shown')));
+  useLearnEvent('menuCommand', ({ commandId }) =>
+    pillFor(commandPill(commandId, currentPlatform(), { sidebar: drawnHidden.current ? 'hidden' : 'shown', ...(drawnSessionFocused.current ? { sessionFocused: true } : {}) })),
+  );
   useLearnEvent('demoShortcut', (item) => pillFor(shortcutPill(item, currentPlatform())));
   // The latest pill, for the key-up of a held modifier (the listeners below are installed once).
   const pillRef = useRef(pill);
@@ -240,11 +254,13 @@ export function DemoOverlay() {
     const onTag = (e: Event) => {
       const detail = (e as CustomEvent<unknown>).detail;
       if (typeof detail !== 'string' || !detail) return setTag(null);
-      // The content area's top-left, under the table's header band (where the drop overlay the tag comes with lies), with or
-      // without a table: a window-anchored tag sat on the sidebar's launcher and 라이브러리 label (round 2 minor 4).
-      const content = document.querySelector('[data-testid="content"]')?.getBoundingClientRect();
+      // Placed in the content area, not the window (a window-anchored tag sat on the sidebar's launcher, round 2 minor 4), as the view
+      // shown when it is sent: the demo sends it again when the view changes.
+      const content = document.querySelector('[data-testid="content"]')?.getBoundingClientRect() ?? null;
       const band = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--table-header-height')) || 0;
-      setTag(content && content.width > 0 ? { text: detail, left: Math.round(content.left + 16), top: Math.round(content.top + band + 12) } : { text: detail });
+      const rows = document.querySelectorAll('[data-testid="library-table"] [data-testid="item-row"]');
+      const last = rows.length > 0 ? rows[rows.length - 1]!.getBoundingClientRect() : null;
+      setTag({ text: detail, ...tagSpot(content, band, last) });
     };
     const onPointer = (e: Event) => {
       const detail = (e as CustomEvent<{ hidden?: boolean; mode?: PointerMode } | null>).detail ?? {};

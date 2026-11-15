@@ -4,11 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ERROR_COPY, IDLE_BACKUP_PROGRESS, IDLE_IMPORT_STATE, IDLE_RESTORE_PROGRESS, itemMetadataSchema, newId, nowIso, toLearnError, type ImportReport, type LibraryItem } from '@learn/domain';
-import { CollectionsRepository, LibraryRepository, TagsRepository, migrate, openDatabase, readOrganizeSnapshot, type Db } from '@learn/db';
+import { CollectionsRepository, ConversationsRepository, LibraryRepository, TagsRepository, migrate, openDatabase, readOrganizeSnapshot, type Db } from '@learn/db';
 import { checkLibrary, ensureLayout, libraryLayout, managedRelativePath, refreshLinkedAvailability, type BackupHooks } from '@learn/library';
 import {
-  createImportPause, fsyncProbe, installTestHooks, seedAssets, seedItems, seedOrganize, stageCommitFailures,
-  type LearnTestHooks, type OrganizeSeedDeps, type SeedAssetsInput, type SeedAssetsResult, type SeedOrganizeInput, type SeedRepo, type SeedRow,
+  createImportPause, fsyncProbe, installTestHooks, readFakeLog, seedAssets, seedItems, seedOrganize, seedSessions, stageCommitFailures,
+  type LearnTestHooks, type OrganizeSeedDeps, type SeedAssetsInput, type SeedAssetsResult, type SeedOrganizeInput, type SeedRepo, type SeedRow, type TutorHooksDeps,
 } from './test-hooks';
 import type { TextScheduler } from './text/scheduler';
 
@@ -581,5 +581,144 @@ describe('the translation hooks (Task 4)', () => {
     expect(setMode).toHaveBeenCalledWith('offline');
     expect(hooks.translationCalls()).toBe(3);
     delete (globalThis as { __learnTest?: unknown }).__learnTest;
+  });
+});
+
+describe('the tutor hooks (spec 12)', () => {
+  const g = globalThis as { __learnTest?: LearnTestHooks; __learnIpcCalls?: unknown; __learnIpcDelays?: unknown };
+  const install = (tutor?: TutorHooksDeps) =>
+    installTestHooks({
+      importCommits: () => ({}) as never,
+      repo: () => ({}) as never,
+      organize: () => {
+        throw new Error('not used');
+      },
+      broadcast: vi.fn(),
+      ...(tutor ? { tutor } : {}),
+    });
+  afterEach(() => {
+    delete g.__learnTest;
+    delete g.__learnIpcCalls;
+    delete g.__learnIpcDelays;
+  });
+
+  it('each says there is no tutor when the app has none (no library)', async () => {
+    install();
+    const h = g.__learnTest!;
+    const calls: Array<[string, () => unknown]> = [
+      ['tutorFakeScript', () => h.tutorFakeScript('inject')],
+      ['tutorFakeLog', () => h.tutorFakeLog()],
+      ['tutorNetwork', () => h.tutorNetwork('offline')],
+      ['tutorTimeouts', () => h.tutorTimeouts({ firstUpdateMs: 1 })],
+      ['tutorProcesses', () => h.tutorProcesses()],
+      ['tutorKillAgent', () => h.tutorKillAgent()],
+      ['seedSessions', () => h.seedSessions({ itemId: 'x', sessions: 1, messagesPerSession: 2, citationsPerAnswer: 1 })],
+      ['toolReads', () => h.toolReads('x')],
+    ];
+    for (const [name, run] of calls) expect(run, name).toThrow(`${name}: no tutor (the library is not open)`);
+  });
+
+  it('hands each call to the tutor as it is', () => {
+    const processes = { count: 1, max: 1, conversationIds: ['c'] };
+    const log = [{ t: 'cancel' as const }];
+    const reads = [{ seq: 0, tool: 'get_context' as const, outcome: 'ok' as const, revisionId: null, pageFrom: null, pageTo: null, duplicatePages: 0, chars: 0, errorCode: null, ms: 1 }];
+    const order: string[] = [];
+    const tutor = {
+      service: {
+        setTimeouts: vi.fn(),
+        processes: vi.fn(() => {
+          order.push('processes');
+          return processes;
+        }),
+        resetProcessMax: vi.fn(() => void order.push('resetMax')),
+        killAgent: vi.fn(),
+        failNextAgents: vi.fn(),
+      },
+      setFakeScript: vi.fn(),
+      fakeLog: vi.fn(() => log),
+      setNetwork: vi.fn(),
+      sessions: vi.fn(() => ({ toolReads: vi.fn(() => reads) }) as never),
+      seed: vi.fn(() => ({ conversationIds: ['a', 'b'] })),
+    } satisfies TutorHooksDeps;
+    install(tutor);
+    const h = g.__learnTest!;
+    h.tutorFakeScript('lockdown-read');
+    expect(tutor.setFakeScript).toHaveBeenCalledWith('lockdown-read');
+    expect(h.tutorFakeLog()).toBe(log);
+    h.tutorNetwork('offline');
+    h.tutorNetwork(null);
+    expect(tutor.setNetwork.mock.calls).toEqual([['offline'], [null]]);
+    h.tutorTimeouts({ firstUpdateMs: 50, idleMs: 200 });
+    expect(tutor.service.setTimeouts).toHaveBeenCalledWith({ firstUpdateMs: 50, idleMs: 200 });
+    expect(h.tutorProcesses()).toBe(processes);
+    expect(order).toEqual(['processes']);
+    expect(h.tutorProcesses({ resetMax: true })).toBe(processes);
+    expect(order).toEqual(['processes', 'resetMax', 'processes']);
+    h.tutorKillAgent();
+    expect(tutor.service.killAgent).toHaveBeenCalledTimes(1);
+    h.tutorFailAgents(2);
+    expect(tutor.service.failNextAgents).toHaveBeenCalledWith(2);
+    const input = { itemId: 'i', sessions: 2, messagesPerSession: 4, citationsPerAnswer: 3 };
+    expect(h.seedSessions(input)).toEqual({ conversationIds: ['a', 'b'] });
+    expect(tutor.seed).toHaveBeenCalledWith(input);
+    expect(h.toolReads('m')).toBe(reads);
+  });
+
+  it('readFakeLog: one entry per line of the fake agent\'s log, none before it wrote one', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-fake-log-'));
+    try {
+      const file = path.join(dir, 'fake-agent.log');
+      expect(readFakeLog(file)).toEqual([]);
+      fs.writeFileSync(file, `${JSON.stringify({ t: 'cancel' })}\n${JSON.stringify({ t: 'client-call', method: 'fs/read_text_file', error: { code: -32601 } })}\n`);
+      expect(readFakeLog(file)).toEqual([{ t: 'cancel' }, { t: 'client-call', method: 'fs/read_text_file', error: { code: -32601 } }]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('seedSessions (spec 15: the sessions fixture)', () => {
+  function library() {
+    const { db, ids } = libraryOf(2);
+    return { db, deps: { db, repo: new LibraryRepository(db), conversations: new ConversationsRepository(db) }, itemId: ids[0]! };
+  }
+
+  it('sessions × messages, question and answer in turn, each answer with its verified citations', () => {
+    const { deps, itemId } = library();
+    const { conversationIds } = seedSessions(deps, { itemId, sessions: 2, messagesPerSession: 4, citationsPerAnswer: 3 });
+    expect(conversationIds).toHaveLength(2);
+    expect(deps.conversations.list(itemId).map((s) => s.id).sort()).toEqual([...conversationIds].sort());
+    for (const id of conversationIds) {
+      const { messages } = deps.conversations.thread(id);
+      expect(messages.map((m) => [m.role, m.status])).toEqual([['user', 'complete'], ['tutor', 'complete'], ['user', 'complete'], ['tutor', 'complete']]);
+      for (const m of messages.filter((x) => x.role === 'tutor')) {
+        expect(m.sources.map((c) => [c.pageIndex, c.label])).toEqual([[0, '1쪽'], [1, '2쪽'], [2, '3쪽']]);
+        expect(m.sources.every((c) => c.anchorId !== null)).toBe(true);
+        expect(m.text).toContain('[[p3]]');
+      }
+    }
+  });
+
+  it('sessions of another day and with questions of their own, for the session list (its day groups and names)', () => {
+    const { deps, itemId } = library();
+    const startedAt = '2026-10-12T03:00:00.000Z';
+    const { conversationIds } = seedSessions(deps, { itemId, sessions: 2, messagesPerSession: 2, citationsPerAnswer: 0, startedAt, questions: ['그림 6-2는 어떻게 읽나요?'] });
+    const [first, second] = conversationIds.map((id) => deps.conversations.thread(id));
+    expect(first!.session).toMatchObject({ title: '그림 6-2는 어떻게 읽나요?', createdAt: startedAt });
+    expect(second!.session.title).toBe('Seeded question 1 of session 2'); // a session past the list keeps the seeded words
+    expect(Date.parse(second!.session.updatedAt) - Date.parse(startedAt)).toBeLessThan(10);
+    expect(() => seedSessions(deps, { itemId, sessions: 1, messagesPerSession: 2, citationsPerAnswer: 0, startedAt: 'x' })).toThrow(/startedAt/);
+    // A real agent's sessions too (the list draws them otherwise than the fake's).
+    const [claude] = seedSessions(deps, { itemId, sessions: 1, messagesPerSession: 2, citationsPerAnswer: 0, agent: 'claude' }).conversationIds;
+    expect(deps.conversations.thread(claude!).session.agent).toBe('claude');
+  });
+
+  it('writes nothing when the input does not fit (one transaction)', () => {
+    const { db, deps, itemId } = library();
+    expect(() => seedSessions(deps, { itemId, sessions: 2, messagesPerSession: 2, citationsPerAnswer: 41 })).toThrow();
+    expect(() => seedSessions(deps, { itemId, sessions: 1, messagesPerSession: 3, citationsPerAnswer: 1 })).toThrow(/even/);
+    expect(() => seedSessions(deps, { itemId: newId(), sessions: 1, messagesPerSession: 2, citationsPerAnswer: 1 })).toThrow(/PDF/);
+    expect(db.prepare('SELECT COUNT(*) FROM conversations').pluck().get()).toBe(0);
+    expect(db.prepare('SELECT COUNT(*) FROM messages').pluck().get()).toBe(0);
   });
 });

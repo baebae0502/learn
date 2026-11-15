@@ -1,20 +1,152 @@
+import { useEffect, useRef, type KeyboardEvent } from 'react';
+import { SquarePen } from 'lucide-react';
+import { acceleratorLabel, commandById } from '@learn/domain';
+import { useCommands } from '../commands/CommandProvider';
+import { chooseInspectorMode } from '../shell/inspectorMode';
+import { focusPaneNamed } from '../shell/panes';
+import { usePanelFocusRequest } from '../shell/panelFocus';
+import type { InspectorMode } from '../shell/layout';
+import { t } from '../strings';
+import { TutorPanel, useTutorPanelState } from '../tutor/TutorPanel';
+import { useTutorTab } from '../tutor/tutorStore';
+import { IconButton } from '../ui/Button';
+import { currentPlatform } from '../ui/platform';
 import { perfMarkLatest } from '../ui/perfMarks';
 import { usePaintedOnce } from '../ui/usePaintedOnce';
 import { InfoPane } from './InfoPane';
 
-/** The right slot's modes (design-spec 2.5): info now; the tutor joins in T1, and no mode switch is drawn before then. */
-export type InspectorMode = 'info';
+export type { InspectorMode } from '../shell/layout';
 
-/** The item panel's contents for one mode (its slot, width and folding are the shell's). */
-export function Inspector({ mode }: { mode: InspectorMode }) {
+/** The tablist's tabs, in order: the segment's names, and the commands whose keys its tooltips name. */
+const TABS = [
+  { mode: 'info', label: t.tutor.mode.info, command: 'view.inspectorInfo' },
+  { mode: 'tutor', label: t.tutor.mode.tutor, command: 'view.inspectorTutor' },
+] as const satisfies ReadonlyArray<{ mode: InspectorMode; label: string; command: 'view.inspectorInfo' | 'view.inspectorTutor' }>;
+
+const tabId = (mode: InspectorMode): string => `inspector-tab-${mode}`;
+const PANEL_ID = 'inspector-tabpanel';
+
+/**
+ * 새 세션 at the head's right while the tutor shows the tab's session (spec 8.1, 8.2): it runs tutor.newSession, and is disabled with its
+ * reason while the session has no question yet.
+ */
+function NewSession() {
+  const { run, isEnabled } = useCommands();
+  const empty = useTutorTab((s) => s.conversationId === null);
+  return (
+    <IconButton
+      icon={SquarePen}
+      label={t.tutor.newSession.label}
+      onPress={() => run('tutor.newSession')}
+      isDisabled={!isEnabled('tutor.newSession')}
+      disabledReason={empty ? t.tutor.newSession.empty : t.common.busy}
+      testId="tutor-new-session"
+    />
+  );
+}
+
+/**
+ * The reader's head (44): the mode segment, 정보 | 튜터 — one tab stop, the arrow keys move between the two; in tutor mode with the tab's
+ * session shown, 새 세션 at the right.
+ */
+function ModeHead({ mode }: { mode: InspectorMode }) {
+  const session = useTutorPanelState() === 'ready';
+  const refs = useRef<Partial<Record<InspectorMode, HTMLButtonElement | null>>>({});
+  const pick = (next: InspectorMode, focus: boolean) => {
+    chooseInspectorMode(next);
+    if (focus) refs.current[next]?.focus();
+  };
+  const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
+    const at = TABS.findIndex((x) => x.mode === mode);
+    const to = e.key === 'ArrowRight' ? (at + 1) % TABS.length : e.key === 'ArrowLeft' ? (at + TABS.length - 1) % TABS.length : e.key === 'Home' ? 0 : e.key === 'End' ? TABS.length - 1 : -1;
+    if (to === -1 || e.nativeEvent.isComposing) return;
+    e.preventDefault();
+    pick(TABS[to]!.mode, true);
+  };
+  return (
+    <div className="inspector-head" data-testid="inspector-head">
+      <div className="segmented mode" role="tablist" aria-label={t.tutor.mode.label} data-testid="inspector-modes" onKeyDown={onKeyDown}>
+        {TABS.map((x) => {
+          const accelerator = commandById(x.command).accelerator;
+          const selected = x.mode === mode;
+          return (
+            <button
+              key={x.mode}
+              ref={(el) => void (refs.current[x.mode] = el)}
+              type="button"
+              role="tab"
+              id={tabId(x.mode)}
+              className="seg"
+              aria-selected={selected}
+              aria-controls={PANEL_ID}
+              data-selected={selected ? '' : undefined}
+              tabIndex={selected ? 0 : -1}
+              title={`${x.label} ${accelerator ? acceleratorLabel(accelerator, currentPlatform()) : ''}`.trim()}
+              data-testid={`inspector-mode-${x.mode}`}
+              onClick={() => pick(x.mode, false)}
+            >
+              {x.label}
+            </button>
+          );
+        })}
+      </div>
+      {mode === 'tutor' && session && (
+        <>
+          <span className="spacer" />
+          <NewSession />
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Answers ⌃⌘2: once the tutor is shown and the panel can take the focus (its slot open, not inert, wider than nothing), the focus goes to
+ * its first control and the request ends. A slot that is still opening is waited for by its size changing, not by a count of frames.
+ */
+function useFocusRequest(mode: InspectorMode): void {
+  const pending = usePanelFocusRequest((s) => s.pending);
+  const done = usePanelFocusRequest((s) => s.done);
+  // The panel going away ends a request it had not answered: the next mount must not take a focus nobody asked it for.
+  useEffect(() => done, [done]);
+  useEffect(() => {
+    if (!pending || mode !== 'tutor') return;
+    const land = (): boolean => {
+      if (!focusPaneNamed('inspector')) return false;
+      done();
+      return true;
+    };
+    if (land()) return;
+    const pane = document.querySelector('[data-pane="inspector"]');
+    if (!pane) return;
+    const watch = new ResizeObserver(() => void (land() && watch.disconnect()));
+    watch.observe(pane);
+    return () => watch.disconnect();
+  }, [pending, mode, done]);
+}
+
+/**
+ * The right panel's contents for one mode (its slot, width and folding are the shell's). The reader's has the 정보 | 튜터 segment in
+ * its head (`switchable`); the library's is the info panel alone (spec 8.1). `hidden`: the slot is folded (the content stays mounted, out of sight).
+ */
+export function Inspector({ mode, switchable = false, hidden = false }: { mode: InspectorMode; switchable?: boolean; hidden?: boolean }) {
   // Where a long frame's script time goes (the drop stall profile): the item panel's render began here.
   perfMarkLatest('inspector:render');
   // The panel's frame comes with the rows; its content one painted frame later, so a first drop's rows and the panel's
   // statistics are not one long frame (spec 8, the drop stall).
   const painted = usePaintedOnce();
+  useFocusRequest(mode);
+  const content = mode === 'tutor' ? <TutorPanel visible={!hidden} /> : painted ? <InfoPane /> : null;
   return (
     <div className="inspector-body" data-testid="inspector" data-mode={mode}>
-      {painted ? <InfoPane /> : null}
+      {switchable && <ModeHead mode={mode} />}
+      {switchable ? (
+        <div className="inspector-modepane" id={PANEL_ID} role="tabpanel" aria-labelledby={tabId(mode)}>
+          {content}
+        </div>
+      ) : (
+        content
+      )}
     </div>
   );
 }

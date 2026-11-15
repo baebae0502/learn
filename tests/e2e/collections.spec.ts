@@ -6,7 +6,7 @@ import { platformAccelerator } from '../../packages/domain/src/accelerator';
 import { commandById, type CommandId } from '../../packages/domain/src/commands';
 import { expectNoSeriousA11y } from './a11y';
 import {
-  FIXTURES, addToCollection, closeSheet, confirmCalls, createCollection, createCollectionTree, drag, dropSource, expandAll, expectDisabledReason, expectWindow, holdOpenDialog, importFiles, importPaths, launch, menuSnapshot,
+  FIXTURES, addToCollection, closeSheet, confirmCalls, createCollection, createCollectionTree, drag, dragSidebarTo, dropSource, expandAll, expectNoteInsideSidebar, expectDisabledReason, expectWindow, holdOpenDialog, importFiles, importPaths, launch, menuSnapshot,
   menuItemEnabled, openItem, organizeSnapshot, releaseOpenDialog, rowAt, runMenuCommand, runPalette, specialRow, stubConfirm, stubContextMenu, stubOpenDialog, treeRow, type MenuNode,
 } from './helpers';
 
@@ -92,6 +92,17 @@ test('esc creates nothing, a click elsewhere creates it, an empty name makes the
     await expect(page.getByTestId('rename-note')).toHaveCount(0);
     await page.keyboard.press('Enter');
     await expect.poll(async () => (await names(page)).map((n) => n.length)).toEqual([1, NEW.length, 200]);
+    // The note wraps inside the sidebar, at its default width and at its narrowest.
+    for (const width of [240, 181]) {
+      if (width !== 240) await dragSidebarTo(page, width);
+      await runMenuCommand(app, 'collection.new');
+      await expect(field(page)).toBeFocused();
+      await page.keyboard.insertText('다'.repeat(201));
+      await expect(page.getByTestId('rename-note')).toBeVisible();
+      await expectNoteInsideSidebar(page.getByTestId('rename-note'));
+      await page.keyboard.press('Escape');
+      await expect(field(page)).toHaveCount(0);
+    }
   } finally {
     await app.close();
   }

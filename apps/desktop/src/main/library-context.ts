@@ -1,5 +1,5 @@
 import {
-  AnchorsRepository, CollectionsRepository, LibraryRepository, ReadingRepository, SettingsRepository, TagsRepository, TextRepository, TranslationCacheRepository, migrate, openDatabase, type Db,
+  AnchorsRepository, CollectionsRepository, ConversationsRepository, LibraryRepository, ReadingRepository, SettingsRepository, TagsRepository, TextRepository, TranslationCacheRepository, migrate, openDatabase, type Db,
 } from '@learn/db';
 import type { LibraryCheck } from '@learn/domain';
 import { Importer, ensureLayout, libraryLayout, type LibraryLayout } from '@learn/library';
@@ -13,6 +13,8 @@ export interface LibraryContext {
   settings: SettingsRepository;
   reading: ReadingRepository;
   anchors: AnchorsRepository;
+  /** The tutor's sessions, messages, sources and tool reads. */
+  conversations: ConversationsRepository;
   translations: TranslationCacheRepository;
   /** Body text: the extract jobs and the page texts (main's scheduler writes them). */
   text: TextRepository;
@@ -39,6 +41,7 @@ export async function openLibraryContext(root: string): Promise<LibraryContext> 
       settings: new SettingsRepository(db),
       reading: new ReadingRepository(db),
       anchors: new AnchorsRepository(db),
+      conversations: new ConversationsRepository(db),
       translations: new TranslationCacheRepository(db),
       text: new TextRepository(db),
       importer: new Importer({ layout, repo }),

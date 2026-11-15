@@ -1,15 +1,17 @@
-// @demo — a 3–4 minute macOS screen recording of the M7c work (five pictures dropped on the window; a photo opened fitted,
-// pinched, dragged, turned and set on a dark ground; its tab closed and opened again in the same place; the quick search's
-// scope set to 정보와 본문; a two-letter Korean word that finds PDF bodies; the item panel's 본문 일치; a page opened from it with
-// the find bar on the word; the index progress line; a match leaving for the trash), with a chapter list
-// (m7c-demo.chapters.raw.txt / .json; the trimmed video's own list comes from finish-demo.sh), a caption per chapter on screen,
-// and the chapters embedded in the video afterwards (scripts/finish-demo.sh on the server, scripts/record-demo-linux.sh on
-// Linux). Elsewhere (Linux CI) the same script runs at 1/10 pace, unrecorded. The app reads PDF bodies as it does for a user
-// (LEARN_TEXT_EXTRACTION=run). The M7a and M7b demos stay in git history.
+// @demo — a 3–4 minute macOS screen recording of the T1a tutor (spec 16.5) with the fake agent: ⌃⌘2 and the consent card; the
+// chooser, where the fake of a development build is started (Claude Code is not installed for the recording); a passage dragged over
+// and a question; the tool chips and the answer as it comes; a cite chip, its page and the page's outline, ⌘[ back; 출처 없음 and
+// 원문 근거로 다시 묻기; offline, the question kept in the composer; the 세션 pane and a name; ⌘⌫ and 실행 취소; the library's 세션
+// section — with a chapter list (t1a-demo.chapters.raw.txt / .json; the trimmed video's own list comes from finish-demo.sh), a
+// caption per chapter on screen (합니다체), and the chapters embedded in the video afterwards (scripts/finish-demo.sh on the server,
+// scripts/record-demo-linux.sh on Linux). Elsewhere (Linux CI) the same script runs at 1/10 pace, unrecorded. The app runs as a test
+// build (LEARN_E2E: the fake agent shows, the agent search is an empty folder) and reads PDF bodies as it does for a user
+// (LEARN_TEXT_EXTRACTION=run). The M7a, M7b and M7c demos stay in git history.
 //
 // Honest, readable, polished, safe (Task 13 fix rounds 1 and 2):
-// - Every synthetic step is said: the drag "스크립트로 재현합니다" (in its caption, and a lasting tag while it is on
-//   screen), ⌘O "건너뜁니다" the file panel; in the chapter line and on screen.
+// - Every synthetic step is said: the agent is the fake (the chooser and its band say so), the offline turn "시험 훅으로
+//   재현합니다" (in its caption, and a lasting tag while it is on screen), the answer that cites a page it did not read "일부러"
+//   (its caption); the older sessions written before the recording are never opened. The chapter line keeps the notes.
 // - Real-looking content (demo-media.ts) in a readable library folder. Every state stays up long enough to read: a key
 //   whose result is the point keeps 2.5 s on the result after its pill has gone (afterKey); a caption stays as long as
 //   it takes to read. The pointer glides to what it clicks, rests on it, and parks clear of the pill, the caption and
@@ -33,21 +35,47 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import { acceleratorLabel } from '../../packages/domain/src/accelerator';
-import { type CommandId } from '../../packages/domain/src/commands';
+import { commandById, type CommandId } from '../../packages/domain/src/commands';
 import { motion } from '../../apps/desktop/src/renderer/src/design/tokens';
+import type { LearnPdfProbe } from '../../apps/desktop/src/renderer/src/viewers/pdf/anchorProbe';
 import {
-  NativeInputNotPermitted, ROOT, bringAppToFront, drag, dropSource, imageState, importFiles,
-  launch, nativeKeyCode, nativeKeystroke, osascriptLimits, rowByTitle, runMenuCommand, stubOpenDialog, textExtraction, textIdle, waitImportIdle,
+  NativeInputNotPermitted, ROOT, bringAppToFront, importFiles, launch, nativeKeyCode, nativeKeystroke, openItem, osascriptLimits, rowByTitle, runMenuCommand, seedSessions,
+  textExtraction, textIdle, tutorFakeScript, tutorNetwork, waitImportIdle,
   type KeyModifier, type LaunchOptions, type Session,
 } from '../e2e/helpers';
 import { IS_MAC, outFile, record, startRecording, startScreencast, startX11Recording, type Recording, type StoppableRecording } from './capture';
 import { savedDisplayModes, switchDisplayForDemo, type DisplaySwitch } from './display-mac';
+import { pressAndDrag } from './demo-drag';
 import { captionBottom, parkSpot as parkAt } from './demo-geometry';
 import { pressKey } from './demo-keys';
 import { OSASCRIPT_MS, glideCursor, hideDock, neutralDesktop, renamedElectron, warpTo } from './demo-mac';
-import { MATCHES_TITLE, PDF_FOOTER, PHOTO_TITLE, PICTURES, SEARCH_WORD, TRASHED_TITLE, writeDemoMedia, writeDemoPictures, type Picture } from './demo-media';
+import { PDF_FOOTER, READ_TITLE, writeDemoMedia } from './demo-media';
 import { RecordingLost, exitedEarly, lossOf, recordingLoss, type RecordingEnd } from './demo-loss';
 import { mergeEnv } from './env';
+import { nextFakeScript } from '../e2e/tutor-helpers';
+
+declare global {
+  interface Window {
+    /** The PDF reader's E2E probe (e2e=1 only): a selection made with it when a drag over the page left none. */
+    __learnPdf?: LearnPdfProbe;
+  }
+}
+
+/** What the demo asks and names (spec 16.5): questions about the note it reads, "세포 신호 전달 개요". */
+const QUESTIONS = { first: '증폭이 왜 중요한가요?', second: '이 문장을 쉽게 풀어 주세요.', offline: '신호를 끄는 방법도 알려 주세요.' } as const;
+/** Sentences of the note's page 1, each on one line: the passages the demo attaches. */
+const PASSAGES = { first: '신호 전달의 핵심은 증폭과 조절이다.', second: '세포는 주변 환경의 변화를 화학 신호로 받아들인다.' } as const;
+/** The lasting tag while the sessions seeded before the recording are on screen (chapters 9–11). */
+const SEEDED_TAG = '이전 세션은 녹화 전에 넣어 둠';
+const SESSION_NAME = '신호 증폭 정리';
+/** The older sessions written before the recording (never opened on camera): yesterday's and an earlier day's of the note, two of another. */
+const SEEDED = {
+  yesterday: 'GPCR과 RTK는 무엇이 다른가요?',
+  earlier: '탈감작을 예를 들어 설명해 주세요',
+  earlierAt: new Date(2026, 10, 3, 10, 12).toISOString(),
+  otherTitle: '단백질 접힘 강의 노트',
+  other: ['샤페론은 어떤 일을 하나요?', '잘못 접힌 단백질은 어떻게 되나요?'],
+} as const;
 
 const PACE = IS_MAC || process.env['LEARN_DEMO_PACE'] === '1' ? 1 : 0.1;
 /**
@@ -177,8 +205,8 @@ const STOP_MS = 30_000;
  * consecutive F6 stops) may be read together with their pill.
  */
 const afterKey = (pressedAt: number, result = 2500) => sleep(Math.max(0, pressedAt + (PILL_GONE_MS + result) * PACE - Date.now()));
-/** T13R2-m3: a caption stays as long as it takes to read at 12 characters a second, 3.5–6.5 s. */
-const captionMs = (text: string) => Math.min(6500, Math.max(3500, Math.round((text.length / 12) * 1000)));
+/** T13R2-m3: a caption stays as long as it takes to read at 12 characters a second: 3.5 s at least, 9 s at most. */
+const captionMs = (text: string) => Math.min(9000, Math.max(3500, Math.round((text.length / 12) * 1000)));
 /** A shortcut as this platform's menus write it (⌘O on macOS, Ctrl+O elsewhere). */
 const key = (accelerator: string) => acceleratorLabel(accelerator, process.platform);
 const errorText = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message.split('\n')[0]}` : String(e));
@@ -248,28 +276,6 @@ const printPdfWith = (app: ElectronApplication) => (htmlFile: string): Promise<B
     'printing',
   );
 
-/** Draws one of the demo's pictures on a canvas in a hidden window of the launched app and returns its file bytes. */
-const drawPictureWith = (app: ElectronApplication) => (htmlFile: string, spec: Picture): Promise<Buffer> =>
-  inHiddenWindow(
-    app,
-    app.evaluate(
-      async ({ BrowserWindow }, { file, spec }) => {
-        const g = globalThis as { __learnDemoPrints?: Electron.BrowserWindow[] };
-        const w = new BrowserWindow({ show: false, width: 400, height: 300, webPreferences: { sandbox: true } });
-        (g.__learnDemoPrints ??= []).push(w);
-        try {
-          await w.loadFile(file);
-          const url = (await w.webContents.executeJavaScript(`window.drawPicture(${JSON.stringify(spec)})`, true)) as string;
-          if (!url.startsWith(`data:${spec.mime};base64,`)) throw new Error(`the canvas gave ${url.slice(0, 24)}…, not ${spec.mime}`);
-          return url.slice(url.indexOf(',') + 1);
-        } finally {
-          if (!w.isDestroyed()) w.destroy();
-        }
-      },
-      { file: htmlFile, spec },
-    ),
-    'drawing',
-  );
 
 type WindowKind = 'main' | 'settings';
 /**
@@ -293,7 +299,6 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
   if (libraryDir.startsWith(work)) fs.rmSync(libraryDir, { recursive: true, force: true });
   const userData = fs.mkdtempSync(path.join(work, 'userdata-'));
   const materialDir = path.join(work, '자료');
-  const pictureDir = path.join(work, '사진과 도판');
   const backups = readableFolder(work, 'Learn 백업');
   const restores = readableFolder(work, '복원 위치');
   // Folders under `work` may be left by an interrupted run; the CI home's are never reused.
@@ -543,12 +548,27 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       const at = await parkSpot(p, kind);
       await p.mouse.move(at.x, at.y);
     };
-    /** Glides onto the middle of an element, rests on it, presses it (where the pointer already is), and stays a beat. */
-    const glideClick = async (p: Page, kind: WindowKind, target: Locator, opts: { modifiers?: Array<'Shift' | 'Meta' | 'Control'>; button?: 'right' } = {}) => {
+    /**
+     * Glides onto the middle of an element (or, with `at`, onto that fraction of its width), rests on it (`restMs`, 250 by
+     * default), presses it (where the pointer already is: `at` also gives the press its place) and stays a beat. `timeout`
+     * bounds the press, so a target that went away fails in seconds, not at the test's timeout.
+     */
+    const glideClick = async (
+      p: Page,
+      kind: WindowKind,
+      target: Locator,
+      opts: { modifiers?: Array<'Shift' | 'Meta' | 'Control'>; button?: 'right'; restMs?: number; timeout?: number; at?: number } = {},
+    ) => {
       const box = (await target.boundingBox())!;
-      await glide(p, kind, box.x + box.width / 2, box.y + box.height / 2);
-      await pause(250);
-      await target.click({ ...(opts.modifiers ? { modifiers: opts.modifiers } : {}), ...(opts.button ? { button: opts.button } : {}) });
+      const dx = box.width * (opts.at ?? 0.5);
+      await glide(p, kind, box.x + dx, box.y + box.height / 2);
+      await pause(opts.restMs ?? 250);
+      await target.click({
+        ...(opts.modifiers ? { modifiers: opts.modifiers } : {}),
+        ...(opts.button ? { button: opts.button } : {}),
+        ...(opts.timeout !== undefined ? { timeout: opts.timeout } : {}),
+        ...(opts.at !== undefined ? { position: { x: dx, y: box.height / 2 } } : {}),
+      });
       await releasePointer(p, kind);
       await pause(400);
     };
@@ -567,8 +587,9 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     type Captioned = { target: Page; place?: 'top'; top?: number; maxWidth?: number };
     /**
      * Whether the overlay keeps clear of the sidebar's own text where it is drawn now: the caption and the tag off the launcher,
-     * the section labels and the tag selector; a parked pointer (`at`, its tip, the arrow 20 px below it) off the chips and the
-     * caption. Anything found is recorded in overlayClashes, judged at the end.
+     * the section labels and the tag selector; the pill, the caption and the tag off a toast shown now (beside the tutor its column
+     * reaches into the pill band); a parked pointer (`at`, its tip, the arrow 20 px below it) off the chips and the caption.
+     * Anything found is recorded in overlayClashes, judged at the end.
      */
     const overlayClear = async (p: Page, what: string, at?: { x: number; y: number }) => {
       await p.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
@@ -584,6 +605,12 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
           for (const r of rects) {
             for (const c of captions) if (hit(c, r)) out.push(`caption ${at(c)} over ${name} ${at(r)}`);
             for (const c of tags) if (hit(c, r)) out.push(`tag ${at(c)} over ${name} ${at(r)}`);
+          }
+        }
+        const pills = boxes('[data-testid="demo-pill"]:not([data-leaving])');
+        for (const t of boxes('.toasts .toast')) {
+          for (const [name, rects] of Object.entries({ pill: pills, caption: captions, tag: tags })) {
+            for (const c of rects) if (hit(c, t)) out.push(`${name} ${at(c)} over a toast ${at(t)}`);
           }
         }
         if (pt) {
@@ -662,34 +689,56 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     if (IS_MAC) await bringAppToFront(app);
     await drawFor(page);
     await park(page, 'main');
-    // ---- the library, filled before anything is recorded -------------------------------------------------------------
-    // The demo's study notes (all but the two that the index chapter brings in) and its two videos, put in through the import path
-    // as a user would (the file panel is skipped), and their bodies read: the app reads them as it does for a user, and the demo
-    // only skips the wait after the window's first idle and waits for the reading to end. The five pictures are drawn now and
-    // dropped on camera. None of this is on camera.
-    const pictures = await writeDemoPictures(pictureDir, drawPictureWith(app), (text) => notes.push(text));
+    // ---- the library and its older sessions, before anything is recorded --------------------------------------------------
+    // The demo's study notes and its two videos, put in through the import path as a user would (the file panel is skipped), and their
+    // bodies read: the tutor reads the pages it cites from that index. Two older sessions of the notes the demo reads and two of
+    // another note are written by a test hook (seedSessions): they fill the 세션 pane's days and the library's 세션 section, and none
+    // is opened on camera (their answers are the hook's). The note opens in the reader on 정보, as a reader that was used before.
     const indexProgress = () => page.evaluate(() => window.learn.search.progress().then((r) => (r.ok ? r.data : null)));
-    const firstPdfs = [media.read, ...media.drop].filter((f) => f.endsWith('.pdf'));
+    const pdfs = [media.read, ...media.drop].filter((f) => f.endsWith('.pdf'));
     await importFiles(s, [media.read, ...media.drop]);
     await waitImportIdle(page);
     await expect(page.getByTestId('import-done')).toHaveCount(0, { timeout: 15_000 });
     await textExtraction(app, 'now');
     await textIdle(app);
-    await expect.poll(indexProgress).toEqual({ done: firstPdfs.length, total: firstPdfs.length });
+    await expect.poll(indexProgress).toEqual({ done: pdfs.length, total: pdfs.length });
+    const idOf = async (title: string) => (await rowByTitle(page, title).getAttribute('data-item-id'))!;
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setHours(16, 52, 0, 0);
+    const readId = await idOf(READ_TITLE);
+    await seedSessions(app, { itemId: readId, sessions: 1, messagesPerSession: 2, citationsPerAnswer: 1, startedAt: yesterday.toISOString(), questions: [SEEDED.yesterday] });
+    await seedSessions(app, { itemId: readId, sessions: 1, messagesPerSession: 2, citationsPerAnswer: 1, startedAt: SEEDED.earlierAt, questions: [SEEDED.earlier] });
+    await seedSessions(app, { itemId: await idOf(SEEDED.otherTitle), sessions: 2, messagesPerSession: 2, citationsPerAnswer: 1, startedAt: SEEDED.earlierAt, questions: SEEDED.other });
+    notes.push('the 세션 pane\'s two older sessions and the library section\'s other note are seeded by a test hook before the recording; none is opened on camera');
+    // The reader has used Learn before: translation was answered 사용 안 함, so its offer never pops up over a selection (no translation
+    // request is ever made). The fake answers at a viewer's pace (its demo scripts).
+    await page.evaluate(async () => {
+      const r = await window.learn.prefs.get();
+      if (!r.ok) throw new Error(r.code);
+      const done = await window.learn.prefs.set({ translation: { ...r.data.translation, enabled: false } });
+      if (!done.ok) throw new Error(done.code);
+    });
+    await tutorFakeScript(app, 'demo');
+    notes.push('translation was set to 사용 안 함 before the recording (as a returning reader has it); the fake runs its demo-paced scripts (demo, demo-unverified)');
+    await openItem(page, READ_TITLE);
+    const viewer = page.getByTestId('pdf-viewer');
+    await expect(viewer).toHaveAttribute('data-rendered', /^[1-9]/);
+    await expect(page.getByTestId('inspector')).toHaveAttribute('data-mode', 'info');
     await park(page, 'main');
     if (GRAB) {
-      const x11 = await startX11Recording(GRAB, 'm7c-demo', 'M7c demo (Linux, Pretendard, no native chrome)', RECORD_SECONDS + 120);
+      const x11 = await startX11Recording(GRAB, 't1a-demo', 'T1a demo (Linux, Pretendard, no native chrome)', RECORD_SECONDS + 120);
       recordingStartMs = Date.now(); // ffmpeg has opened the screen and its file
       rec = x11;
       stopRec = () => x11.stop();
     } else if (plan.capture === 'screencast') {
       // The last resort: the main window's page through CDP (no native chrome, menus, sheets or Finder in it).
-      const cast = await startScreencast(page, 'm7c-demo', 'M7c demo: the main window page only (CDP screencast)');
+      const cast = await startScreencast(page, 't1a-demo', 'T1a demo: the main window page only (CDP screencast)');
       recordingStartMs = Date.now();
       stopRec = () => cast.stop();
       notes.push('the recording is the main window page only (CDP screencast): screencapture was lost three times');
     } else {
-      rec = startRecording(RECORD_SECONDS, 'm7c-demo', 'M7c demo (3–4 min)');
+      rec = startRecording(RECORD_SECONDS, 't1a-demo', 'T1a demo (3–4 min)');
       const recordingFrom = Date.now();
       if (rec.file) {
         // Not for a skipped one (Linux CI). An exit before the demo has ended is a lost recording, with or without a
@@ -708,180 +757,275 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     started = Date.now();
 
     notes.push(
-      'the pictures are dropped by synthetic drag events on the window and the pinch is synthetic ctrl-wheel events (their captions say so); the picture is dragged by the pointer; ⌘R, ⌘W, ⇧⌘T, ⌘1, ⌘O and ⌘⌫ are keys (the menu items on Linux); the search word is typed; the rest is clicked by the pointer',
+      'the fake agent answers throughout (Claude Code is not installed for the recording: its row says 설치 안 됨); a test hook sets the fake\'s script between turns — the answer that cites a page it did not read is one of them, and its caption says so; the offline turn is a test setting too, captioned and tagged; the passages are selected by dragging the pointer over the page; ⌃⌘2, ⌘[, ⌥⌘5, ⌘⌫ and ⌘1 are keys (the menu items on Linux); the questions and the name are typed; the rest is clicked by the pointer',
     );
     const shownTab = () => page.locator('[data-testid="tab"][aria-selected="true"]').getAttribute('data-item-id');
-    const stage = () => page.locator('[data-testid="tab-panel"][data-active="true"] [data-testid="image-stage"]');
-    const drawn = () => expect.poll(async () => (await imageState(page))?.status, { timeout: 15_000 }).toBe('shown');
-    const searchField = page.getByTestId('search-field').locator('input');
-    const scopeMenu = page.getByRole('menu', { name: '검색 범위' });
-    const titleOf = (file: string) => path.basename(file, path.extname(file));
-    const backToLibrary = async () => {
-      const at = await press('1', ['command'], 'nav.back', async () => (await shownTab()) === 'library');
-      await expect(page.getByTestId('library-table')).toBeVisible();
-      return at;
+    const mode = () => page.getByTestId('inspector').getAttribute('data-mode');
+    const composer = page.getByTestId('tutor-input');
+    const answers = page.getByTestId('tutor-answer');
+    const log = page.getByTestId('tutor-log');
+    const field = page.getByTestId('pdf-page-field');
+    const accel = (id: CommandId) => key(commandById(id).accelerator!);
+    /**
+     * A sentence of page `n` selected as a reader does it: the pointer pressed on its first letter and dragged to its last, along its
+     * line. The passage attaches itself to the next question. A drag that left nothing fails the demo (a soft failure, so the run and
+     * its files go on): the reader's own probe then selects it, a synthetic step the video would not say.
+     */
+    const selectSentence = async (sentence: string, n: number) => {
+      const at = await page.evaluate(([sentence, n]) => {
+        const layer = document.querySelector(`[data-testid="tab-panel"][data-active="true"] .page[data-page-number="${n}"] .textLayer`);
+        if (!layer) return null;
+        const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT);
+        for (let t = walker.nextNode() as Text | null; t; t = walker.nextNode() as Text | null) {
+          const from = t.data.indexOf(sentence);
+          if (from < 0) continue;
+          const range = document.createRange();
+          range.setStart(t, from);
+          range.setEnd(t, from + sentence.length);
+          const rects = [...range.getClientRects()].filter((r) => r.width > 0);
+          const first = rects[0]!;
+          const last = rects.at(-1)!;
+          return { x0: first.left + 2, x1: last.right - 2, y: first.top + first.height / 2 };
+        }
+        return null;
+      }, [sentence, n] as const);
+      const label = page.getByTestId('tutor-attached-label');
+      let attached = false;
+      if (at !== null) {
+        await glide(page, 'main', at.x0, at.y);
+        await pause(300);
+        // While the system arrow is the pointer it is the drag's only cursor: the overlay's drawn one goes for the drag (as M7c's did).
+        if (cursor !== 'synthetic') await drawnCursor(page, false);
+        try {
+          await pressAndDrag(page.mouse, { x: at.x0, y: at.y }, () => dragAlong(page, 'main', at.x0, at.x1, at.y));
+        } finally {
+          if (cursor !== 'synthetic') await drawnCursor(page, true);
+        }
+        attached = await expect(label).toContainText(sentence.slice(0, 8), { timeout: 5000 }).then(() => true, () => false);
+      }
+      expect.soft(attached, `the drag over "${sentence}" selected it (the reader's probe did instead)`).toBe(true);
+      if (!attached) {
+        notes.push(`the drag over "${sentence}" attached nothing (${at === null ? 'not one run of text' : 'no selection'}): the reader's probe selected it`);
+        const text = await page.evaluate((i) => window.__learnPdf!.pageText(i), n - 1);
+        const from = text.indexOf(sentence);
+        await page.evaluate(async ([i, s, e]) => window.__learnPdf!.selectText(i!, s!, e!), [n - 1, from, from + sentence.length] as const);
+        await expect(label).toContainText(sentence.slice(0, 8));
+      }
     };
 
-    // 1. Five pictures dropped on the window: the overlay counts them, the table lists them as 이미지.
-    await chapter('사진과 도판 다섯 장을 창에 끌어다 놓으면 이미지 자료로 들어옵니다. PNG, JPEG, WebP 모두 됩니다. (끌어 놓기는 스크립트로 재현합니다)', page, 6500);
-    await pause(1500);
-    await dropSource(page, pictures);
-    await scriptedTag('끌어 놓기는 스크립트로 재현');
-    await drag(page, 'dragenter', 'source');
-    await drag(page, 'dragover', 'source');
-    await expect(page.getByTestId('drop-summary')).toContainText(`${PICTURES.length}개`);
-    // The files are let go over the empty stretch under the two cards: the pointer covers none of the overlay's words.
-    const cards = (await page.getByTestId('drop-copy').boundingBox())!;
-    await glide(page, 'main', Math.round(await page.evaluate(() => innerWidth / 2)), Math.round(cards.y + cards.height + 56));
-    await pause(4500);
-    await drag(page, 'drop', 'source');
-    await expect(page.getByTestId('import-done').filter({ hasText: `자료 ${PICTURES.length}개를 가져왔습니다` })).toBeVisible();
-    for (const file of pictures) await expect(rowByTitle(page, titleOf(file)).locator('[data-col="type"]')).toHaveText('이미지');
-    await scriptedTag(null);
-    await park(page, 'main');
-    await pause(10000);
+    /** The pointer rests on a chip's right third: its label stays clear of the drawn pointer, and its tooltip still comes. */
+    const hoverRightThird = async (target: Locator) => {
+      const box = (await target.boundingBox())!;
+      await glide(page, 'main', box.x + (box.width * 5) / 6, box.y + box.height / 2);
+    };
 
-    // 2. The photo: fitted on opening, a pinch about a point, a drag, a quarter turn, the dark ground.
-    await chapter(`사진을 열면 창에 맞춰 보입니다. 보기 메뉴에서 배경을 고르고, 핀치로 손가락 아래를 키우고, 끌어서 옮기고, ${key('CmdOrCtrl+R')}로 돌립니다. (핀치는 스크립트로 재현합니다)`, page, 6500);
-    await pause(1200);
-    await glideClick(page, 'main', rowByTitle(page, PHOTO_TITLE));
-    await pause(400);
-    await page.keyboard.press('Enter');
-    await drawn();
-    expect((await imageState(page))!.zoom).toBe('fit');
-    await park(page, 'main');
-    await pause(4500);
-    // The ground first, while the whole picture is in the window: it shows on every side of it.
-    await glideClick(page, 'main', page.locator('[data-testid="tab-panel"][data-active="true"] [data-testid="image-view-menu"]'));
-    await pause(1500);
-    await glideClick(page, 'main', page.getByRole('menuitemradio', { name: '어둡게' }));
-    await expect(stage()).toHaveAttribute('data-bg', 'dark');
-    await park(page, 'main');
-    await pause(4500);
-    const box = (await stage().boundingBox())!;
-    const at = { x: Math.round(box.x + box.width * 0.6), y: Math.round(box.y + box.height * 0.42) };
-    await glide(page, 'main', at.x, at.y);
-    await scriptedTag('핀치는 스크립트로 재현');
-    for (let i = 0; i < 24; i++) {
-      await stage().evaluate((el, p) => void el.dispatchEvent(new WheelEvent('wheel', { deltaY: -6, ctrlKey: true, clientX: p.x, clientY: p.y, cancelable: true, bubbles: true })), at);
-      await pause(45);
-    }
-    await expect(stage()).toHaveAttribute('data-pannable', '');
-    await scriptedTag(null);
-    await pause(3500);
-    // A drag of the picture, as a reader moves a large picture about.
-    await page.mouse.move(at.x, at.y);
-    if (cursor !== 'synthetic') await drawnCursor(page, false);
-    await page.mouse.down();
-    await dragAlong(page, 'main', at.x, at.x - 300, at.y, at.y - 170);
-    await pause(400);
-    await page.mouse.up();
-    if (cursor !== 'synthetic') await drawnCursor(page, true);
-    await pause(3500);
-    const turned = await press('r', ['command'], 'reader.rotateCw', async () => (await imageState(page))?.rotation === 90);
-    await expect.poll(async () => (await imageState(page))?.rotation).toBe(90);
-    await afterKey(turned, 1800);
-    await park(page, 'main');
-    await pause(5000);
-
-    // 3. The tab closed and opened again: the same zoom, the same point in the middle, the same turn.
-    await chapter(`탭을 닫았다가 ${key('Shift+CmdOrCtrl+T')}로 다시 열어도 확대 배율과 보던 자리, 회전이 그대로 돌아옵니다.`, page, 6000);
-    const before = (await imageState(page))!;
-    const photoId = before.itemId;
-    await pause(3000);
-    const closed = await press('w', ['command'], 'tab.close', async () => (await page.locator('[data-testid="tab"]').count()) <= 1);
-    await expect(page.getByTestId('library-table')).toBeVisible();
-    await afterKey(closed, 3000);
-    const reopened = await press('t', ['command', 'shift'], 'tab.reopenClosed', async () => (await shownTab()) === photoId);
-    await drawn();
-    const after = (await imageState(page))!;
-    expect(after.itemId).toBe(photoId);
-    expect(after.rotation).toBe(before.rotation);
-    expect(after.scale).toBeCloseTo(before.scale, 3);
-    expect(Math.abs(after.cx - before.cx)).toBeLessThan(0.01);
-    expect(Math.abs(after.cy - before.cy)).toBeLessThan(0.01);
-    await afterKey(reopened, 6500);
-    await park(page, 'main');
+    // 1. ⌃⌘2: the right panel turns to the tutor, which asks first — the consent card — and 동의 turns it on.
+    await chapter(`${accel('view.inspectorTutor')}로 오른쪽 패널을 튜터로 바꿉니다. 처음에는 동의 카드가 먼저 나와, 질문과 함께 무엇을 어디로 보내는지 알려 줍니다.`, page, 6500);
     await pause(2500);
+    const turned = await press('2', ['control', 'command'], 'view.inspectorTutor', async () => (await mode()) === 'tutor');
+    await expect(page.getByTestId('tutor-consent')).toBeVisible();
+    await afterKey(turned, 8000);
+    await glideClick(page, 'main', page.getByTestId('tutor-consent-agree'));
+    await expect(page.getByTestId('tutor-chooser')).toBeVisible();
+    await park(page, 'main');
+    await pause(1500);
 
-    // 4. The quick search's scope: 정보와 본문.
-    await chapter('라이브러리 검색 필드 앞의 단추로 검색 범위를 고릅니다. ‘정보와 본문’을 고르면 PDF 본문까지 찾습니다.', page, 6000);
-    await afterKey(await backToLibrary(), 1000);
-    await glideClick(page, 'main', page.getByTestId('search-scope'));
-    await expect(scopeMenu).toBeVisible();
-    await pause(5000);
-    await glideClick(page, 'main', scopeMenu.getByRole('menuitemradio', { name: '정보와 본문', exact: true }));
-    await expect(scopeMenu).toHaveCount(0);
-    await expect(searchField).toHaveAttribute('placeholder', '제목, 저자, 태그, 본문 검색');
+    // 2. The chooser: Claude Code is not installed here; the fake agent of a development build is chosen and started.
+    await chapter('동의하면 에이전트를 고릅니다. 이 녹화에는 Claude Code가 없어 개발·데모 빌드 전용 가짜 에이전트로 시작합니다. 가짜는 정해 둔 답을 돌려줍니다.', page, 7500);
+    await expect(page.getByTestId('agent-row').and(page.locator('[data-agent="claude"]')).getByTestId('agent-flag')).toHaveText('설치 안 됨');
+    await pause(5500);
+    await glideClick(page, 'main', page.getByTestId('agent-dev-group').getByTestId('agent-row'));
+    await expect(page.getByTestId('agent-start')).toHaveText('가짜 에이전트로 시작');
+    await park(page, 'main');
+    await pause(2000);
+    await glideClick(page, 'main', page.getByTestId('agent-start'));
+    await expect(page.getByTestId('tutor-empty')).toBeVisible();
+    await expect(page.getByTestId('tutor-fake-band')).toBeVisible();
+    await park(page, 'main');
+    await pause(4000);
+
+    // 3. A passage of page 1 selected: it attaches itself (a chip in the composer, a mark on the page); a question typed.
+    await chapter('본문에서 구간을 고르면 그 구간이 다음 질문에 붙습니다. 입력창에는 칩으로, 쪽 위에는 표시로 남습니다.', page, 60000);
+    await pause(1500);
+    await selectSentence(PASSAGES.first, 1);
+    await expect(page.getByTestId('tutor-attached')).toBeVisible();
+    // The caption stays until 2 s after the chip has come (the Mac's drag takes about 3.5 s, Linux's about 1 s), then goes.
+    await pause(2000);
+    await caption(lastCaptioned, '');
+    await pause(1000);
+    await glideClick(page, 'main', composer);
+    await page.keyboard.type(QUESTIONS.first, { delay: Math.round(110 * PACE) });
+    await expect(composer).toHaveValue(QUESTIONS.first);
+    await park(page, 'main');
+    await pause(2000);
+
+    // 4. ↩: the tool chips, then the answer as it comes.
+    await chapter('↩로 보내면 튜터가 붙인 구간과 목차를 확인하고 그 쪽을 읽은 뒤 답합니다. 도구 칩이 무엇을 읽었는지 보여 주고, 답은 받는 대로 흘러나옵니다.', page, 6500);
+    await pause(1500);
+    await composer.focus();
+    await page.keyboard.press('Enter');
+    await expect(answers.first().getByTestId('tool-chip')).toHaveText(['선택한 구간 확인', '목차 확인', '1–2쪽 읽음'], { timeout: 30_000 });
+    await expect(answers.first()).toHaveAttribute('data-status', 'complete', { timeout: 30_000 });
     await park(page, 'main');
     await pause(7000);
 
-    // 5. A two-letter Korean word: the title that has it (marked) and the PDFs whose pages have it, together.
-    await chapter(`한국어 두 글자 ‘${SEARCH_WORD}’로 찾으면 제목이 맞는 자료와 본문에 그 낱말이 있는 PDF가 함께 나옵니다. 표시는 제목이 맞은 곳에만 붙습니다.`, page, 6500);
-    await glideClick(page, 'main', searchField);
-    await pause(800);
-    await page.keyboard.type(SEARCH_WORD, { delay: Math.round(500 * PACE) });
-    await expect(searchField).toHaveValue(SEARCH_WORD);
-    await expect(page.getByTestId('item-row')).toHaveCount(3);
-    await expect(rowByTitle(page, MATCHES_TITLE)).toBeVisible();
-    await expect(rowByTitle(page, TRASHED_TITLE)).toBeVisible();
-    await expect(page.locator('[data-testid="item-row"] mark')).toHaveText([SEARCH_WORD]);
-    await park(page, 'main');
-    await pause(12000);
-
-    // 6. The item panel's 본문 일치: the pages with the word, each with its words around it.
-    await chapter('자료를 고르면 항목 패널 맨 위 ‘본문 일치’에 그 낱말이 나온 쪽과 앞뒤 글이 보입니다.', page, 6000);
-    await glideClick(page, 'main', rowByTitle(page, MATCHES_TITLE));
-    const matchRows = page.getByTestId('matches-section').getByTestId('match-row');
-    await expect(matchRows.first()).toBeVisible();
-    await park(page, 'main');
-    await pause(12000);
-
-    // 7. A page opened from it: the reader at that page, the find bar on the word, its match there marked.
-    await chapter('쪽을 누르면 그 쪽에서 PDF가 열리고, 찾기 막대에 같은 낱말이 들어가 그 쪽의 일치가 강조됩니다.', page, 6000);
-    const row = (await matchRows.count()) > 1 ? matchRows.nth(1) : matchRows.first();
-    const pageNumber = await row.getAttribute('data-page');
-    await glideClick(page, 'main', row);
-    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', '');
-    await expect(page.getByTestId('pdf-find-field').getByRole('searchbox')).toHaveValue(SEARCH_WORD);
-    await expect(page.locator(`[data-testid="tab-panel"][data-active="true"] .page[data-page-number="${pageNumber}"] .textLayer .highlight.selected`)).toBeVisible();
-    await park(page, 'main');
-    await pause(13000);
-
-    // 8. Two notes come in while the index is held: the scope menu counts the PDFs read, and the line goes once they are.
-    notes.push('chapter 8: a test hook holds the body index while the two notes come in and the menu opens, then lets it go (two short notes are read before a menu could open)');
-    await chapter('새로 가져온 PDF는 뒤에서 본문을 색인합니다. 그동안 검색 범위 메뉴 아래에 색인 진행이 보이고, 끝나면 사라집니다. (파일 패널은 건너뛰고, 색인은 잠시 멈춰 둡니다)', page, 6500);
-    await afterKey(await backToLibrary(), 800);
-    await textExtraction(app, 'pause');
-    await stubOpenDialog(app, media.extra);
-    const imported = await press('o', ['command'], 'file.importManaged');
-    await expect(page.getByTestId('import-done').filter({ hasText: `자료 ${media.extra.length}개를 가져왔습니다` })).toBeVisible();
-    await afterKey(imported, 1200);
-    const total = firstPdfs.length + media.extra.length;
-    await expect.poll(indexProgress).toEqual({ done: firstPdfs.length, total });
-    await glideClick(page, 'main', page.getByTestId('search-scope'));
-    const progressLine = page.getByTestId('search-scope-progress');
-    await expect(progressLine).toHaveText(new RegExp(`^본문 색인 ${firstPdfs.length}\\s/\\s${total}$`));
-    await pause(6000);
-    await textExtraction(app, 'now');
-    await expect(progressLine).toHaveCount(0, { timeout: 30_000 });
-    await pause(6000);
-    await page.keyboard.press('Escape');
-    await expect(scopeMenu).toHaveCount(0);
-    await park(page, 'main');
+    // 5. Its cite chips: the pages this turn read.
+    await chapter('답 안의 ‘2쪽’ 같은 인용 칩은 튜터가 이번 답에서 실제로 읽은 쪽만 가리킵니다. 누르면 그 쪽으로 갑니다.', page, 6000);
+    const chip = answers.first().getByTestId('cite-chip').filter({ hasText: '2쪽' }).first();
+    await expect(chip).toBeInViewport();
     await pause(1500);
+    await hoverRightThird(chip);
+    await pause(4500);
 
-    // 9. A body match moved to the trash leaves the results.
-    await chapter('본문이 일치한 자료도 휴지통으로 옮기면 검색 결과와 본문 일치에서 빠집니다.', page, 6000);
-    await glideClick(page, 'main', rowByTitle(page, TRASHED_TITLE));
-    await expect(page.getByTestId('matches-section').getByTestId('match-row').first()).toBeVisible();
-    await pause(4000);
-    const trashed = await press('Backspace', ['command'], 'item.trash', async () => (await rowByTitle(page, TRASHED_TITLE).count()) === 0, 51);
-    await expect(rowByTitle(page, TRASHED_TITLE)).toHaveCount(0);
-    await expect(page.getByTestId('item-row')).toHaveCount(2);
-    await afterKey(trashed, 3500);
+    // 6. Pressed: the reader at that page, its outline for a moment, the chip current; ⌘[ comes back.
+    await chapter(`리더가 그 쪽으로 가고 쪽 둘레가 잠깐 강조됩니다. 칩에는 지금 보는 쪽이라는 테두리가 남고, ${accel('nav.historyBack')}로 돌아옵니다.`, page, 6500);
+    await pause(800);
+    await glideClick(page, 'main', chip);
+    await expect(field).toHaveValue('2');
+    await expect(chip).toHaveClass(/\bis-current\b/);
+    // Away from the chip at once: its current border shows, and goes once ⌘[ has left the page.
     await park(page, 'main');
-    await pause(10500);
+    await pause(6000);
+    const back = await press('[', ['command'], 'nav.historyBack', async () => (await field.inputValue()) === '1');
+    await expect(field).toHaveValue('1');
+    await afterKey(back, 2500);
+    await park(page, 'main');
+
+    // 7. An answer that cites a page it did not read: 출처 없음, its notice, and 원문 근거로 다시 묻기 — a turn that reads it first.
+    await nextFakeScript(page, app, 'demo-unverified');
+    // The caption stays until the 출처 없음 chips are there to see, and some seconds more (the next caption takes its place).
+    await chapter('튜터가 읽지 않은 쪽을 가리키면 그 인용은 ‘출처 없음’이 되고, 답 아래에 안내가 붙습니다. (가짜 에이전트가 일부러 읽지 않은 쪽을 가리키게 했습니다)', page, 60_000);
+    await pause(1000);
+    await selectSentence(PASSAGES.second, 1);
+    await glideClick(page, 'main', composer);
+    // Parked before the typing: at the composer's centre the pointer would cover the question's end as it grows.
+    await park(page, 'main');
+    await page.keyboard.type(QUESTIONS.second, { delay: Math.round(110 * PACE) });
+    await page.keyboard.press('Enter');
+    const unverified = answers.nth(1);
+    await expect(unverified).toHaveAttribute('data-status', 'complete', { timeout: 30_000 });
+    await expect(unverified.getByTestId('cite-chip').filter({ hasText: '출처 없음' })).toHaveCount(2);
+    await park(page, 'main');
+    await pause(3000);
+    const none = unverified.getByTestId('cite-chip').filter({ hasText: '출처 없음' }).first();
+    await none.scrollIntoViewIfNeeded();
+    await hoverRightThird(none);
+    await pause(4000);
+    await nextFakeScript(page, app, 'demo');
+    await caption(lastCaptioned, '‘원문 근거로 다시 묻기’를 누르면 튜터가 그 쪽을 먼저 읽고 다시 답합니다. 이번에는 그 쪽이 확인된 인용이 됩니다.', 6000);
+    const reground = page.getByTestId('tutor-reground');
+    await reground.scrollIntoViewIfNeeded();
+    await pause(1500);
+    await glideClick(page, 'main', reground);
+    await expect(answers).toHaveCount(3);
+    await expect(page.getByTestId('tutor-question').last().locator('.bubble p')).toHaveText('1쪽을 먼저 읽고 다시 답해 주세요.');
+    await expect(answers.nth(2)).toHaveAttribute('data-status', 'complete', { timeout: 30_000 });
+    await expect(answers.nth(2).getByTestId('cite-chip').first()).toHaveText('1쪽');
+    await park(page, 'main');
+    await pause(8000);
+
+    // 8. Offline: nothing is sent, the question stays in the composer; once online one ↩ sends it.
+    await chapter('인터넷에 연결되어 있지 않으면 아무것도 보내지 않고 그렇다고 알립니다. 질문은 입력창에 그대로 남습니다. (연결 끊김은 시험용 설정으로 재현합니다)', page, 6500);
+    await tutorNetwork(app, 'offline');
+    await scriptedTag('연결 끊김은 시험용 설정으로 재현');
+    // The column at its end, where the next turn's place is.
+    const end = (await log.boundingBox())!;
+    const inLog = { x: end.x + end.width / 2, y: end.y + end.height / 2 };
+    await glide(page, 'main', inLog.x, inLog.y);
+    // The wheel goes where Playwright's mouse is: a glide of the system's arrow leaves it at the park spot.
+    await page.mouse.move(inLog.x, inLog.y);
+    await page.mouse.wheel(0, 20_000);
+    await expect.poll(() => log.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight)).toBeLessThanOrEqual(24);
+    await pause(1000);
+    await glideClick(page, 'main', composer);
+    await park(page, 'main');
+    await page.keyboard.type(QUESTIONS.offline, { delay: Math.round(110 * PACE) });
+    await page.keyboard.press('Enter');
+    const failure = page.getByTestId('tutor-failure');
+    await expect(failure).toHaveAttribute('data-code', 'OFFLINE');
+    await expect(failure).toBeInViewport();
+    await expect(composer).toHaveValue(QUESTIONS.offline);
+    await park(page, 'main');
+    await pause(7000);
+    await tutorNetwork(app, null);
+    await scriptedTag(null);
+    await caption(lastCaptioned, '연결이 돌아온 뒤 입력창에서 ↩ 한 번으로 보냅니다. 저절로 다시 보내지는 않습니다.', 5000);
+    await pause(2500);
+    await composer.focus();
+    await page.keyboard.press('Enter');
+    await expect(failure).toHaveCount(0);
+    await expect(answers.last()).toHaveAttribute('data-status', 'complete', { timeout: 30_000 });
+    await park(page, 'main');
+    await pause(4000);
+
+    // 9. ⌥⌘5: the 세션 pane, by day; ↩ names the tab's session in place.
+    await chapter(`${accel('reader.showSessions')}로 왼쪽에 이 자료의 세션을 엽니다. 날짜별로 묶여 있고, 행을 고른 뒤 ↩로 이름을 바꿉니다.`, page, 6500);
+    const shown = await press('5', ['option', 'command'], 'reader.showSessions', async () => (await page.getByTestId('reader-sessions').count()) > 0);
+    const rows = page.getByTestId('reader-sessions').getByTestId('session-row');
+    await expect(rows).toHaveCount(3);
+    // The older sessions on screen (here, in chapter 10 and in the library) were written before the recording: a lasting tag says so.
+    await scriptedTag(SEEDED_TAG);
+    const current = page.locator('[data-testid="reader-sessions"] [data-testid="session-row"][aria-selected="true"]');
+    await expect(current).toHaveText(QUESTIONS.first);
+    await afterKey(shown, 3500);
+    await glideClick(page, 'main', current);
+    // The pointer away before the name is typed, so it covers none of it.
+    await park(page, 'main');
+    await page.keyboard.press('Enter');
+    const name = page.getByTestId('session-name-input');
+    await expect(name).toBeFocused();
+    await pause(1500);
+    await page.keyboard.press('ControlOrMeta+A');
+    await page.keyboard.type(SESSION_NAME, { delay: Math.round(110 * PACE) });
+    await pause(800);
+    await page.keyboard.press('Enter');
+    await expect(name).toHaveCount(0);
+    await expect(current).toHaveText(SESSION_NAME);
+    await expect(page.getByTestId('tutor-session-head').locator('.t')).toHaveText(SESSION_NAME);
+    await park(page, 'main');
+    await pause(6500);
+
+    // 10. ⌘⌫ deletes the session at once; 실행 취소 brings it back.
+    await chapter(`${accel('item.trash')}로 세션을 지우면 목록에서 곧바로 사라지고, 알림의 ‘실행 취소’로 되돌립니다.`, page, 6000);
+    await glideClick(page, 'main', current);
+    await press('Backspace', ['command'], 'item.trash', async () => (await rows.count()) === 2, 51);
+    await expect(rows).toHaveCount(2);
+    const undo = page.getByTestId('session-undo');
+    await expect(undo).toBeVisible();
+    await overlayClear(page, 'the ⌘⌫ pill beside the undo toast');
+    // The arrow goes onto 실행 취소 at once, and the toast holds while the pointer is on it (react-aria's hover hold), so nothing
+    // here is timed against its 5 s; the arrow also leaves the 세션 pane, so no row slides under it. The pill goes (its own 5 s
+    // at most), the clear toast is read about 1.5 s with the arrow resting on its button, and the press comes where it rests.
+    // The arrow aims at the button's right part, so the label stays readable. Where the system arrow is the pointer, the press
+    // moves Playwright's mouse to that same point, inside the toast, so the hold lasts. A miss fails in 3 s.
+    const undoAction = undo.getByTestId('undo-action');
+    const undoBox = (await undoAction.boundingBox())!;
+    await glide(page, 'main', undoBox.x + undoBox.width * 0.85, undoBox.y + undoBox.height / 2);
+    await expect(page.getByTestId('demo-pill')).toHaveCount(0, { timeout: 5000 });
+    await glideClick(page, 'main', undoAction, { at: 0.85, restMs: 1500, timeout: 3000 });
+    await expect(rows).toHaveCount(3);
+    await expect(rows.filter({ hasText: SESSION_NAME })).toHaveCount(1);
+    await park(page, 'main');
+    await pause(4500);
+
+    // 11. The library's 세션 section: the notes talked about last, each with its newest sessions; a row opens its note on that session.
+    await chapter('라이브러리 사이드바의 ‘세션’ 묶음에는 최근 튜터에게 물어본 자료가 세션과 함께 모입니다. 행을 누르면 그 자료와 세션이 함께 열립니다.', page, 6500);
+    const library = await press('1', ['command'], 'nav.back', async () => (await shownTab()) === 'library');
+    const section = page.getByTestId('library-sessions');
+    await expect(section).toBeVisible();
+    // The tag again for the view now shown: over the library table's empty area, clear of its header row (then back in the reader).
+    await scriptedTag(SEEDED_TAG);
+    await afterKey(library, 4000);
+    // The tag is placed for the library's view: it goes with it, and comes back at the reader's place once the reader shows.
+    await scriptedTag(null);
+    await glideClick(page, 'main', section.getByTestId('session-row').filter({ hasText: SESSION_NAME }));
+    await expect.poll(() => shownTab()).toBe(readId);
+    await expect(page.getByTestId('tutor-session-head').locator('.t')).toHaveText(SESSION_NAME);
+    await scriptedTag(SEEDED_TAG);
+    expect(await mode()).toBe('tutor');
+    await park(page, 'main');
+    await pause(10000);
+    await scriptedTag(null);
 
     demoSeconds = Math.round((Date.now() - started) / 100) / 10;
     stopIfLost(); // an exit that came during the last pause
@@ -912,7 +1056,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     fs.rmSync(userData, { recursive: true, force: true });
     fs.rmSync(libraryDir, { recursive: true, force: true });
     fs.rmSync(path.join(work, 'app'), { recursive: true, force: true }); // the macOS app copy (re-review minor 5)
-    for (const dir of [backups, restores, materialDir, pictureDir]) fs.rmSync(dir, { recursive: true, force: true });
+    for (const dir of [backups, restores, materialDir]) fs.rmSync(dir, { recursive: true, force: true });
     // macOS: the recording began when screencapture's first frame did, RECORD_SECONDS before it exited (T13-m9); Linux:
     // when ffmpeg had opened the screen. Negative: the recording started before the chapters' zero (the pre-roll).
     const offset =
@@ -923,8 +1067,8 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
           : 0;
     const inVideo = (c: { ms: number }) => Math.max(0, Math.floor(c.ms / 1000 - offset));
     const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
-    const txt = outFile('m7c-demo.chapters.raw.txt');
-    const json = outFile('m7c-demo.chapters.json');
+    const txt = outFile('t1a-demo.chapters.raw.txt');
+    const json = outFile('t1a-demo.chapters.json');
     fs.writeFileSync(txt.abs, chapters.map((c) => `${mmss(inVideo(c))} ${c.title}`).join('\n') + '\n');
     fs.writeFileSync(
       json.abs,
@@ -942,8 +1086,8 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
             'chapters[].ms': "milliseconds on the demo script's clock (zero = the first chapter's start)",
             offset: "seconds from that zero to the raw recording's first frame",
             demoSeconds: "seconds on the script's clock",
-            'm7c-demo.chapters.raw.txt': 'the raw recording (m7c-demo.mov / .mp4): ms / 1000 − offset; late on the trimmed file',
-            'm7c-demo.final.* and its .chapters.txt/.json': 'the trimmed video that viewers watch: scripts/finish-demo.sh writes them, with the cut head and the Mac file length applied',
+            't1a-demo.chapters.raw.txt': 'the raw recording (t1a-demo.mov / .mp4): ms / 1000 − offset; late on the trimmed file',
+            't1a-demo.final.* and its .chapters.txt/.json': 'the trimmed video that viewers watch: scripts/finish-demo.sh writes them, with the cut head and the Mac file length applied',
           },
           /** Seconds from the chapters' zero to the recording's first frame: a chapter is at `ms / 1000 − offset` in the raw video. */
           offset,
@@ -967,18 +1111,18 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
         2,
       )}\n`,
     );
-    record({ file: txt.rel, kind: 'data', description: 'M7c demo chapter list on the RAW recording timeline (the trimmed video has its own list from finish-demo.sh)' });
-    record({ file: json.rel, kind: 'data', description: 'M7c demo chapters, offset, input, cursor, screen, display switch, notes' });
+    record({ file: txt.rel, kind: 'data', description: 'T1a demo chapter list on the RAW recording timeline (the trimmed video has its own list from finish-demo.sh)' });
+    record({ file: json.rel, kind: 'data', description: 'T1a demo chapters, offset, input, cursor, screen, display switch, notes' });
     mergeEnv({ displayModes: savedDisplayModes(), displaySwitch: display.result });
   }
   if (loss) return { lost: loss };
-  expect.soft(overlayClashes, 'captions, the tag and the parked pointer keep clear of the sidebar\'s labels and tag chips').toEqual([]);
+  expect.soft(overlayClashes, 'captions, the tag, the pill and the parked pointer keep clear of the sidebar\'s labels and tag chips and of the toasts').toEqual([]);
   // A demo longer than the fixed macOS recording lost its end: say so (the files above are written either way).
   if (IS_MAC && rec?.file) expect(demoSeconds, 'the demo fits the recording (RECORD_SECONDS)').toBeLessThanOrEqual(RECORD_SECONDS);
   return { lost: null };
 }
 
-test('M7c demo recording with chapters', { tag: '@demo' }, async () => {
+test('T1a demo recording with chapters', { tag: '@demo' }, async () => {
   test.setTimeout(DEMO_BUDGET_MS + 60_000);
   const began = Date.now();
   const history: string[] = [];
@@ -993,7 +1137,7 @@ test('M7c demo recording with chapters', { tag: '@demo' }, async () => {
     }
   }
   // Every attempt lost its recording: the last attempt's chapters.json carries the history; the run reports it.
-  const json = outFile('m7c-demo.chapters.json').abs;
+  const json = outFile('t1a-demo.chapters.json').abs;
   try {
     const written = JSON.parse(fs.readFileSync(json, 'utf8')) as { notes: string[] };
     fs.writeFileSync(json, `${JSON.stringify({ ...written, notes: [...history, ...written.notes.filter((n) => !history.includes(n))] }, null, 2)}\n`);

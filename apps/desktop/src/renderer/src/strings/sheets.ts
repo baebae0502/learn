@@ -27,6 +27,7 @@ export const sheets = {
     rotate: '시계 / 반시계 방향으로 회전',
     nav: '썸네일 / 목차 보기',
     history: '뒤로 / 앞으로',
+    inspectorModes: '정보 / 튜터 보기',
   },
   tabNumbersTo: '부터 ',
   /** The keys the ⌘K palette and every sheet understand (design-spec 7.4); sheets/shortcuts.ts spells them per platform. */
@@ -46,6 +47,13 @@ export const sheets = {
     /** `what`: "자료 7개와 컬렉션 2개" — it ends in 개, so 를. */
     bodyEmpty: (what: string) => `${what}를 영구히 지웁니다. 되돌릴 수 없습니다. 외부 연결 원본은 지우지 않습니다.`,
     what: (items: number, collections: number) => (items > 0 && collections > 0 ? `자료 ${items}개와 컬렉션 ${collections}개` : collections > 0 ? `컬렉션 ${collections}개` : `자료 ${items}개`),
+    /**
+     * The tutor sessions that go with the items (T1a spec 6.2, 13), after the text: one item's, several items' (`items`: those with
+     * sessions), the trash's.
+     */
+    sessionsOne: (n: number) => `이\u00a0자료의 세션 ${n}개도 함께 지웁니다.`,
+    sessionsMany: (items: number, n: number) => `자료 ${items}개의 세션 ${n}개도 함께 지웁니다.`,
+    sessionsTrash: (n: number) => `휴지통에 있는 자료의 세션 ${n}개도 함께 지웁니다.`,
     purge: '영구 삭제',
     empty: '휴지통 비우기',
     cancel: '취소',

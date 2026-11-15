@@ -138,6 +138,14 @@ describe('outlinePages', () => {
       expect(most).toBe(32);
     });
 
+    it('resolves only `limit` entries from `from` (reading order), and says after each batch how far it got', async () => {
+      const seen: Array<[number, number]> = [];
+      const pages = await outlinePages(doc(), many, () => false, (so_far, upTo) => seen.push([so_far.size, upTo]), { from: 10, limit: 40 });
+      expect([...pages.keys()]).toEqual(many.slice(10, 50).map((r) => r.id));
+      expect(seen).toEqual([[32, 42], [40, 50]]);
+      expect(await outlinePages(doc(), many, () => false, undefined, { from: 60, limit: 300 })).toHaveProperty('size', 10);
+    });
+
     it('stops at the batch boundary when cancelled and reports nothing more', async () => {
       const d = doc();
       let stop = false;

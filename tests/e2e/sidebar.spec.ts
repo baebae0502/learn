@@ -176,8 +176,13 @@ test('200 collections: the tree is virtual and its keys follow the model — Hom
     await page.keyboard.press('Tab');
     expect(await page.evaluate(() => (document.activeElement?.closest('[data-testid="sidebar-tree"]') ?? null) !== null)).toBe(false);
 
-    // → at the bottom edge: the open row is the last one fully in view, so its first child may not be mounted yet.
-    const order = visibleOrder(tree);
+    // → at the bottom edge: the open row is the last one fully in view, so its first child may not be mounted yet. The rows drawn are the
+    // open tree's but those under `child`, folded above (a short window shows too few rows to cover that difference).
+    const under = (id: string, of: string) => {
+      for (let p = tree.parent[id]; p; p = tree.parent[p]) if (p === of) return true;
+      return false;
+    };
+    const order = visibleOrder(tree).filter((id) => !under(id, child));
     const parentId = tree.ids.filter((id) => tree.parent[id] === null)[5]!;
     const firstChild = tree.children[parentId]![0]!;
     const specials = await page.locator('[data-testid^="nav-scope-"]').count();

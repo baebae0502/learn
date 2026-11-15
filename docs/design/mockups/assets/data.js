@@ -162,14 +162,26 @@ window.MockupData = (() => {
       ] },
       { item: 'G Protein–Coupled Receptor Dynamics in Live Cells', kind: 'pdf', rows: [{ title: '초록을 한국어로 정리해 주세요', at: '어제 오후 4:52' }] },
     ],
-    // Detected agents (ADR-0010 §1). Program names are the programs' own; our feature is only "튜터".
-    // Codex and Claude Code reach Learn through a separate ACP adapter (`cmd`); Gemini CLI and opencode have it built in.
-    agents: [
-      { id: 'codex', name: 'Codex', status: 'ready', text: '이&nbsp;프로그램에 설정한 계정으로 답합니다.' },
-      { id: 'claude', name: 'Claude Code', status: 'adapter', text: 'Claude Code는 있지만 Learn과 연결하는 도구가 없습니다. 터미널에서 아래 명령으로 설치한 뒤 다시 확인하세요(Node 22 이상).', cmd: 'npm i -g @agentclientprotocol/claude-agent-acp' },
-      { id: 'gemini', name: 'Gemini CLI', status: 'login', text: '터미널에서 <span class="mono">gemini</span>를 실행하고 안내에 따라 로그인한 뒤 다시 확인하세요.' },
-      { id: 'opencode', name: 'opencode', status: 'old', text: '설치된 버전은 Learn과 연결할 수 없습니다. 최신&nbsp;버전으로 업데이트한 뒤 다시 확인하세요.' },
-    ],
+    // The detected agent (T1a: Claude Code only — Codex is out of T1a, Gemini CLI and opencode come later). The row has five
+    // states (spec 4.3, in decision order); each has its row text (spec 13) and, where the user must act in a terminal, the
+    // command to copy. Claude Code reaches Learn through a separate adapter (`adapter`), pinned by the spike.
+    agents: [{ id: 'claude', name: 'Claude Code', status: 'ready' }],
+    agentStates: {
+      ready: { text: '바로 쓸 수 있습니다.' },
+      adapter: {
+        text: 'Learn과 연결하는 도구를 설치해야 합니다. 터미널에서 아래 명령을 실행한 뒤 다시 확인하세요. 설치할 때 약\u00a0350\u00a0MB를 내려받습니다.',
+        cmd: 'npm install -g @agentclientprotocol/claude-agent-acp@0.103.0',
+      },
+      login: {
+        text: 'Learn 전용 설정으로 한 번 로그인해야 합니다. 터미널에서 아래 명령을 실행한 뒤 다시 확인하세요.',
+        cmd: 'CLAUDE_CONFIG_DIR="$HOME/Library/Application Support/Learn/Tutor/agents/claude" claude auth login', // macOS; under a non-home folder the full path
+      },
+      old: { text: 'Claude\u00a0Code\u00a02.1.318 이상과 연결\u00a0도구\u00a00.103.0 이상이 필요합니다. 업데이트한 뒤 다시 확인하세요.' },
+      missing: {
+        text: '설치되어 있지 않습니다. 터미널에서 아래 명령으로 설치한 뒤 다시 찾기를 누르세요. 연결 도구는 설치할 때 약\u00a0350\u00a0MB를 내려받습니다.',
+        cmd: 'npm install -g @anthropic-ai/claude-code @agentclientprotocol/claude-agent-acp@0.103.0',
+      },
+    },
   };
 
   // M6 (docs/superpowers/specs/2026-10-31-m6-p1-gate-design.md §13). The trash holds 2 collection rows and 7

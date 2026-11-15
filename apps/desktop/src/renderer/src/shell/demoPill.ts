@@ -1,4 +1,4 @@
-import { COMMANDS, acceleratorKeys, commandById, commandLabel, type CommandId, type LearnEventMap, type SidebarState } from '@learn/domain';
+import { COMMANDS, acceleratorKeys, commandById, commandLabel, type CommandId, type LabelState, type LearnEventMap } from '@learn/domain';
 import { t } from '../strings';
 
 /** What the demo overlay shows for one shortcut: keycaps in the platform's glyphs, and the menu's label (or none). */
@@ -25,13 +25,14 @@ export type KeyPlace = 'row' | 'palette' | 'dropping' | 'other';
 
 /**
  * A registry command that ran from the menu (its accelerator or a click): its shortcut as the menus and tooltips draw
- * it (acceleratorKeys, which acceleratorLabel joins) and its menu label. A toggle is named by the state it found
- * (`sidebar` before the command ran: 사이드바 가리기 while shown). Null for a command without a shortcut.
+ * it (acceleratorKeys, which acceleratorLabel joins) and its menu label, named as the menu named it: by the state it found
+ * (`sidebar` before the command ran: 사이드바 가리기 while shown; a session row with the focus: ⌘⌫ is 세션 삭제). Null for a
+ * command without a shortcut.
  */
-export function commandPill(id: CommandId, platform: string, sidebar?: SidebarState): DemoPill | null {
+export function commandPill(id: CommandId, platform: string, state: Pick<LabelState, 'sidebar' | 'sessionFocused'> = {}): DemoPill | null {
   const c = commandById(id);
   if (!c.accelerator) return null;
-  const pill: DemoPill = { keys: acceleratorKeys(c.accelerator, platform), label: commandLabel(c, platform, sidebar ? { sidebar } : {}) };
+  const pill: DemoPill = { keys: acceleratorKeys(c.accelerator, platform), label: commandLabel(c, platform, state) };
   return SHEET_COMMANDS.has(id) ? { ...pill, aside: true } : pill;
 }
 

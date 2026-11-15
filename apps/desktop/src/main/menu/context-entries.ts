@@ -58,7 +58,9 @@ export function contextMenuEntries(
     if (!enabled && at.onlyWhenAvailable) return [];
     // ⌘⌫ is 영구 삭제… on a trash row (P-11); 열기 says how many tabs when the menu is for several items.
     const label = commandLabel(c, platform, kind === 'item' ? { ...ctx, selectionCount: targets.length } : ctx);
-    const hint = kind === 'tab' && extras.activeTab === true && c.accelerator !== undefined ? { hint: platformAccelerator(c.accelerator, platform) } : {};
+    // The shown tab's menu names its keys, and a session row's its ⌘⌫ (the key works on the focused row).
+    const keyed = (kind === 'tab' && extras.activeTab === true) || kind === 'session';
+    const hint = keyed && c.accelerator !== undefined ? { hint: platformAccelerator(c.accelerator, platform) } : {};
     if (c.submenu === undefined) return [{ group: at.group, order: at.order, entry: { id: c.id, label, enabled, ...hint } }];
     const rows = valueRows(c, input, enabled);
     return [{ group: at.group, order: at.order, entry: rows.length === 0 ? null : { label, enabled, submenu: rows } }];

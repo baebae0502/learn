@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { COMMANDS, NO_LIBRARY_VIEW, type CommandId, type CommandTargetInfo } from '@learn/domain';
+import { COMMANDS, NO_LIBRARY_VIEW, SESSION_TARGET, type CommandId, type CommandTargetInfo } from '@learn/domain';
 import { COMMAND_HANDLERS, contextOf, isCommandEnabled, menuTarget, reportedContext, runCommand, runPicked, yieldsToText, type CommandEnv, type CommandTarget } from './registry';
 
 const ID = '7d3f3c3e-8a51-4f7e-9d7c-2b1f0f6f8f10';
@@ -43,6 +43,10 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   relink: vi.fn(),
   toggleSidebar: vi.fn(),
   toggleInspector: vi.fn(),
+  setInspectorMode: vi.fn(),
+  chooseAgent: vi.fn(),
+  newSession: vi.fn(),
+  stopAnswer: vi.fn(),
   showShortcuts: vi.fn(),
   openPalette: vi.fn(),
   showInFolder: vi.fn(),
@@ -79,6 +83,11 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   keepOneOfDuplicates: vi.fn(),
   keepAllDuplicates: vi.fn(),
   cancelImport: vi.fn(),
+  renameSession: vi.fn(),
+  deleteSession: vi.fn(),
+  openSession: vi.fn(),
+  currentSession: () => null,
+  focusedSession: () => null,
   modal: false,
   ...over,
 });
@@ -362,6 +371,68 @@ describe('renderer command registry', () => {
     const off = env({ view: 'viewer', pdfOpen: true, pdfSelection: true, translationOff: true });
     expect(runCommand('translation.translateSelection', off)).toBe(false);
     expect(off.translateSelection).not.toHaveBeenCalled();
+  });
+  it('⌃⌘1 and ⌃⌘2 set the reader\'s right panel mode with a PDF open, and the context reports the mode only then', () => {
+    const e = env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor' });
+    expect(runCommand('view.inspectorInfo', e)).toBe(true);
+    expect(runCommand('view.inspectorTutor', e)).toBe(true);
+    expect(vi.mocked(e.setInspectorMode).mock.calls).toEqual([['info'], ['tutor']]);
+    for (const off of [env({ view: 'viewer' }), env({ libraryCount: 3 }), env({ view: 'viewer', pdfOpen: true, blocked: true })]) {
+      expect(runCommand('view.inspectorTutor', off)).toBe(false);
+      expect(off.setInspectorMode).not.toHaveBeenCalled();
+    }
+    expect(reportedContext(e)).toMatchObject({ inspectorMode: 'tutor' });
+    expect(reportedContext(env({ view: 'viewer', inspectorMode: 'info' }))).not.toHaveProperty('inspectorMode'); // no PDF open
+    expect(reportedContext(env({ libraryCount: 3, inspectorMode: 'info' }))).not.toHaveProperty('inspectorMode');
+  });
+  it('에이전트 고르기… runs only with a PDF open and the consent recorded, and the context reports the consent only then', () => {
+    const e = env({ view: 'viewer', pdfOpen: true, tutorConsented: true });
+    expect(runCommand('tutor.chooseAgent', e)).toBe(true);
+    expect(e.chooseAgent).toHaveBeenCalledTimes(1);
+    for (const off of [env({ view: 'viewer', pdfOpen: true }), env({ view: 'viewer', tutorConsented: true }), env({ libraryCount: 3, tutorConsented: true }), env({ view: 'viewer', pdfOpen: true, tutorConsented: true, blocked: true })]) {
+      expect(runCommand('tutor.chooseAgent', off)).toBe(false);
+      expect(off.chooseAgent).not.toHaveBeenCalled();
+    }
+    expect(reportedContext(e)).toMatchObject({ tutorConsented: true });
+    expect(reportedContext(env({ view: 'viewer', pdfOpen: true }))).not.toHaveProperty('tutorConsented');
+    expect(reportedContext(env({ view: 'viewer', tutorConsented: true }))).not.toHaveProperty('tutorConsented');
+  });
+  it('새 세션 runs only while the tutor shows a session with a question, and the context reports that only with a PDF open', () => {
+    const e = env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor', tutorHasMessages: true });
+    expect(runCommand('tutor.newSession', e)).toBe(true);
+    expect(e.newSession).toHaveBeenCalledTimes(1);
+    for (const off of [
+      env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor' }), // an empty session
+      env({ view: 'viewer', pdfOpen: true, inspectorMode: 'info', tutorHasMessages: true }), // 정보 is shown
+      env({ view: 'viewer', inspectorMode: 'tutor', tutorHasMessages: true }), // no PDF open
+      env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor', tutorHasMessages: true, blocked: true }),
+    ]) {
+      expect(runCommand('tutor.newSession', off)).toBe(false);
+      expect(off.newSession).not.toHaveBeenCalled();
+    }
+    expect(reportedContext(e)).toMatchObject({ tutorHasMessages: true });
+    expect(reportedContext(env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor' }))).not.toHaveProperty('tutorHasMessages');
+    expect(reportedContext(env({ view: 'viewer', tutorHasMessages: true }))).not.toHaveProperty('tutorHasMessages');
+  });
+  it('답 중지 runs only while the tab\'s session has an answer coming, and the context reports that only with a PDF open', () => {
+    const e = env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor', tutorHasMessages: true, tutorStreaming: true });
+    expect(runCommand('tutor.stop', e)).toBe(true);
+    expect(e.stopAnswer).toHaveBeenCalledTimes(1);
+    // The tutor not on screen (정보 shown): the answer still comes, and 답 중지 still stops it.
+    const info = env({ view: 'viewer', pdfOpen: true, inspectorMode: 'info', tutorStreaming: true });
+    expect(runCommand('tutor.stop', info)).toBe(true);
+    expect(info.stopAnswer).toHaveBeenCalledTimes(1);
+    for (const off of [
+      env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor', tutorHasMessages: true }), // the answer ended
+      env({ view: 'viewer', inspectorMode: 'tutor', tutorStreaming: true }), // no PDF open
+      env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor', tutorStreaming: true, blocked: true }),
+    ]) {
+      expect(runCommand('tutor.stop', off)).toBe(false);
+      expect(off.stopAnswer).not.toHaveBeenCalled();
+    }
+    expect(reportedContext(e)).toMatchObject({ tutorStreaming: true });
+    expect(reportedContext(env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor' }))).not.toHaveProperty('tutorStreaming');
+    expect(reportedContext(env({ view: 'viewer', tutorStreaming: true }))).not.toHaveProperty('tutorStreaming');
   });
   it('⌘F finds in the reader and quick-searches in the library; ⌘G ⇧⌘G ⌘E and the sidebar lists run on the open PDF only', () => {
     const e = env({ view: 'viewer', pdfOpen: true });
@@ -672,5 +743,61 @@ describe('tab commands (M7b)', () => {
     expect(contextOf(env())).not.toHaveProperty('tabCount');
     expect(contextOf(env())).not.toHaveProperty('closedOpenable');
     expect(contextOf(tabs())).toMatchObject({ tabCount: 3, closedOpenable: true });
+  });
+});
+
+describe('the session rows (T1a spec 8.9, 11)', () => {
+  const S = '3c2b1a09-8f7e-4d6c-9b5a-0f1e2d3c4b5a';
+  const T = '4d3c2b1a-0f9e-4d7c-8b6a-1f2e3d4c5b6a';
+  /** Targets as the window builds them: a session for each conversation id, items as before. */
+  const withSessions = (target: CommandTarget): CommandTargetInfo[] => [...available(target), ...(target.conversationIds ?? []).map(() => SESSION_TARGET)];
+  const focused = (over: Partial<CommandEnv> = {}) => env({ sessionFocused: true, focusedSession: () => S, targetsOf: withSessions, ...over });
+  it('⌘⌫ from the menu bar deletes the focused session row, in the reader and in the library (its trash view too), never the table\'s rows', () => {
+    for (const e of [focused({ view: 'viewer', pdfOpen: true }), focused({ libraryCount: 3, selectionCount: 1, selectionAvailable: 1, selection: () => [ID] }), focused({ libraryCount: 3, scope: 'trash', trashCount: 2, selectionCount: 1 })]) {
+      expect(menuTarget('item.trash', e)).toEqual({ conversationIds: [S] });
+      expect(runCommand('item.trash', e, menuTarget('item.trash', e))).toBe(true);
+      expect(e.deleteSession).toHaveBeenCalledExactlyOnceWith(S);
+      expect(e.trashItems).not.toHaveBeenCalled();
+      expect(e.purge).not.toHaveBeenCalled();
+    }
+    // No row with the focus: the reader has nothing to delete, the library its selection as before.
+    const reader = env({ view: 'viewer', pdfOpen: true, targetsOf: withSessions });
+    expect(runCommand('item.trash', reader, menuTarget('item.trash', reader))).toBe(false);
+    const library = env({ libraryCount: 3, selectionCount: 1, selectionAvailable: 1, selection: () => [ID], targetsOf: withSessions });
+    expect(menuTarget('item.trash', library)).toEqual({ itemIds: [ID] });
+    expect(runCommand('item.trash', library, menuTarget('item.trash', library))).toBe(true);
+    expect(library.trashItems).toHaveBeenCalledExactlyOnceWith([ID]);
+    expect(library.deleteSession).not.toHaveBeenCalled();
+  });
+  it('a session row\'s menu: its pick runs on that session, whatever has the focus', () => {
+    const e = env({ libraryCount: 3, scope: 'trash', trashCount: 2, targetsOf: withSessions, focusedSession: () => T });
+    expect(runPicked({ commandId: 'item.trash' }, e, { conversationIds: [S] })).toBe(true);
+    expect(e.deleteSession).toHaveBeenCalledExactlyOnceWith(S);
+    expect(e.purge).not.toHaveBeenCalled();
+    expect(runPicked({ commandId: 'session.rename' }, e, { conversationIds: [S] })).toBe(true);
+    expect(e.renameSession).toHaveBeenCalledExactlyOnceWith(S);
+  });
+  it('세션 이름 바꾸기: the focused row\'s session, or from the palette the tutor\'s session once it has a question', () => {
+    const row = focused({ view: 'viewer', pdfOpen: true, currentSession: () => T });
+    expect(menuTarget('session.rename', row)).toEqual({ conversationIds: [S] });
+    expect(runCommand('session.rename', row, menuTarget('session.rename', row))).toBe(true);
+    expect(row.renameSession).toHaveBeenCalledExactlyOnceWith(S);
+    const palette = env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor', tutorHasMessages: true, currentSession: () => T, targetsOf: withSessions });
+    expect(menuTarget('session.rename', palette)).toEqual({});
+    expect(runCommand('session.rename', palette)).toBe(true);
+    expect(palette.renameSession).toHaveBeenCalledExactlyOnceWith(T);
+    const empty = env({ view: 'viewer', pdfOpen: true, inspectorMode: 'tutor', currentSession: () => null, targetsOf: withSessions });
+    expect(runCommand('session.rename', empty)).toBe(false);
+  });
+  it('⌥⌘5 shows the sessions in the reader\'s sidebar, with a PDF open', () => {
+    const e = env({ view: 'viewer', pdfOpen: true });
+    expect(runCommand('reader.showSessions', e)).toBe(true);
+    expect(e.showReaderNav).toHaveBeenCalledExactlyOnceWith('sessions');
+    expect(runCommand('reader.showSessions', env({ view: 'viewer' }))).toBe(false);
+  });
+  it('reports a focused session row only while there is one', () => {
+    expect(reportedContext(focused({ view: 'viewer', pdfOpen: true }))).toMatchObject({ sessionFocused: true });
+    expect(reportedContext(env({ view: 'viewer', pdfOpen: true }))).not.toHaveProperty('sessionFocused');
+    expect(reportedContext(env({ sessionFocused: false }))).not.toHaveProperty('sessionFocused');
   });
 });

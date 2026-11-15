@@ -166,7 +166,7 @@ test('⌥⌘I and the toolbar toggle hide and show the panel, named by what they
     // The empty library has no panel and no toggle; the menu item is off under its neutral name (design-spec 2.4, 7.4).
     await expect(page.getByTestId('inspector-toggle')).toHaveCount(0);
     await expect(page.getByTestId('inspector-panel')).toHaveCount(0);
-    expect(await menuItem(app, 'view.toggleInspector')).toMatchObject({ label: '항목 패널 보기/가리기', enabled: false, accelerator: 'Alt+CmdOrCtrl+I' });
+    expect(await menuItem(app, 'view.toggleInspector')).toMatchObject({ label: '오른쪽 패널 보기/가리기', enabled: false, accelerator: 'Alt+CmdOrCtrl+I' });
 
     await importPaths(page, [PDF]);
     const roomy = (await page.evaluate(() => innerWidth)) >= 1080;
@@ -174,18 +174,18 @@ test('⌥⌘I and the toolbar toggle hide and show the panel, named by what they
     await showItemPanel(app, page);
     expect(await panelWidth(page)).toBe(320);
     const toggle = page.getByTestId('inspector-toggle');
-    await expect(toggle).toHaveAccessibleName('항목 패널 가리기');
+    await expect(toggle).toHaveAccessibleName('오른쪽 패널 가리기');
     await expect(toggle).toHaveAttribute('data-on', '');
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    await expect.poll(async () => (await menuItem(app, 'view.toggleInspector'))?.label).toBe('항목 패널 가리기');
+    await expect.poll(async () => (await menuItem(app, 'view.toggleInspector'))?.label).toBe('오른쪽 패널 가리기');
     expect((await menuItem(app, 'view.toggleInspector'))?.enabled).toBe(true);
 
     await toggle.click();
     await expect.poll(() => panelState(page)).toBe('hidden');
     expect(await panelWidth(page)).toBe(0);
-    await expect(toggle).toHaveAccessibleName('항목 패널 보기');
+    await expect(toggle).toHaveAccessibleName('오른쪽 패널 보기');
     await expect(toggle).not.toHaveAttribute('data-on');
-    await expect.poll(async () => (await menuItem(app, 'view.toggleInspector'))?.label).toBe('항목 패널 보기');
+    await expect.poll(async () => (await menuItem(app, 'view.toggleInspector'))?.label).toBe('오른쪽 패널 보기');
     await runMenuCommand(app, 'view.toggleInspector');
     await expect.poll(() => panelState(page)).toBe('shown');
 
@@ -203,11 +203,11 @@ test('⌥⌘I and the toolbar toggle hide and show the panel, named by what they
     await expect.poll(() => panelWidth(page)).toBe(480);
     await drag(x - 160, x - 80);
     await expect.poll(() => panelWidth(page)).toBe(400);
-    expect(await savedPanes(page)).toEqual({ sidebar: 240, sidebarCollapsed: 0, 'inspector.info': 400, inspectorCollapsed: 0 });
+    expect(await savedPanes(page)).toEqual({ sidebar: 240, sidebarCollapsed: 0, 'inspector.info': 400, 'inspector.tutor': 380, inspectorCollapsed: 0 });
     await runMenuCommand(app, 'view.toggleInspector');
     await expect.poll(() => panelState(page)).toBe('hidden');
     // Hiding is the user's choice only where the panel fits; a narrow window's panel was shown on demand and folds back by itself.
-    expect(await savedPanes(page)).toEqual({ sidebar: 240, sidebarCollapsed: 0, 'inspector.info': 400, inspectorCollapsed: roomy ? 1 : 0 });
+    expect(await savedPanes(page)).toEqual({ sidebar: 240, sidebarCollapsed: 0, 'inspector.info': 400, 'inspector.tutor': 380, inspectorCollapsed: roomy ? 1 : 0 });
     await app.close();
 
     ({ app, page } = await launch(lib, ud));
@@ -283,7 +283,7 @@ test('layout B: the toolbar spans the content and the item panel, which starts u
     await expectSameShot(page, testInfo, await top88(), empty, 'panel hidden');
     expect(Number.isInteger(await toggleX()), 'the toggle is on a whole pixel with the panel hidden').toBe(true);
     await runMenuCommand(app, 'view.toggleInspector');
-    await expect(page.getByRole('separator', { name: '항목 패널' })).toHaveCount(1); // the handle is named after its pane
+    await expect(page.getByRole('separator', { name: '오른쪽 패널' })).toHaveCount(1); // the handle is named after its pane
   } finally {
     await app.close();
   }

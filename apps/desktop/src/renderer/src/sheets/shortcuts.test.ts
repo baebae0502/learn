@@ -60,13 +60,25 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
     expect(where('library')).toMatchObject({ 라이브러리: 3, 리더: 0 });
     expect(where()).toMatchObject({ 라이브러리: 3, 리더: 0 });
   });
-  it('keeps the sheet within the 770 px bound in both views, and under 740 so the next pair line fits (the natural height is the taller column plus 136 px of title, foot and padding)', () => {
+  it('keeps the sheet within a real 1440 × 900 room (774) in both views: 772 from the library since the ⌥⌘5 line, over the 770 it kept to, so a smaller room scrolls its list (sheets.spec); the natural height is the taller column plus 136 px of title, foot and padding', () => {
     const height = (view?: 'library' | 'viewer') => Math.max(...shortcutColumns(shortcutGroups('darwin', view)).map((c) => c.reduce((h, g, i) => h + 31 + 29 * g.rows.length + (i > 0 ? 16 : 0), 0)));
     expect(height()).toBe(height('library'));
-    for (const view of ['library', 'viewer'] as const) {
-      expect(height(view) + 136, view).toBeLessThanOrEqual(740);
-      expect(height(view) + 136, view).toBeLessThanOrEqual(770);
-    }
+    expect(height('library') + 136).toBe(772);
+    expect(height('viewer') + 136).toBe(754);
+    for (const view of ['library', 'viewer'] as const) expect(height(view) + 136, view).toBeLessThanOrEqual(774);
+  });
+  it('lists 세션 보기 ⌥⌘5 under 리더, after the thumbnails / outline line', () => {
+    const rows = shortcutGroups('darwin', 'viewer').find((g) => g.title === '리더')!.rows;
+    const at = rows.findIndex((r) => r.label === '세션 보기');
+    expect(rows[at]).toEqual({ label: '세션 보기', keys: ['⌥', '⌘', '5'], spoken: '⌥⌘5' });
+    expect(rows[at - 1]!.label).toBe('썸네일 / 목차 보기');
+    expect(shortcutGroups('linux', 'viewer').flatMap((g) => g.rows).find((r) => r.label === '세션 보기')?.keys).toEqual(['Ctrl', 'Alt', '5']);
+  });
+  it('lists ⌃⌘1 / ⌃⌘2 as one line, the reader\'s right panel modes, under 리더', () => {
+    const viewer = shortcutGroups('darwin', 'viewer').find((g) => g.title === '리더')!;
+    const row = viewer.rows.find((r) => r.label === '정보 / 튜터 보기');
+    expect(row).toEqual({ label: '정보 / 튜터 보기', keys: ['⌃', '⌘', '1'], pairKeys: ['⌃', '⌘', '2'], spoken: '⌃⌘1 / ⌃⌘2' });
+    expect(shortcutGroups('darwin', 'viewer').flatMap((g) => g.rows).filter((r) => r.spoken.includes('⌃⌘1')).length).toBe(1);
   });
   it('uses the Linux bindings off macOS', () => {
     const app = shortcutGroups('linux')[0]!;
@@ -90,10 +102,10 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
   });
   it('lists ⌘+ / ⌘− / ⌘0 under 라이브러리 (design-spec 7.4), after the import commands', () => {
     const library = shortcutGroups('darwin')[1]!;
-    expect(library.rows.map((r) => r.label)).toEqual(['파일 가져오기… / 외부 파일 연결…', '빠른 검색', '항목 패널 보기/가리기', '글자 크게 / 작게', '기본 글자 크기', '휴지통 비우기…']);
+    expect(library.rows.map((r) => r.label)).toEqual(['파일 가져오기… / 외부 파일 연결…', '빠른 검색', '오른쪽 패널 보기/가리기', '글자 크게 / 작게', '기본 글자 크기', '휴지통 비우기…']);
     // ⌥⌘I under its neutral name: the sheet shows no pane state (design-spec 7.4).
-    expect(library.rows[2]).toEqual({ label: '항목 패널 보기/가리기', keys: ['⌥', '⌘', 'I'], spoken: '⌥⌘I' });
-    expect(shortcutGroups('linux')[1]!.rows[2]).toEqual({ label: '항목 패널 보기/가리기', keys: ['Ctrl', 'Alt', 'I'], spoken: 'Ctrl+Alt+I' });
+    expect(library.rows[2]).toEqual({ label: '오른쪽 패널 보기/가리기', keys: ['⌥', '⌘', 'I'], spoken: '⌥⌘I' });
+    expect(shortcutGroups('linux')[1]!.rows[2]).toEqual({ label: '오른쪽 패널 보기/가리기', keys: ['Ctrl', 'Alt', 'I'], spoken: 'Ctrl+Alt+I' });
     expect(library.rows.slice(3, 5).map((r) => [r.keys, r.pairKeys])).toEqual([[['⌘', '+'], ['⌘', '−']], [['⌘', '0'], undefined]]); // U+2212 on the keycap, as in the menu
     expect(library.rows.at(-1)).toEqual({ label: '휴지통 비우기…', keys: ['⇧', '⌘', '⌫'], spoken: '⇧⌘⌫' });
   });

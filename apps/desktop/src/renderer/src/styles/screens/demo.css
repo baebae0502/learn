@@ -10,7 +10,8 @@
    (and stay clear of the bottom-right toast column, 16 from the right, 360 wide):
    - pill: centred, bottom 40, 52 tall (bottom band 40–92); aside (data-aside: a command that opens a sheet, or any
      pill shown while one hangs over the window's middle — a macOS sheet at 1024 × 743 is nearly as tall as the
-     window), bottom-left, at left 24, where the sheet leaves room. Fixed when the pill appears;
+     window — or while the toasts stand beside the tutor, their column then in the pill band), bottom-left, at left
+     24, where the sheet leaves room. Fixed when the pill appears;
    - caption: left 24, bottom 108 (above the pill band), or higher (an inline bottom) when the sidebar's tag selector
      reaches above that: 16 above its top — clear even while it rises in from 8 lower — so the 태그 header and its "…"
      stay clear (round 2 minor 2); at most 560 wide

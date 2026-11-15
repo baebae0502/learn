@@ -11,7 +11,7 @@ import { splitTrashSelection, trashSelectionCount, withTrashTargets } from '../t
 import { leaveTrashView, useInTrash, useLeaveEmptyTrash, useTrash } from '../trash/useTrashSource';
 import { useReportContext } from '../commands/useReportContext';
 import { useMenuCommands } from '../commands/useMenuCommands';
-import { keys, useItems, useLibrarySync, usePrefs } from '../data/queries';
+import { keys, useItems, useLibrarySync, usePrefs, useSessionsSync } from '../data/queries';
 import { queryClient } from '../data/query-client';
 import { useBusyScreen } from '../library/busyScreen';
 import { visibleColumns } from '../library/columns';
@@ -51,7 +51,19 @@ import { DropOverlay } from '../shell/DropOverlay';
 import { Launcher } from '../shell/Launcher';
 import { focusPane } from '../shell/panes';
 import { Shell } from '../shell/Shell';
-import { useInspectorHidden, useToggleInspector } from '../shell/useInspector';
+import { revealInspector, showInspectorMode, useInspectorHidden, useToggleInspector } from '../shell/useInspector';
+import { useInspectorMode } from '../shell/inspectorMode';
+import { useTutorPrefs } from '../tutor/useTutorPrefs';
+import { useAgentsReread } from '../tutor/useAgents';
+import { useTutorPanelState } from '../tutor/TutorPanel';
+import { useTutorTab } from '../tutor/tutorStore';
+import { useTurnEvents } from '../tutor/useTurnEvents';
+import { stopAnswer, useWaitingSends } from '../tutor/useSend';
+import { useAnswerComing } from '../tutor/useSessionThread';
+import { useTutorView } from '../tutor/useTutorView';
+import { chooseTutorMode, deleteSession, openSessionWith, startRename } from '../tutor/sessions/sessionActions';
+import { focusedSessionRow, neighborRow } from '../tutor/sessions/SessionRow';
+import { useSessionRowFocused } from '../tutor/sessions/useSessionFocus';
 import { useTabsPersistence } from './useTabsPersistence';
 import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell/useSidebar';
 import { useWindowState } from '../shell/useWindowState';
@@ -84,7 +96,7 @@ import { useReader, type PendingJump } from '../viewers/pdf/readerStore';
 import { canGoBack, canGoForward } from '../viewers/pdf/history';
 import { reopenSelection, useSelection } from '../translation/useSelectionText';
 import { ReaderTabs } from '../viewers/ReaderTabs';
-import { readerScopes } from '../viewers/readerScope';
+import { currentScope, readerScopes } from '../viewers/readerScope';
 import { lastInput } from '../ui/inputModality';
 import { useReportIdle } from './useReportIdle';
 import { useWarmUp } from './useWarmUp';
@@ -109,6 +121,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   useApplyPrefs();
   useWindowState();
   useLibrarySync();
+  useSessionsSync();
   useBodyProgressSync();
   const scopeReady = useRestoreView();
   usePanePersistence();
@@ -389,6 +402,28 @@ export function MainWindow(_props: { info: AppInfo }) {
   const pdfOpening = view.kind === 'reader' && readerKind === 'pdf' && !pdfEnded && !pdfOpen;
   const showsInspector = showsTable || (view.kind === 'reader' && (pdfOpen || pdfOpening));
   const inspectorHidden = useInspectorHidden(showsInspector);
+  // The right panel's mode: the reader's remembered one (튜터 until one is chosen), the library's 정보 alone.
+  const inspectorMode = useInspectorMode();
+  // The session the active tab's tutor shows, while it can be seen (not the card, the off state, the chooser, 정보 or a folded panel):
+  // the one place that tells main is here, with the active tab's value.
+  const tutorState = useTutorPanelState();
+  const tutorConversation = useTutorTab((s) => s.conversationId);
+  const tutorShown = view.kind === 'reader' && showsInspector && !inspectorHidden && inspectorMode === 'tutor' && tutorState === 'ready';
+  useTutorView(tutorShown ? { itemId: view.itemId, conversationId: tutorConversation } : null);
+  // 새 세션 needs a session with a question on screen; 답 중지 an answer of the active tab's session still coming, shown or not.
+  const tutorHasMessages = tutorShown && tutorConversation !== null;
+  const answerComing = useAnswerComing(tutorConversation) !== null;
+  const tutorStreaming = view.kind === 'reader' && answerComing;
+  // What main says about answers goes to the tab that shows their session, shown or not.
+  useTurnEvents();
+  // A question that waited for another session's answer goes once that answer ends, in whatever tab it waits.
+  useWaitingSends();
+  // The consent main recorded: 에이전트 고르기… needs it.
+  const tutorConsented = useTutorPrefs().consent !== null;
+  // A session row of the sidebar has the focus: ⌘⌫ is 세션 삭제 and deletes it.
+  const sessionFocused = useSessionRowFocused();
+  // A turn that failed on the login or the lockdown makes the agents report of this run stale, whatever the panel shows.
+  useAgentsReread();
   // Text of the page is selected: 선택한 글 번역 is on (translation/useSelectionText.ts).
   const pdfSelection = useSelection((s) => s.text !== '');
   // Translation is switched off (the settings window, the pop-up's 사용 안 함): 선택한 글 번역 does nothing then. Not yet chosen asks, so it stays on.
@@ -456,6 +491,12 @@ export function MainWindow(_props: { info: AppInfo }) {
     sidebar: sidebarHidden ? 'hidden' : 'shown',
     // The 보기 menu names what ⌥⌘I does now; where there is no panel no state is reported, so it says the neutral name.
     inspector: showsInspector ? (inspectorHidden ? 'hidden' : 'shown') : undefined,
+    // The reader's right panel mode, reported while a PDF is open (⌃⌘1 / ⌃⌘2 and the menu bar follow it).
+    ...(pdfOpen ? { inspectorMode } : {}),
+    ...(tutorConsented ? { tutorConsented: true } : {}),
+    ...(tutorHasMessages ? { tutorHasMessages: true } : {}),
+    ...(tutorStreaming ? { tutorStreaming: true } : {}),
+    ...(sessionFocused ? { sessionFocused: true } : {}),
     // ⌘+ / ⌘− stop at 15 / 12 and ⌘0 is off at 13 (prefs.fontSize; the default until prefs are read).
     textSize,
     libraryCount: count,
@@ -539,6 +580,34 @@ export function MainWindow(_props: { info: AppInfo }) {
     relink: (itemId) => void relink(itemId),
     toggleSidebar,
     toggleInspector,
+    setInspectorMode: showInspectorMode,
+    // The shown tab's tutor goes to the chooser (its store is the active reader's), and the panel shows the tutor.
+    chooseAgent: () => {
+      currentScope().tutor.getState().setChoosing(true);
+      showInspectorMode('tutor');
+    },
+    // The shown tab's tutor goes to a new empty session; the one it showed stays in the session list.
+    newSession: () => currentScope().tutor.getState().setConversation(null),
+    // The answer the shown tab's session receives stops (the panel's esc and 중지 do the same).
+    stopAnswer: () => stopAnswer(currentScope()),
+    // A session's row becomes its name field: in the reader the 세션 pane shows first (the palette names the tutor's session).
+    renameSession: (conversationId) => {
+      if (viewKind === 'reader') readerActions.showReaderNav('sessions');
+      startRename(conversationId);
+    },
+    // At once, with 실행 취소; the focus goes on to the next row when it was on this one (and is still there once it is done).
+    deleteSession: (conversationId) => void deleteSession(conversationId, focusedSessionRow() === conversationId ? neighborRow(conversationId) : null),
+    openSession: openSessionWith({
+      afterEditing,
+      scope: (itemId) => readerScopes.get(itemId),
+      openTab: (itemId) => useShell.getState().openTabs([itemId]),
+      showTutor: () => {
+        chooseTutorMode();
+        revealInspector('tutor');
+      },
+    }),
+    currentSession: () => (viewKind === 'reader' ? currentScope().tutor.getState().conversationId : null),
+    focusedSession: focusedSessionRow,
     showShortcuts: () => void showShortcuts(),
     checkLibrary: () => checkLibrary(false),
     openPalette,
@@ -563,7 +632,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, pdfOpen, imageDrawn, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAtPage, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, pdfOpen, imageDrawn, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, inspectorMode, tutorConsented, tutorHasMessages, tutorStreaming, sessionFocused, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAtPage, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);
@@ -697,7 +766,7 @@ export function MainWindow(_props: { info: AppInfo }) {
         launcher={<Launcher />}
         toolbar={toolbar}
         head={view.kind === 'library' && tabsOpen ? libraryBar('head') : undefined}
-        inspector={showsInspector ? <Inspector mode="info" /> : undefined}
+        inspector={showsInspector ? <Inspector mode={inspectorMode} switchable={view.kind === 'reader'} hidden={inspectorHidden} /> : undefined}
         overlays={
           <>
             <Palette />

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LearnError } from '../src/errors';
+import { DEFAULT_TUTOR_PREFS } from '../src/tutor';
 import { DEFAULT_PREFS, SAVED_TAB_TITLE_MAX, SEARCH_SCOPES, parseSetting, prefsSchema } from '../src/settings';
 import { newId } from '../src/ids';
 
@@ -29,6 +30,13 @@ describe('reader.imageBackground', () => {
   it('takes the three backgrounds and nothing else', () => {
     for (const v of ['light', 'dark', 'checker']) expect(parseSetting('reader.imageBackground', v)).toBe(v);
     for (const v of ['auto', 'sepia', '', 1, null]) expect(code(() => parseSetting('reader.imageBackground', v))).toBe('VALIDATION_FAILED');
+  });
+});
+
+describe('reader.inspectorMode', () => {
+  it('takes the two modes of the reader\'s right panel and nothing else', () => {
+    for (const v of ['info', 'tutor']) expect(parseSetting('reader.inspectorMode', v)).toBe(v);
+    for (const v of ['library', 'sessions', '', 1, null]) expect(code(() => parseSetting('reader.inspectorMode', v))).toBe('VALIDATION_FAILED');
   });
 });
 
@@ -67,7 +75,7 @@ describe('ui.tabs', () => {
 
 describe('prefs', () => {
   it('has defaults', () => {
-    expect(prefsSchema.parse({})).toEqual({ theme: 'system', density: 'regular', fontSize: 13, libraryRoot: null, backupDir: null, translation: { enabled: null, autoOnSelect: true, from: 'auto', to: 'ko' } });
+    expect(prefsSchema.parse({})).toEqual({ theme: 'system', density: 'regular', fontSize: 13, libraryRoot: null, backupDir: null, translation: { enabled: null, autoOnSelect: true, from: 'auto', to: 'ko' }, tutor: { consent: null, agent: null } });
     // What a window shows when reading prefs failed (renderer Boot falls back to it).
     expect(DEFAULT_PREFS).toEqual(prefsSchema.parse({}));
     expect(Object.isFrozen(DEFAULT_PREFS)).toBe(true);
@@ -90,7 +98,7 @@ describe('prefs patch input', () => {
     expect(prefsSetInput.safeParse({ theme: 'neon' }).success).toBe(false);
   });
   it('full prefs schema still defaults', () => {
-    expect(prefsSchema.parse({})).toEqual({ theme: 'system', density: 'regular', fontSize: 13, libraryRoot: null, backupDir: null, translation: { enabled: null, autoOnSelect: true, from: 'auto', to: 'ko' } });
+    expect(prefsSchema.parse({})).toEqual({ theme: 'system', density: 'regular', fontSize: 13, libraryRoot: null, backupDir: null, translation: { enabled: null, autoOnSelect: true, from: 'auto', to: 'ko' }, tutor: { consent: null, agent: null } });
   });
 });
 
@@ -138,5 +146,17 @@ describe('library table settings (M4 spec 3.1, 3.2)', () => {
     expect(code(() => parseSetting('palette.recent', ['app.nope']))).toBe('VALIDATION_FAILED');
     expect(code(() => parseSetting('palette.recent', 'app.settings'))).toBe('VALIDATION_FAILED');
     expect(code(() => parseSetting('palette.recent', Array.from({ length: 21 }, () => 'app.settings')))).toBe('VALIDATION_FAILED');
+  });
+});
+
+describe('prefs.tutor', () => {
+  it('defaults to no consent and no agent, and only main may write it', () => {
+    expect(prefsSchema.parse({}).tutor).toEqual({ consent: null, agent: null });
+    expect(prefsSetInput.safeParse({ tutor: DEFAULT_TUTOR_PREFS }).success).toBe(false);
+    expect(prefsSetInput.safeParse({ theme: 'dark' }).success).toBe(true);
+    expect(prefsPatchInput.safeParse({ tutor: DEFAULT_TUTOR_PREFS }).success).toBe(true);
+  });
+  it('refuses another consent version', () => {
+    expect(prefsPatchInput.safeParse({ tutor: { consent: { version: 2, at: '2026-11-10T00:00:00.000Z' }, agent: null } }).success).toBe(false);
   });
 });

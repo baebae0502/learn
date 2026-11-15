@@ -8,6 +8,7 @@ import { useImageBackgroundSetting } from '../viewers/image/useImageBackground';
 import { usePageColorSetting } from '../viewers/pdf/usePageColor';
 import { useReaderNavSetting } from '../viewers/pdf/useReaderNav';
 import { parsePanes } from '../shell/layout';
+import { useInspectorModeSetting } from '../shell/inspectorMode';
 import { useShell } from '../state/shell-store';
 import { fromSaved, knownFromSaved } from '../state/tabs';
 import { MainWindow } from './MainWindow';
@@ -43,16 +44,19 @@ function PanesGate({ info }: { info: AppInfo }) {
   const imageBackground = useImageBackgroundSetting();
   // And the sidebar's list (thumbnails or outline): the segment is drawn with its saved choice from the first frame.
   const readerNav = useReaderNavSetting();
+  // And the right panel's mode: a reader restored at launch has the panel at its mode's width in the first frame.
+  const inspectorMode = useInspectorModeSetting();
   // And the quick search's scope: the field's placeholder is the stored scope's from the first frame.
   const searchScope = useSearchScopeSetting();
   const seeded = useRef(false);
-  if (panes.isPending || savedTabs.isPending || pageColor.isPending || imageBackground.isPending || readerNav.isPending || searchScope.isPending) return null;
+  if (panes.isPending || savedTabs.isPending || pageColor.isPending || imageBackground.isPending || readerNav.isPending || inspectorMode.isPending || searchScope.isPending) return null;
   if (!seeded.current) {
     seeded.current = true; // a failed read falls back to the defaults
     // Both panes before the first paint: the item panel has its width in its first frame too.
     const seed = parsePanes(panes.data ?? null);
     useShell.getState().setSidebar(seed.sidebar);
     useShell.getState().setInspector(seed.inspector);
+    useShell.getState().setTutorWidth(seed.tutorWidth);
     // The tabs open at the last quit; a missing, unreadable or failed read opens on the library alone.
     const tabs = SETTINGS['ui.tabs'].safeParse(savedTabs.data);
     const saved = tabs.success ? tabs.data : undefined;

@@ -4,12 +4,18 @@ import { api } from '../api';
 import { lastInput } from '../ui/inputModality';
 import { quietUntilInput } from '../ui/tooltipGate';
 import { useShell } from '../state/shell-store';
-import { serializePanes, sidebarHidden, toggledSidebar } from './layout';
+import { inspectorContentMin, serializePanes, sidebarHiddenIn, toggledSidebarWithTutor } from './layout';
+import { inspectorModeNow, useInspectorMode } from './inspectorMode';
 import { useViewportWidth } from './useViewportWidth';
 
+/** The sidebar is out of sight: folded by the user or the window, or pushed away by a tutor shown in a window too narrow for both. */
 export function useSidebarHidden(): boolean {
+  const inspectorPresent = useShell((s) => s.inspectorPresent);
   const sidebar = useShell((s) => s.sidebar);
-  return sidebarHidden(sidebar, useViewportWidth());
+  const inspector = useShell((s) => s.inspector);
+  const tutorWidth = useShell((s) => s.tutorWidth);
+  const min = inspectorContentMin(useShell((s) => s.view.kind));
+  return sidebarHiddenIn({ sidebar, inspector, tutorWidth }, useViewportWidth(), min, useInspectorMode(), inspectorPresent);
 }
 
 /** DOM ids of the two copies of the toggle (SidebarToggle): the one in the sidebar top and the one in the toolbar. */
@@ -54,11 +60,15 @@ export function keepFocusAcross(willHide: boolean, from: Element | null = docume
 
 export function useToggleSidebar(): () => void {
   return useCallback(() => {
-    const { sidebar, setSidebar } = useShell.getState();
-    const next = toggledSidebar(sidebar, innerWidth);
-    const willHide = sidebarHidden(next, innerWidth);
-    if (willHide !== sidebarHidden(sidebar, innerWidth)) keepFocusAcross(willHide);
-    setSidebar(next);
+    const { inspectorPresent, sidebar, inspector, tutorWidth, view, setSidebar, setInspector } = useShell.getState();
+    const mode = inspectorModeNow();
+    const min = inspectorContentMin(view.kind);
+    const before = { sidebar, inspector, tutorWidth };
+    const next = toggledSidebarWithTutor(before, innerWidth, mode, min, inspectorPresent);
+    const willHide = sidebarHiddenIn(next, innerWidth, min, mode, inspectorPresent);
+    if (willHide !== sidebarHiddenIn(before, innerWidth, min, mode, inspectorPresent)) keepFocusAcross(willHide);
+    setSidebar(next.sidebar);
+    if (next.inspector !== inspector) setInspector(next.inspector);
   }, []);
 }
 
@@ -125,15 +135,17 @@ export function useKeepFocusAcrossFold(hidden: boolean): void {
   }, [hidden]);
 }
 
-/** Saves both panes' widths and the user's collapse choices — one layout.panes record — 300 ms after the last change. */
+/** Saves the panes' widths (the right panel's per mode) and the user's collapse choices — one layout.panes record — 300 ms after the last change. */
 export function usePanePersistence(): void {
   const sidebarWidth = useShell((s) => s.sidebar.width);
   const sidebarCollapsed = useShell((s) => s.sidebar.collapsed);
   const inspectorWidth = useShell((s) => s.inspector.width);
   const inspectorCollapsed = useShell((s) => s.inspector.collapsed);
+  const tutorWidth = useShell((s) => s.tutorWidth);
   const value = serializePanes({
     sidebar: { width: sidebarWidth, collapsed: sidebarCollapsed, forceShown: false },
     inspector: { width: inspectorWidth, collapsed: inspectorCollapsed, forceShown: false },
+    tutorWidth,
   });
   const json = JSON.stringify(value);
   // The boot value came from the setting itself; only a record that differs from the last one written is saved

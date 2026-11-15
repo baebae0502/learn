@@ -904,11 +904,11 @@
       .join('')}</div>`;
   }
 
-  function pdfSidebar(nav, { mode = 'normal', sessions = null, current = 42 } = {}) {
+  function pdfSidebar(nav, { mode = 'normal', sessions = null, current = 42, notes = true } = {}) {
     const seg = (id, label, tag) => `<span class="seg ${nav === id ? 'is-on' : ''}" ${tag ? ms(tag[0], tag[1]) : ''}>${label}</span>`;
-    // `sessions`: the tutor mockup's 4th segment (this item's sessions, T1) and its list when nav === 'sessions'.
+    // `sessions`: the tutor mockup's session segment (this item's sessions, T1a) and its list when nav === 'sessions'. `notes: false`: T1a has no 필기 segment (M9 brings it between 목차 and 세션).
     const head = `<div class="reader-nav-head">
-        <div class="segmented fill ${mode === 'loading' ? 'is-disabled' : ''}" ${ms('M7', '썸네일·목차 전환')}>${seg('thumbs', '썸네일')}${seg('outline', '목차')}${seg('notes', '필기', ['M9', '필기 칸'])}${sessions ? seg('sessions', '세션', ['T1', '세션 칸(이 자료의 세션)']) : ''}</div>
+        <div class="segmented fill ${mode === 'loading' ? 'is-disabled' : ''}" ${ms('M7', '썸네일·목차 전환')}>${seg('thumbs', '썸네일')}${seg('outline', '목차')}${notes ? seg('notes', '필기', ['M9', '필기 칸']) : ''}${sessions ? seg('sessions', '세션', ['T1a', '세션 칸(이 자료의 세션)']) : ''}</div>
       </div>`;
     if (nav === 'sessions' && sessions) return `${head}${sessions}`;
     if (mode === 'nooutline') {
@@ -991,7 +991,7 @@
     </div>`;
   }
 
-  function pdfToolbar({ menu = null, find = true, disabled = false, page = '42', pages = '68', zoom = '100%', trailing = '', tools = 'full' } = {}) {
+  function pdfToolbar({ menu = null, find = true, disabled = false, page = '42', pages = '68', zoom = '100%', trailing = '', tools = 'full', pageTotal = true } = {}) {
     const dis = disabled ? 'is-disabled' : '';
     return `<div class="reader-toolbar">
       <div class="group" ${ms('M7', '뒤로·앞으로')}>
@@ -999,7 +999,7 @@
         <span class="icon-btn is-disabled" title="앞으로 ⌘]">${icon('arrow-right')}</span>
       </div>
       <span class="toolbar-sep"></span>
-      <div class="page-field ${dis}" ${ms('M7', '쪽 입력')}><div class="field">${page}</div><span class="num">/ ${pages}</span></div>
+      <div class="page-field ${dis}" ${ms('M7', '쪽 입력')}><div class="field">${page}</div>${pageTotal ? `<span class="num">/ ${pages}</span>` : ''}</div>
       <span class="spacer"></span>
       <div class="group" ${ms('M7', '확대·축소·확대 메뉴')}>
         <span class="icon-btn ${dis}" title="축소 ⌘−">${icon('zoom-out')}</span>
@@ -1009,7 +1009,9 @@
       <span class="spacer"></span>
       ${
         // tools: 'compact' = the tutor mockup's narrow-reader step — the annotation group folds into one menu button.
-        tools === 'compact'
+        tools === 'none'
+          ? ''
+          : tools === 'compact'
           ? `<span class="btn small plain has-icon has-menu ${dis}" title="필기 도구 — 하이라이트 H · 밑줄 U · 노트 N · 펜 P · 지우개 E · 필기 색" ${ms('M9', '필기 도구 묶음(좁은 리더에서 ‘필기 ▾’로 접힘)')}>${icon('highlighter', 'sm')}필기${icon('chevron-down', 'xs')}</span>`
           : `<div class="group tool-group ${dis}" ${ms('M9', '필기 도구 묶음')}>
         <span class="icon-btn" title="하이라이트 H">${icon('highlighter')}</span>
@@ -2375,16 +2377,23 @@
     sessions: pick('sessions', ['sidebar', 'panel'], 'sidebar'),
     mode: pick('mode', ['tutor', 'info'], 'tutor'),
     agents: pick('agents', ['list', 'none', 'searching', 'blocked'], 'list'),
-    fail: pick('fail', ['offline', 'agent', 'login'], 'offline'),
-    fold: pick('fold', ['collapsed', 'open', '960'], 'collapsed'),
+    fail: pick('fail', ['offline', 'agent', 'login', 'notready', 'start', 'exited', 'lockdown', 'interrupted', 'busy', 'stopped'], 'offline'),
+    fold: pick('fold', ['collapsed', 'shrunk', 'open', '960'], 'collapsed'),
     view: pick('view', ['reader', 'library'], 'reader'),
     backend: pick('backend', ['agent', 'fake'], 'agent'),
     later: params.get('later') === '1',
     empty: params.get('empty') === '1',
-    menu: pick('menu', ['agent'], null),
+    menu: pick('menu', ['agent', 'session'], null),
     sheet: pick('sheet', ['delete'], null),
     top: params.get('scroll') === 'top',
     page: pick('page', ['original', 'sepia', 'dark'], null),
+    // T1a: the chooser's five states on one screen (a critique sheet), "최신으로", the reground turn, a PDF without text, a selection across pages.
+    states: params.get('states') === 'all',
+    rows: params.get('rows') === '1',
+    scrolled: params.get('scrolled') === '1',
+    reground: params.get('reground') === '1',
+    text: pick('text', ['empty', 'locked', 'failed', 'large'], null),
+    attach: pick('attach', ['multipage'], null),
   };
   /** The right slot's toggle has one name whatever the mode (design-spec 7.4 toggle names). */
   const SLOT_TOGGLE = (open) => `${open ? '오른쪽 패널 가리기' : '오른쪽 패널 보기'} ⌥⌘I`;
@@ -2399,26 +2408,31 @@
   const citeLabel = (fmt, page) => (fmt === 'p' ? `p.&nbsp;${page}` : fmt === 'icon' ? `${icon('file-text', 'xs')}${page}` : `${page}쪽`);
   /** Citation chip: page precision (Learn verifies pages, ADR-0010 §3). Pressing it moves the reader there. */
   const cite = (page, { st = '', tag = false, title = null, fmt = tu.cite } = {}) =>
-    `<span class="cite ${st}" role="link" title="${title ?? `${page}쪽으로 이동`}" ${tag ? ms('T1', '인용 칩(누르면 리더가 그 쪽으로)') : ''}>${citeLabel(fmt, page)}</span>`;
+    `<span class="cite ${st}" role="link" title="${title ?? `${page}쪽으로 이동`}" ${tag ? ms('T1a', '인용 칩(누르면 리더가 그 쪽으로)') : ''}>${citeLabel(fmt, page)}</span>`;
   /** A citation stays on the line of the word it follows (an agent's answer is rendered this way too). */
   const tail = (word, chip) => `<span class="cite-tail">${word}${chip}</span>`;
   /** Not verified: a status with a tooltip, not a button (it has no place to go). */
   const unverified = (claimed, { tag = false, st = '' } = {}) =>
-    `<span class="cite is-unverified ${st}" tabindex="0" title="확인되지 않은 인용 · 튜터가 ${claimed}쪽을 가리켰지만 이번 답에서 그 쪽을 읽지 않았습니다" ${tag ? ms('T1', '검증되지 않은 인용(출처 없음)') : ''}>${icon('circle-help', 'xs')}출처 없음</span>`;
+    `<span class="cite is-unverified ${st}" tabindex="0" title="확인되지 않은 인용 · 튜터가 ${claimed}쪽을 가리켰지만 이번 답에서 그 쪽을 읽지 않았습니다" ${tag ? ms('T1a', '검증되지 않은 인용(출처 없음)') : ''}>${icon('circle-help', 'xs')}출처 없음</span>`;
   /** Tool chip: what Learn's read-only tools returned in this turn (ADR-0010 §2). A status, not a button. */
   const tool = (ic, label, { st = '', title = '' } = {}) =>
     `<span class="tool ${st}" tabindex="0" title="${title}">${st === 'is-running' ? '<span class="spinner sm"></span>' : icon(ic, 'sm')}${label}</span>`;
 
-  /** Sent-scope line under each request: counts, expandable to the list of what went to the agent. */
-  function scopeLine([doc, ex, mem], { open = false, list = null, st = '' } = {}) {
-    const line = `<div class="tu-scope ${open ? 'is-open' : ''} ${st}" role="button" aria-expanded="${open}" title="이 질문과 함께 에이전트에 보낸 것 · 누르면 목록이 열립니다">${icon('send', 'sm')}<span class="num">자료&nbsp;${doc} · 발췌&nbsp;${ex} · 기억&nbsp;${mem}</span>${icon(open ? 'chevron-up' : 'chevron-down', 'xs')}</div>`;
+  /**
+   * Sent-scope line under each request (ADR-0013 1, J45): "선택" = what the user attached and sent (0 or 1), "자료" = the one
+   * material the agent was let read. No memory count until M10 (nothing to count yet — no fake values).
+   */
+  function scopeLine({ sel = 0 } = {}, { open = false, list = null, st = '' } = {}) {
+    const name = `보낸 것 선택 ${sel}개, 읽게 열어 둔 것 자료 1개 — 누르면 목록이 열립니다`;
+    const line = `<div class="tu-scope ${open ? 'is-open' : ''} ${st}" role="button" aria-expanded="${open}" aria-label="${name}" title="${name}">${icon('send', 'sm')}<span class="num">선택&nbsp;${sel}</span><span class="dot">·</span>${icon('book-open', 'sm')}<span class="num">자료&nbsp;1</span>${icon(open ? 'chevron-up' : 'chevron-down', 'xs')}</div>`;
     return open ? `${line}<dl class="tu-scope-list">${list.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>` : line;
   }
-  const SCOPE1_LIST = [
-    ['자료', `${esc(T.item)}(이름)`],
-    ['대화', '없음(첫 질문)'],
-    ['발췌', '42쪽 · 선택한 구간<br>41–42쪽 · 튜터가 읽은 본문'],
-    ['기억', '없음'],
+  /** The open list: what went out · what the agent was let read · the pages it read after the turn ended · which agent. */
+  const scopeList = ({ sel = true, question = true, reground = false, read = '41–42쪽' } = {}) => [
+    ['보낸 것', [question && '질문', sel && '선택한 구간 · 42쪽', reground && '원문 근거 요청'].filter(Boolean).join('<br>')],
+    ['읽게 열어 둔 것', esc(T.item)],
+    ['읽은 쪽', read],
+    ['에이전트', tu.backend === 'fake' ? `${icon('flask-conical', 'sm')} 가짜 에이전트` : 'Claude Code'],
   ];
 
   const Q1 = '‘각 단계 배율의 곱’이 무슨 뜻인지 예를 들어 설명해 주세요.';
@@ -2426,19 +2440,20 @@
   const Q3 = '방금 설명을 노트로 정리하고, 확인 문제도 하나 내 주세요.';
 
   /** `tag` puts the milestone on the quote's citation chip and on the scope row (where the ?ms=1 badge covers nothing). */
-  const userMsg = ({ text, quote = false, scope = null, open = false, tag = false }) => `
+  const userMsg = ({ text, quote = false, scope = false, open = false, list = null, tag = false }) => `
     <div class="tu-msg user">
       <div class="bubble">${quote ? `<div class="tu-quote"><span class="q">${esc(T.selection.text)}</span>${cite(T.selection.page, { title: '42쪽으로 이동 · 질문에 붙인 구간이 있는 쪽', tag })}</div>` : ''}<p>${esc(text)}</p></div>
-      ${scope ? `<div class="tu-scope-row" ${tag ? ms('T1', '보낸 범위 줄(자료·발췌·기억)') : ''}>${scopeLine(scope, { open, list: SCOPE1_LIST })}</div>` : ''}
+      ${scope ? `<div class="tu-scope-row" ${tag ? ms('T1a', '보낸 범위 줄(선택 · 자료)') : ''}>${scopeLine({ sel: quote ? 1 : 0 }, { open, list: list ?? scopeList({ sel: quote }) })}</div>` : ''}
     </div>`;
-  const tutorMsg = ({ tools = [], body, foot = '', tagTools = false, cls = '' }) => `
+  /** An answer that failed before any text came has no body, only the notice under its tool chips. */
+  const tutorMsg = ({ tools = [], body = '', foot = '', tagTools = false, cls = '' }) => `
     <div class="tu-msg tutor ${cls}">
-      ${tools.length ? `<div class="tu-tools" ${tagTools ? ms('T1', '도구 칩(튜터가 읽은 것)') : ''}>${tools.join('')}</div>` : ''}
-      <div class="body">${body}</div>
+      ${tools.length ? `<div class="tu-tools" ${tagTools ? ms('T1a', '도구 칩(튜터가 읽은 것)') : ''}>${tools.join('')}</div>` : ''}
+      ${body ? `<div class="body">${body}</div>` : ''}
       ${foot}
     </div>`;
-  const answerFoot = (tag = false) =>
-    `<div class="tu-foot-row"><span class="icon-btn sm" title="답 복사" ${tag ? ms('T1', '답 복사') : ''}>${icon('copy', 'sm')}</span></div>`;
+  const answerFoot = (tag = false, extra = '') =>
+    `<div class="tu-foot-row"><span class="icon-btn sm" title="답 복사" ${tag ? ms('T1a', '답 복사') : ''}>${icon('copy', 'sm')}</span>${extra}</div>`;
 
   /** Answer 1 — grounded in pp. 41–42 (views.js pageBody). `current`: index of the chip the reader is showing. */
   function answer1({ tag = false, current = -1, foot = true } = {}) {
@@ -2457,7 +2472,7 @@
   }
   const A2_LEAD = '끄는 반응이 전혀 없는 경우는 드뭅니다. G 단백질은 GTP를 가수분해해 스스로 꺼지기 때문에, 신호의 세기는 각 분자가 활성 상태로 머무는 시간에 달려';
   const a2lead = () => `${A2_LEAD} ${tail('있습니다.', cite(42))}`;
-  function answer2({ done = false, tag = false } = {}) {
+  function answer2({ done = false, tag = false, notice = true, reasked = false } = {}) {
     if (!done) {
       return tutorMsg({
         cls: 'is-streaming',
@@ -2465,14 +2480,30 @@
         body: `<p>${a2lead()} 가수분해가 느릴수록 한 번의 자극이<span class="stream-caret"></span></p>`,
       });
     }
-    const notice = `<div class="tu-notice" role="status" ${ms('T1', '원문 근거로 다시 묻기')}>${icon('circle-help', 'c-warning')}<div class="nt">인용 1개를 확인하지 못했습니다</div>
+    const note = `<div class="tu-notice" role="status" ${ms('T1a', '원문 근거로 다시 묻기')}>${icon('circle-help', 'c-warning')}<div class="nt">인용 1개를 확인하지 못했습니다</div>
       <div class="nt-text">튜터가 이번 답에서 읽지 않은 쪽을 가리켰습니다. 원문 근거로 다시 물으면 튜터가 먼저 그&nbsp;쪽을 읽고 답하게 합니다. 이번에도 읽지 않은 쪽을 가리키면 다시 표시합니다.</div>
       <div class="nt-actions"><span class="btn small">원문 근거로 다시 묻기</span></div></div>`;
+    // After a reground turn follows this answer, its notice keeps the fact (the title line) and drops the body and the button.
+    const noteTitle = `<div class="tu-notice is-brief" role="status" ${ms('T1a', '확인 못 한 인용 안내(다시 물은 뒤 제목 줄만)')}>${icon('circle-help', 'c-warning')}<div class="nt">인용 1개를 확인하지 못했습니다</div></div>`;
     return tutorMsg({
       tools: [tool('book-open-text', '42쪽 읽음', { title: '42쪽 본문을 읽었습니다' })],
       body: `<p>${a2lead()} 가수분해가 느릴수록 한 번의 자극이 더 오래 이어져 배율이 커지지만, 끝없이 커지지는 ${tail('않습니다.', cite(42))} 여러 경로가 같은 표적을 두고 겨루는 교차 대화도 배율을 ${tail('줄입니다.', unverified(57, { tag }))}</p>`,
-      foot: answerFoot() + notice,
+      foot: answerFoot() + (reasked ? noteTitle : note),
     });
+  }
+  /**
+   * The reground turn (J42): "원문 근거로 다시 묻기" makes a new visible turn — Learn's fixed request as a user bubble (its open
+   * list says "원문 근거 요청" and, afterwards, which page was read) — and an answer that read the page first, so its chip is verified.
+   */
+  function regroundTurn() {
+    return (
+      userMsg({ text: '57쪽을 먼저 읽고 다시 답해 주세요.', scope: true, open: true, list: scopeList({ sel: false, question: false, reground: true, read: '57쪽' }), tag: true }) +
+      tutorMsg({
+        tools: [tool('book-open-text', '57쪽 읽음', { title: '57쪽 본문을 읽었습니다' })],
+        body: `<p>57쪽을 읽고 다시 정리했습니다. 여러 경로가 같은 표적을 두고 겨루면 한 경로의 신호를 다른 경로가 약하게 만들기 때문에, 배율이 끝없이 커지지 ${tail('않습니다.', cite(57, { tag: true }))}</p>`,
+        foot: answerFoot(),
+      })
+    );
   }
   /** Session head: the date (and, in the library, the item). The name is drawn only once the user renames the session — until then it is the first question, right below. */
   const sessionTitle = ({ item = false, renamed = null } = {}) =>
@@ -2480,10 +2511,10 @@
   /** The session's name under the head once the conversation is scrolled away from its title (mockup.js scrollToEnd). */
   const sticky = () => `<div class="tu-sticky" hidden><span class="ellipsis">${esc(T.session)}</span></div>`;
   const thread = (inner, { end = !tu.top } = {}) =>
-    `${sticky()}<div class="tu-scroll ${end ? 'to-end' : ''}" role="log" aria-label="대화" ${ms('T1', '대화(메시지·스트리밍)')}>${inner}</div>`;
+    `${sticky()}<div class="tu-scroll ${end ? 'to-end' : ''}" role="log" aria-label="대화" ${ms('T1a', '대화(메시지·스트리밍)')}>${inner}</div>`;
   /** The first exchange, finished. */
   const exchange1 = ({ tag = true, current = -1, open = false } = {}) =>
-    userMsg({ text: Q1, quote: true, scope: [1, 2, 0], tag, open }) + answer1({ tag, current });
+    userMsg({ text: Q1, quote: true, scope: true, tag, open }) + answer1({ tag, current });
 
   /** Inspector head: the mode switch (from T1 on), then the tutor's own buttons. */
   function inspHead({ mode = 'tutor', hover = null, sessionsOn = false, buttons = true, newDisabled = false } = {}) {
@@ -2491,67 +2522,92 @@
       `<span class="seg ${mode === id ? 'is-on' : ''} ${hover === id ? 'is-hover' : ''}" id="mode-${id}" role="tab" aria-selected="${mode === id}" title="${label} ${key}">${label}</span>`;
     const tutorButtons =
       mode === 'tutor' && buttons
-        ? `${tu.sessions === 'panel' ? `<span class="icon-btn ${sessionsOn ? 'is-on' : ''}" id="sessions-btn" title="세션 목록" ${ms('T1', '세션 목록 단추(패널 머리)')}>${icon('history')}</span>` : ''}
-           <span class="icon-btn ${newDisabled ? 'is-disabled' : ''}" title="${newDisabled ? '새 세션 — 지금 세션이 비어 있습니다' : '새 세션'}" ${ms('T1', '새 세션')}>${icon('square-pen')}</span>`
+        ? `${tu.sessions === 'panel' ? `<span class="icon-btn ${sessionsOn ? 'is-on' : ''}" id="sessions-btn" title="세션 목록" ${ms('대안', '세션 목록 단추(패널 머리) (T1a 아님)')}>${icon('history')}</span>` : ''}
+           <span class="icon-btn ${newDisabled ? 'is-disabled' : ''}" title="${newDisabled ? '새 세션 — 지금 세션이 비어 있습니다' : '새 세션'}" ${ms('T1a', '새 세션')}>${icon('square-pen')}</span>`
         : '';
     return `<div class="insp-head">
-      <div class="segmented mode" role="tablist" aria-label="오른쪽 패널" ${ms('T1', '인스펙터 모드 전환 [정보 | 튜터]')}>${seg('info', '정보', '⌃⌘1')}${seg('tutor', '튜터', '⌃⌘2')}</div>
+      <div class="segmented mode" role="tablist" aria-label="오른쪽 패널" ${ms('T1a', '인스펙터 모드 전환 [정보 | 튜터]')}>${seg('info', '정보', '⌃⌘1')}${seg('tutor', '튜터', '⌃⌘2')}</div>
       <span class="spacer"></span>${tutorButtons}
     </div>`;
   }
-  const tip = (anchor, label, sc = '') => `<span class="tooltip" data-anchor="${anchor}" role="tooltip">${label}${sc ? `<span class="sc">${sc}</span>` : ''}</span>`;
+  /** `note`: a second line (the tooltip then stacks); `place: 'above'` opens over the target (a target at the window's bottom). */
+  const tip = (anchor, label, sc = '', { place = '', note = '' } = {}) =>
+    `<span class="tooltip ${note ? 'multi' : ''}" data-anchor="${anchor}" ${place ? `data-place="${place}"` : ''} role="tooltip">${label}${sc ? `<span class="sc">${sc}</span>` : ''}${note ? `<span class="why">${note}</span>` : ''}</span>`;
 
   /**
    * Composer. The reader's current selection attaches itself (× removes it); send becomes stop while answering.
    * The agent button shows nothing extra when the agent is ready, and its state in words when it is not.
+   * `readonly`: the question waits for another session's answer (AGENT_BUSY, 8.4) — the text stays, dimmed, and cannot be sent.
    */
-  function composer({ text = '', attach = false, material = false, streaming = false, focus = false, disabled = false, tag = true, agent: status = 'ready', menuOpen = false } = {}) {
+  function composer({ text = '', attach = false, attachHover = false, material = false, streaming = false, focus = false, disabled = false, readonly = false, tag = true, agent: status = 'ready', menuOpen = false } = {}) {
+    const [, flagIcon, flagLabel] = AGENT_FLAG[status];
     const agent =
       tu.backend === 'fake'
-        ? `<span class="btn small plain has-icon has-menu tu-agent fake" title="가짜 백엔드 · 개발·데모 빌드에서만 보입니다">${icon('flask-conical', 'sm')}가짜 백엔드${icon('chevron-down', 'xs')}</span>`
+        ? `<span class="btn small plain has-icon has-menu tu-agent fake" title="가짜 에이전트 · 개발·데모 빌드에서만 보입니다">${icon('flask-conical', 'sm')}가짜 에이전트${icon('chevron-down', 'xs')}</span>`
         : status === 'ready'
-          ? `<span class="btn small plain has-menu tu-agent ${menuOpen ? 'is-pressed' : ''}" id="agent-btn" title="에이전트: Codex · 준비됨 — 누르면 에이전트를 바꿉니다">Codex${icon('chevron-down', 'xs')}</span>`
-          : `<span class="btn small plain has-icon has-menu tu-agent warn" id="agent-btn" title="에이전트: Codex · 로그인 필요 — 누르면 에이전트를 바꿉니다">${icon('log-in', 'sm')}Codex · 로그인 필요${icon('chevron-down', 'xs')}</span>`;
+          ? `<span class="btn small plain has-menu tu-agent ${menuOpen ? 'is-pressed' : ''}" id="agent-btn" title="에이전트: Claude Code · 준비됨 — 누르면 에이전트를 바꿉니다">Claude Code${icon('chevron-down', 'xs')}</span>`
+          : `<span class="btn small plain has-icon has-menu tu-agent warn" id="agent-btn" title="에이전트: Claude Code · ${flagLabel} — 누르면 에이전트를 바꿉니다">${icon(flagIcon, 'sm')}Claude Code · ${flagLabel}${icon('chevron-down', 'xs')}</span>`;
     const action = streaming
       ? `<span class="btn has-icon" title="중지 esc">${icon('circle-stop', 'sm')}중지</span>`
-      : `<span class="btn primary square ${text && !disabled ? '' : 'is-disabled'}" title="${disabled ? '보내기 — 에이전트를 고르면 쓸 수 있습니다' : '보내기 ↩'}">${icon('arrow-up')}</span>`;
+      : `<span class="btn primary square ${text && !disabled && !readonly ? '' : 'is-disabled'}" title="${readonly ? '보내기 — 다른 세션의 답이 끝나면 보냅니다' : disabled ? '보내기 — 자료를 여는 중입니다' : text ? '보내기 ↩' : '보내기 — 질문을 입력하면 보낼 수 있습니다'}">${icon('arrow-up')}</span>`;
     const chips = [
-      material ? `<div class="attach ctx" title="이 세션의 자료" ${tag ? ms('T1', '세션의 자료 칩(라이브러리 보기)') : ''}>${icon('file-text', 'sm')}<span class="ellipsis">${esc(T.item)}</span></div>` : '',
-      attach ? `<div class="attach" title="질문에 붙은 구간 · 42쪽 — 질문과 함께 보냅니다">${icon('text-quote', 'sm')}<span class="ellipsis">42쪽 · ${esc(T.selection.text)}</span><span class="x" title="구간 떼기">${icon('x', 'xs')}</span></div>` : '',
+      material ? `<div class="attach ctx" title="이 세션의 자료" ${tag ? ms('T1a', '세션의 자료 칩(라이브러리 보기)') : ''}>${icon('file-text', 'sm')}<span class="ellipsis">${esc(T.item)}</span></div>` : '',
+      attach ? `<div class="attach ${attachHover ? 'is-hover' : ''}" id="attach-chip" title="질문에 붙은 구간 · 42쪽 — 질문과 함께 보냅니다">${icon('text-quote', 'sm')}<span class="ellipsis">42쪽 · ${esc(T.selection.text)}</span><span class="x" title="구간 떼기">${icon('x', 'xs')}</span></div>` : '',
     ].join('');
     const caret = focus ? '<span class="caret"></span>' : '';
-    const input = text ? `<div class="input">${esc(text)}${caret}</div>` : `<div class="input placeholder">${caret}${streaming ? '다음 질문을 입력하세요' : '질문을 입력하세요'}</div>`;
-    return `<div class="tu-composer ${focus ? 'is-focus' : ''} ${disabled ? 'is-disabled' : ''}" ${tag ? ms('T1', '입력창(구간 첨부 · 에이전트 단추 · 보내기 · 중지)') : ''}>
+    const input = text ? `<div class="input ${readonly ? 'is-readonly' : ''}">${esc(text)}${caret}</div>` : `<div class="input placeholder">${caret}${streaming ? '답을 받는 중입니다' : disabled ? '자료를 여는 중입니다' : '질문을 입력하세요'}</div>`;
+    return `<div class="tu-composer ${focus ? 'is-focus' : ''} ${disabled ? 'is-disabled' : ''} ${readonly ? 'is-readonly' : ''}" ${tag ? ms('T1a', '입력창(구간 첨부 · 에이전트 단추 · 보내기 · 중지)') : ''}>
       ${chips}${input}
       <div class="foot">${agent}<span class="spacer"></span>${streaming ? '<span class="t-footnote c-secondary">답하는 중…</span>' : ''}${action}</div>
     </div>`;
   }
-  const agentMenu = () => `<div class="menu" data-anchor="agent-btn" data-place="above" style="width:272px" role="menu" ${ms('T1', '에이전트 메뉴')}>
-      ${mi('Codex', { check: true })}
-      ${mi('Claude Code — 연결 도구 필요', { disabled: true, title: 'Learn과 연결하는 도구를 설치한 뒤 에이전트 고르기에서 다시 확인하세요' })}
-      ${mi('Gemini CLI — 로그인 필요', { disabled: true, title: '터미널에서 로그인한 뒤 에이전트 고르기에서 다시 확인하세요' })}
-      ${mi('opencode — 지원하지 않는 버전', { disabled: true, title: '최신 버전으로 업데이트하세요' })}
+  /** The agent menu: the detected agent (✓ when it is the current one and ready; "Claude Code — 상태" and disabled when not), the fake one in dev builds, 고르기…. */
+  const AGENT_MENU_WHY = {
+    adapter: 'Learn과 연결하는 도구를 설치한 뒤 에이전트 고르기에서 다시 확인하세요',
+    login: 'Learn 전용 설정으로 로그인한 뒤 에이전트 고르기에서 다시 확인하세요',
+    old: '업데이트한 뒤 에이전트 고르기에서 다시 확인하세요',
+    missing: '설치한 뒤 에이전트 고르기에서 다시 찾으세요',
+  };
+  const agentMenuItems = (status = 'ready') =>
+    `${status === 'ready' ? mi('Claude Code', { check: true }) : mi(`Claude Code — ${AGENT_FLAG[status][2]}`, { disabled: true, check: true, title: AGENT_MENU_WHY[status] })}
+      ${mi(`가짜 에이전트 ${icon('flask-conical', 'sm')}`, { title: '개발·데모 빌드에서만 보입니다' })}
       <div class="msep"></div>
-      ${mi('에이전트 고르기…')}
+      ${mi('에이전트 고르기…')}`;
+  const agentMenu = () => `<div class="menu" data-anchor="agent-btn" data-place="above" style="width:272px" role="menu" ${ms('T1a', '에이전트 메뉴(가짜 에이전트는 개발·데모 빌드에서만)')}>
+      ${agentMenuItems()}
     </div>`;
   const fakeBanner = () =>
-    tu.backend === 'fake' ? `<div class="tu-banner" role="status" ${ms('T1', '가짜 백엔드 표시')}>${icon('flask-conical', 'sm')}가짜 백엔드 · 정해 둔 답을 돌려줍니다(개발·데모 빌드)</div>` : '';
+    tu.backend === 'fake' ? `<div class="tu-banner" role="status" ${ms('T1a', '가짜 에이전트 표시')}>${icon('flask-conical', 'sm')}가짜 에이전트 · 정해 둔 답을 돌려줍니다(개발·데모 빌드)</div>` : '';
+  /** A PDF the tutor cannot read the text of (J57): one line above the conversation; asking is not blocked. */
+  const TEXT_NOTE = {
+    empty: '이&nbsp;PDF에서 글자를 찾지 못해 튜터가 쪽을 읽을 수 없습니다. 스캔한 PDF일 수 있습니다.',
+    locked: '암호로 보호된 PDF라 튜터가 본문을 읽을 수 없습니다.',
+    failed: '본문을 읽지 못해 튜터가 쪽을 인용할 수 없습니다.',
+    large: '파일이 너무 커서 튜터가 본문을 읽을 수 없습니다.',
+  };
+  const textNote = (kind) => `<div class="tu-line" role="status" ${ms('T1a', '본문 없는 PDF 안내 줄')}>${icon('info', 'sm')}<span class="l-text">${TEXT_NOTE[kind]}</span></div>`;
+  /** Above the composer while another session's answer is still coming (AGENT_BUSY, J17): the question waits there, sent once by itself. */
+  const waitLine = () =>
+    `<div class="tu-wait" role="status" ${ms('T1a', '다른 세션이 답을 받는 중(기다림 줄)')}><span class="spinner sm"></span><span class="w-text">다른&nbsp;세션의 답이 끝나면 보냅니다</span><span class="btn small">보내지 않기</span></div>`;
+  /** "최신으로" (J51): over the conversation's bottom edge, centred just above the composer, once the user has scrolled up. */
+  const latestBtn = (cls = '') =>
+    `<div class="tu-latest-row ${cls}"><span class="btn small has-icon tu-latest" title="최신으로" ${ms('T1a', '최신으로 단추(입력창 위 가운데)')}>${icon('arrow-down', 'sm')}최신으로</span></div>`;
 
   // Reader beside the tutor. Pages are zoomed to fit the stage ("자동 맞춤" keeps ≥ 12 px either side).
   // `attached`: the passage attached to the question (Learn's own mark — a margin bar and a neutral wash,
   // never the find colour). `ring`: the page a pressed citation points to (page precision, for a moment).
-  function stage({ pages = [42, 43], top = 16, zoom = 1, attached = false, ring = null } = {}) {
+  function stage({ pages = [42, 43], top = 16, zoom = 1, attached = false, ring = null, scan = false } = {}) {
     const body = (n) => {
       let h = pageBody(n, { find: false }).replace('class="hl"', 'class=""'); // M9 highlight left out of the tutor renders
       if (attached && n === 42) {
         h = h
           .replace(`<p>${T.selection.text.slice(0, 5)}`, `<p class="has-attach"><span class="attach-bar" title="질문에 붙은 구간"></span>${T.selection.text.slice(0, 5)}`)
-          .replace(T.selection.text, `<span class="attached" ${ms('T1', '질문에 붙은 구간 표시')}>${T.selection.text}</span>`);
+          .replace(T.selection.text, `<span class="attached" ${ms('T1a', '질문에 붙은 구간 표시')}>${T.selection.text}</span>`);
       }
       return h;
     };
     return `<div class="pdf-stage tu-stage" style="--pg-zoom:${zoom}"><div class="pdf-scroll" style="top:${top}px">${pages
-      .map((n) => `<div class="pdf-page ${ring === n ? 'cite-page' : ''}" aria-label="${n}쪽" ${ring === n ? ms('T1', '인용한 쪽 표시(누른 뒤 잠시)') : ''}>${body(n)}</div>`)
+      .map((n) => `<div class="pdf-page ${ring === n ? 'cite-page' : ''} ${scan ? 'is-scan' : ''}" aria-label="${n}쪽" ${ring === n ? ms('T1a', '인용한 쪽 표시(누른 뒤 잠시)') : ''}>${body(n)}</div>`)
       .join('')}</div></div>`;
   }
   const fitZoom = (mainW) => {
@@ -2564,55 +2620,56 @@
     const mainW = winW - (noSidebar ? 0 : 240) - (panel ? slotW : 0);
     const zoom = fitZoom(mainW);
     // Below the full toolbar width the annotation group folds into "필기 ▾" (the M9 step of the narrow-window rule).
-    const tools = mainW < READER_MIN.m9 ? 'compact' : 'full';
-    const toggle = `<span class="toolbar-sep"></span><span class="icon-btn ${panel ? 'is-on' : ''}" id="slot-toggle" title="${SLOT_TOGGLE(!!panel)}" ${ms('T1', '오른쪽 패널 보기·가리기')}>${icon('panel-right')}</span>`;
-    const main = `${pdfToolbar({ find: false, page, zoom: `${Math.round(zoom * 100)}%`, trailing: toggle, tools })}
+    // The narrow-window scenes (desktop) draw T1a's own toolbar: no annotation group (M9 brings it). Under 480 the page field's "/ N" goes (design-spec 2.5).
+    const tools = desktop ? 'none' : mainW < READER_MIN.m9 ? 'compact' : 'full';
+    const toggle = `<span class="toolbar-sep"></span><span class="icon-btn ${panel ? 'is-on' : ''}" id="slot-toggle" title="${SLOT_TOGGLE(!!panel)}" ${ms('T1a', '오른쪽 패널 보기·가리기')}>${icon('panel-right')}</span>`;
+    const main = `${pdfToolbar({ find: false, page, zoom: `${Math.round(zoom * 100)}%`, trailing: toggle, tools, pageTotal: mainW >= 480 })}
       <div class="reader-body">${stage({ ...stageOpts, zoom })}</div>${mainTip}`;
     const sessionsSeg = tu.sessions === 'sidebar' ? navList || 'seg' : null;
     return M.windowShell({
       tabs: M.standardTabs('pdf'),
       // The M9 highlight is left out of the tutor renders (stage and thumbnails alike).
-      sidebar: noSidebar ? '' : pdfSidebar(nav, { sessions: sessionsSeg, current }).replaceAll('class="hl"', 'class=""'),
+      sidebar: noSidebar ? '' : pdfSidebar(nav, { sessions: sessionsSeg, current, notes: false }).replaceAll('class="hl"', 'class=""'),
       main,
       inspector: panel,
       overlays,
-      cls: panel && tutorMode ? 'has-tutor' : '',
-      style: `--tutor-w:${tu.width}px;${desktop ? `--win-w:${winW}px;--win-h:${winH}px` : ''}`,
+      cls: `${panel && tutorMode ? 'has-tutor' : ''} ${stageOpts.scan ? 'is-scan-doc' : ''}`,
+      style: `--tutor-w:${tutorMode ? slotW : tu.width}px;${desktop ? `--win-w:${winW}px;--win-h:${winH}px` : ''}`,
     });
   }
 
   // Session lists. Rename in place (double-click or ↩); delete with ⌘⌫ or the row's native context menu
   // (7.3 "세션") — the same row grammar as collections, in the sidebar and in the panel list alike.
   /** Session row: title only — the day group says the day; the time is in the tooltip (navRow's title). */
-  const sessionRow = (r, { indent = 0, selected = false } = {}) =>
-    navRow({ label: r.title, ic: 'message-square', indent, selected }).replace('role="treeitem"', `role="treeitem" title="${esc(r.title)} · ${r.at}"`);
+  const sessionRow = (r, { indent = 0, selected = false, id = '', ic = 'message-square' } = {}) =>
+    navRow({ label: r.title, ic, indent, selected }).replace('role="treeitem"', `${id ? `id="${id}" ` : ''}role="treeitem" title="${esc(r.title)} · ${r.at}"`);
   const renameRow = (r) =>
-    `<div class="nav-row is-renaming" role="treeitem" ${ms('T1', '세션 이름 바꾸기(제자리, ↩ 확인 · esc 취소)')}>${icon('message-square')}<div class="field small is-focus"><span class="value ellipsis"><span class="text-sel">${esc(r.title)}</span></span></div></div>`;
+    `<div class="nav-row is-renaming" role="treeitem" ${ms('T1a', '세션 이름 바꾸기(제자리, ↩ 확인 · esc 취소)')}>${icon('message-square')}<div class="field small is-focus"><span class="value ellipsis"><span class="text-sel">${esc(r.title)}</span></span></div></div>`;
   /** `deleting`: the row being deleted (the delete sheet's subject) is the selected one. */
   const dayGroups = ({ rename = true, deleting = false } = {}) =>
     T.itemSessions
-      .map((g) => `<div class="section-label">${g.group}</div>` + g.rows.map((r) => (rename && r.rename ? renameRow(r) : sessionRow(r, { selected: deleting ? !!r.rename : r.current }))).join(''))
+      .map((g) => `<div class="section-label">${g.group}</div>` + g.rows.map((r) => (rename && r.rename ? renameRow(r) : sessionRow(r, { selected: deleting ? !!r.rename : r.current, id: r.current ? 'session-row' : '' }))).join(''))
       .join('');
   /** Reader sidebar, 4th segment "세션": this item's sessions by day; one row renamed in place. */
   function readerSessions() {
     if (tu.empty) {
-      return `<div class="pane-empty top" ${ms('T1', '세션 칸 빈 상태')}>${icon('message-square')}<div class="pe-title">이&nbsp;자료의 세션이 없습니다</div><div class="pe-text">튜터에게 질문하면 여기에 생깁니다.</div></div>`;
+      return `<div class="pane-empty top" ${ms('T1a', '세션 칸 빈 상태')}>${icon('message-square')}<div class="pe-title">이&nbsp;자료의 세션이 없습니다</div><div class="pe-text">튜터에게 질문하면 여기에 생깁니다.</div></div>`;
     }
-    return `<div class="sidebar-scroll tu-sess" role="tree" aria-label="세션" ${ms('T1', '세션 목록(이 자료, 최근 순)')}>${dayGroups({ rename: !tu.sheet, deleting: tu.sheet === 'delete' })}</div>`;
+    return `<div class="sidebar-scroll tu-sess" role="tree" aria-label="세션" ${ms('T1a', '세션 목록(이 자료, 최근 순)')}>${dayGroups({ rename: !tu.sheet && tu.menu !== 'session', deleting: tu.sheet === 'delete' })}</div>`;
   }
   /** Library sidebar section "세션": recent sessions grouped by item (up to 5 items × 3 sessions). */
   const librarySessions = () =>
-    `<div class="tu-lib-sessions" ${ms('T1', '세션 묶음(라이브러리 사이드바, 자료별·최근)')}>
+    `<div class="tu-lib-sessions" ${ms('T1a', '세션 묶음(라이브러리 사이드바, 자료별·최근)')}>
       <div class="section-label">세션</div>
       ${T.recentSessions
         .map((g) => navRow({ label: g.item, ic: 'file-text', children: true, open: true, muted: true }) + g.rows.map((r) => sessionRow(r, { indent: 1 })).join(''))
         .join('')}
     </div>`;
   /** ?sessions=panel: a list that drops from the tutor head's list button over the conversation. */
-  const panelSessions = () => `<div class="tu-sessions" role="dialog" aria-label="세션 목록" ${ms('T1', '세션 목록(패널 머리의 목록)')}>
+  const panelSessions = () => `<div class="tu-sessions" role="dialog" aria-label="세션 목록" ${ms('대안', '세션 목록(패널 머리의 목록) (T1a 아님)')}>
       <div class="ts-head">
-        <div class="segmented fill" ${ms('T1', '세션 범위(이 자료 · 모든 자료)')}><span class="seg is-on">이&nbsp;자료</span><span class="seg">모든 자료</span></div>
-        <div class="field small" ${ms('T1', '세션 찾기')}>${icon('search', 'sm')}<span class="placeholder">세션 찾기</span></div>
+        <div class="segmented fill" ${ms('대안', '세션 범위(이 자료 · 모든 자료) (T1a 아님)')}><span class="seg is-on">이&nbsp;자료</span><span class="seg">모든 자료</span></div>
+        <div class="field small" ${ms('대안', '세션 찾기 (T1a 아님)')}>${icon('search', 'sm')}<span class="placeholder">세션 찾기</span></div>
       </div>
       <div class="ts-list" role="listbox">${dayGroups()}</div>
     </div>`;
@@ -2622,7 +2679,7 @@
    * session as an item card, "삭제" as a danger-text button on the left, 취소 the default (↩ · esc) — the action
    * cannot be undone.
    */
-  const deleteSheet = () => `<div class="dialog" role="alertdialog" aria-label="세션 삭제" ${ms('T1', '세션 삭제 확인 시트')}>
+  const deleteSheet = () => `<div class="dialog" role="alertdialog" aria-label="세션 삭제" ${ms('대안', '세션 삭제 확인 시트 (T1a 아님)')}>
       <div class="d-body">
         <div class="d-title"><span class="badge-icon warning">${icon('trash-2')}</span><div><h2>이&nbsp;세션을 삭제하겠습니까?</h2></div></div>
         <p class="d-text">대화와 보낸 범위 기록을 지웁니다. 자료와 필기는 그대로 남습니다. 삭제한 세션은 되돌릴 수 없습니다.</p>
@@ -2632,25 +2689,39 @@
       <div class="d-foot"><div class="btn plain danger-text leading">삭제</div><span class="spacer"></span><div class="btn primary" title="↩ · esc">취소</div></div>
     </div>`;
 
-  // Consent (state 2) — what goes out is ADR-0010 §3's context plus this session's earlier turns and the
-  // material's name; the account sentence holds for a subscription, an API key and a local model alike.
+  /**
+   * The session row's context menu (design-spec 7.3): native, opened at the pointer on the row. 이름 바꾸기 (↩ on the row) and
+   * 세션 삭제 ⌘⌫ (`item.trash`, undone by the toast). 세션 내보내기 is not drawn: its milestone is undecided (no handler, no row).
+   */
+  const sessionMenu = () => `<span class="pointer" aria-hidden="true">${icon('mouse-pointer-2', 'sm')}</span>
+    <div class="menu" data-pointer-in="session-row" style="width:232px" role="menu" ${ms('T1a', '세션 컨텍스트 메뉴(네이티브)')}>
+      ${mi('이름 바꾸기')}
+      <div class="msep"></div>
+      ${mi('세션 삭제', { shortcut: '⌘⌫' })}
+    </div>`;
+
+  // Consent (state 2) — one company and one agent (T1a: Claude Code → Anthropic), what goes out (ADR-0013's context plus this
+  // session's earlier turns and the material's name), the tools that are off, the Learn-only settings (the spike confirmed both:
+  // a separate login (S7) and the agent's records in that folder (S8)), and the usage and charges (the signed-in account).
+  // No memory sentence: there is no memory before M10.
   const CONSENT_LEAD =
-    '튜터는 이&nbsp;Mac에 설치한 에이전트 프로그램으로 답합니다. 에이전트는 사용자가 그&nbsp;프로그램에 직접 설정한 계정이나 API 키, 또는 로컬 모델로 돌고, 질문도 그&nbsp;서비스나 모델이 처리합니다. 계정을 쓰면 사용량과 요금도 그&nbsp;계정에서 나갑니다.';
+    '튜터는 이&nbsp;Mac에 설치한 에이전트 프로그램 Claude&nbsp;Code로 답합니다. 질문은 Anthropic이 처리합니다. 사용량과 요금은 Claude&nbsp;Code에 로그인한 계정에서 나갑니다.';
   const consentFacts = () => `<dl class="tu-facts">
-      <dt>${icon('send')}</dt><dd><div class="f-title">보내는 것</div><div class="f-text">지금 질문과 이&nbsp;세션의 앞선 대화, 선택한 구간, 자료의 이름, 튜터가 이&nbsp;자료에서 찾아 읽은 쪽, 관련 기억(기억 기능이 생긴 뒤)</div></dd>
-      <dt>${icon('eye-off')}</dt><dd><div class="f-title">보내지 않는 것</div><div class="f-text">라이브러리 전체와 다른&nbsp;자료는 보내지 않습니다.</div></dd>
-      <dt>${icon('shield-check')}</dt><dd><div class="f-title">에이전트의 도구</div><div class="f-text">파일·셸 도구를 끄고, Learn이 허락한 자료만 읽게 합니다.</div></dd>
-      <dt>${icon('key-round')}</dt><dd><div class="f-title">로그인</div><div class="f-text">로그인 정보와 API 키는 에이전트 프로그램이 직접 다룹니다. Learn은 이를 따로 저장하지 않습니다.</div></dd>
+      <dt>${icon('send')}</dt><dd><div class="f-title">보내는 것</div><div class="f-text">지금 질문, 질문에 붙인 구간, 이&nbsp;세션의 앞선 대화, 자료의 이름과 목차, 지금 보는 쪽, 튜터가 이&nbsp;자료에서 찾아 읽은 쪽</div></dd>
+      <dt>${icon('eye-off')}</dt><dd><div class="f-title">보내지 않는 것</div><div class="f-text">다른&nbsp;자료와 라이브러리 전체는 보내지 않습니다.</div></dd>
+      <dt>${icon('shield-check')}</dt><dd><div class="f-title">에이전트의 도구</div><div class="f-text">파일·셸·웹 도구를 끄고, Learn이 허락한 이&nbsp;자료만 읽게 합니다.</div></dd>
+      <dt>${icon('folder-cog')}</dt><dd><div class="f-title">Learn 전용 설정</div><div class="f-text">에이전트는 평소 설정과 따로, Learn 전용 설정&nbsp;폴더를 씁니다. 그래서 처음 한&nbsp;번 따로 로그인해야 합니다. 에이전트도 대화&nbsp;기록을 이&nbsp;폴더에 남깁니다.</div></dd>
+      <dt>${icon('key-round')}</dt><dd><div class="f-title">로그인</div><div class="f-text">로그인 정보는 에이전트 프로그램이 직접 다룹니다. Learn은 이를 보거나 저장하지 않습니다.</div></dd>
     </dl>`;
   const CONSENT_NOTE = '질문마다 보낸 범위가 질문 아래에 표시됩니다.';
-  const consentCard = () => `<div class="tu-consent" role="region" aria-label="튜터 사용 동의" ${ms('T1', '첫 사용 동의(패널 안 카드)')}>
+  const consentCard = () => `<div class="tu-consent" role="region" aria-label="튜터 사용 동의" ${ms('T1a', '첫 사용 동의(패널 안 카드)')}>
       <div class="c-head"><span class="badge-tile">${icon('graduation-cap')}</span><h2>튜터는 이&nbsp;Mac의 에이전트로 답합니다</h2></div>
       <p class="tu-text">${CONSENT_LEAD}</p>
       ${consentFacts()}
       <p class="tu-text small">${CONSENT_NOTE}</p>
       <div class="c-actions"><span class="btn">나중에</span><span class="btn primary" title="동의 — 카드에 포커스가 있으면 ↩">동의</span></div>
     </div>`;
-  const consentSheet = () => `<div class="dialog" role="alertdialog" aria-label="튜터 사용 동의" ${ms('T1', '첫 사용 동의(시트)')}>
+  const consentSheet = () => `<div class="dialog" role="alertdialog" aria-label="튜터 사용 동의" ${ms('대안', '첫 사용 동의(시트) (T1a 아님)')}>
       <div class="d-body">
         <div class="d-title"><span class="badge-icon">${icon('graduation-cap')}</span><div><h2>튜터는 이&nbsp;Mac의 에이전트로 답합니다</h2></div></div>
         <p class="d-text">${CONSENT_LEAD}</p>
@@ -2659,12 +2730,13 @@
       </div>
       <div class="d-foot"><span class="spacer"></span><div class="btn" title="esc">나중에</div><div class="btn primary" title="↩">동의</div></div>
     </div>`;
-  const tutorOff = () => `<div class="pane-empty" ${ms('T1', '튜터 꺼짐(동의 전 · 나중에)')}>${icon('graduation-cap')}
+  const tutorOff = () => `<div class="pane-empty" ${ms('T1a', '튜터 꺼짐(동의 전 · 나중에)')}>${icon('graduation-cap')}
       <div class="pe-title">튜터가 꺼져 있습니다</div>
       <div class="pe-text">튜터를 쓰려면 먼저 에이전트에 보내는 범위에 동의해야 합니다. 자료 읽기와 필기는 튜터 없이도 모두 쓸 수 있습니다.</div>
       <div class="btn">튜터 켜기…</div></div>`;
 
-  // Agents (state 3)
+  // Agents (state 3): T1a has one real agent, Claude Code. Its row is in one of five states (spec 4.3, decision order); ?states=all draws
+  // all five on one screen (a critique sheet — the app shows the one row in its current state).
   const AGENT_FLAG = {
     ready: ['c-success', 'circle-check', '준비됨'],
     login: ['c-warning', 'log-in', '로그인 필요'],
@@ -2672,69 +2744,56 @@
     old: ['c-warning', 'triangle-alert', '지원하지 않는 버전'],
     adapter: ['c-warning', 'plug', '연결 도구 필요'],
   };
+  const AGENT_STATES = ['ready', 'adapter', 'login', 'old', 'missing'];
+  const agentOf = (status) => ({ ...T.agents[0], status, ...T.agentStates[status] });
+  const CMD_TAG = { adapter: '연결 도구 설치 명령 복사', login: 'Learn 전용 로그인 명령 복사', missing: 'Claude Code 설치 명령 복사' };
   /** A shell command that wraps only between words and after a package scope's "/" — never inside a name. */
   const cmdHtml = (cmd) =>
     cmd
+      .replaceAll('Application Support', 'Application\u00a0Support') // the folder's name stays whole on screen; the copied text keeps its ordinary space
       .split(' ')
       .map((w) => w.split(/(?<=\/)/).map((part) => `<span class="nobr">${esc(part)}</span>`).join('<wbr>'))
       .join(' ');
-  const agentRow = (a, { focus = false, tag = false } = {}) => {
+  const agentRow = (a, { focus = false, tag = false, on = true } = {}) => {
     const [c, ic, label] = AGENT_FLAG[a.status];
     const ok = a.status === 'ready';
     const action =
       a.status === 'login' || a.status === 'old' || a.status === 'adapter'
-        ? `<span class="btn small a-action" title="${esc(a.name)}의 상태를 다시 확인합니다" ${tag ? ms('T1', '다시 확인(에이전트 행)') : ''}>다시 확인</span>`
+        ? `<span class="btn small a-action" title="${esc(a.name)}의 상태를 다시 확인합니다" ${tag ? ms('T1a', '다시 확인(에이전트 행)') : ''}>다시 확인</span>`
         : '';
-    // The adapter's install command: code (mono, wraps), with a copy button — a technical value, so only here.
+    // The command to run in a terminal: code (mono, wraps), with a copy button at its end — a technical value, so only here.
     const cmd = a.cmd
-      ? `<span class="a-cmd"><span class="tu-cmd mono">${cmdHtml(a.cmd)}</span><span class="icon-btn sm" title="명령 복사" ${tag ? ms('T1', '연결 도구 설치 명령 복사') : ''}>${icon('copy', 'sm')}</span></span>`
+      ? `<span class="a-cmd"><span class="tu-cmd mono">${cmdHtml(a.cmd)}</span><span class="icon-btn sm" title="명령 복사" ${tag ? ms('T1a', CMD_TAG[a.status]) : ''}>${icon('copy', 'sm')}</span></span>`
       : '';
-    return `<div class="agent-row ${ok ? '' : 'is-unavailable'}" role="radio" aria-checked="${ok}" ${ok ? '' : 'aria-disabled="true"'}>
-      <span class="radio ${ok ? 'is-on' : ''} ${focus ? 'is-focus' : ''}"></span>
-      <span class="a-name">${esc(a.name)}<span class="inline-flag t-footnote ${c}">${icon(ic, 'sm')}${label}</span></span>
+    return `<div class="agent-row ${ok ? '' : 'is-unavailable'}" role="radio" aria-checked="${ok && on}" ${ok ? '' : 'aria-disabled="true"'}>
+      <span class="radio ${ok && on ? 'is-on' : ''} ${focus ? 'is-focus' : ''}"></span>
+      <span class="a-name"><span class="nobr">${esc(a.name)}</span><span class="inline-flag t-footnote ${c}">${icon(ic, 'sm')}${label}</span></span>
       <span class="a-text">${a.text}</span>${action}${cmd}
     </div>`;
   };
-  const fakeAgentRow = () => `<div class="agent-row" role="radio" aria-checked="false"><span class="radio"></span>
-      <span class="a-name">가짜 백엔드<span class="badge-soft warn">개발용</span></span>
+  const fakeAgentRow = (on = false) => `<div class="agent-row" role="radio" aria-checked="${on}"><span class="radio ${on ? 'is-on is-focus' : ''}"></span>
+      <span class="a-name">가짜 에이전트<span class="badge-soft warn">개발용</span></span>
       <span class="a-text">정해 둔 답과 인용을 돌려줍니다.</span></div>`;
   function agentPicker() {
     const head = `<div class="tu-title"><span class="tu-section-title">에이전트 고르기</span></div>
-      <p class="tu-text">튜터는 이&nbsp;Mac에 설치된 에이전트로 답합니다. 로그인은 각&nbsp;에이전트에서 합니다.</p>`;
-    const dev = `<div ${ms('T1', '가짜 백엔드(개발·데모 빌드에서만)')}><div class="group-label">개발·데모 빌드에서만 보입니다</div><div class="agent-group dev">${fakeAgentRow()}</div></div>`;
-    const foot = ({ start = 'Codex로 시작', why = '', searching = false } = {}) =>
-      `<div class="tu-foot"><span class="btn plain leading ${searching ? 'is-disabled' : ''}" title="설치된 에이전트를 다시 찾습니다" ${ms('T1', '에이전트 다시 찾기')}>다시 찾기</span><span class="spacer"></span><span class="btn primary ${why ? 'is-disabled' : ''}" title="${why || '↩'}" ${ms('T1', '에이전트로 시작')}>${start}</span></div>`;
-    if (tu.agents === 'none') {
-      // Final state with nothing to choose: no list and no start button — the one action is "다시 찾기".
-      return `<div class="tu-scroll">${head}
-        <div class="pane-empty" ${ms('T1', '에이전트 없음')}>${icon('unplug')}<div class="pe-title">설치된 에이전트가 없습니다</div>
-          <div class="pe-text">Gemini CLI나 opencode는 설치하고 로그인하면 바로 쓸 수 있습니다. Codex와 Claude Code는 Learn과 연결하는 도구도 함께 설치해야 합니다.</div>
-          <div class="btn" title="설치된 에이전트를 다시 찾습니다">다시 찾기</div>
-          <span class="btn plain accent has-icon" title="설치 안내를 기본 브라우저로 엽니다" ${ms('T1', '설치 안내 보기(도움말, 기본 브라우저)')}>${icon('external-link', 'sm')}설치 안내 보기</span></div>
-      </div>`;
-    }
+      <p class="tu-text">튜터는 이&nbsp;Mac에 설치된 Claude&nbsp;Code로 답합니다. 로그인은 Claude&nbsp;Code에서 합니다.</p>`;
+    const dev = `<div ${ms('T1a', '가짜 에이전트(개발·데모 빌드에서만)')}><div class="group-label">개발·데모 빌드에서만 보입니다</div><div class="agent-group dev">${fakeAgentRow(tu.backend === 'fake')}</div></div>`;
+    const foot = ({ start = tu.backend === 'fake' ? '가짜 에이전트로 시작' : 'Claude Code로 시작', why = '', searching = false } = {}) =>
+      `<div class="tu-foot"><span class="btn plain leading ${searching ? 'is-disabled' : ''}" title="설치된 에이전트를 다시 찾습니다" ${ms('T1a', '에이전트 다시 찾기')}>다시 찾기</span><span class="spacer"></span><span class="btn primary ${why ? 'is-disabled' : ''}" title="${why || '↩'}" ${ms('T1a', '에이전트로 시작')}>${start}</span></div>`;
     if (tu.agents === 'searching') {
-      // Transient: shown after 300 ms; the controls stay where they are, disabled.
+      // Transient: shown after 300 ms; the controls stay where they are, disabled. Searching again keeps the rows already found (spec 4.3), disabled.
       return `<div class="tu-scroll">${head}
-        <div class="loading tu-searching" ${ms('T1', '에이전트 찾는 중')}><span class="spinner"></span>에이전트를 찾는 중…</div>
+        <div class="loading tu-searching" ${ms('T1a', '에이전트 찾는 중')}><span class="spinner"></span>에이전트를 찾는 중…</div>
+        ${tu.rows ? `<div class="agent-group is-searching" role="radiogroup" aria-label="에이전트" ${ms('T1a', '다시 찾는 중 · 앞의 행은 비활성으로 남음')}>${agentRow(agentOf('ready'), { on: true })}</div>` : ''}
       </div>${foot({ start: '시작', why: '에이전트를 찾는 중입니다', searching: true })}`;
     }
-    // blocked: none ready — Codex signed out, Gemini CLI not installed (the other rows as in the list).
-    const list =
-      tu.agents === 'blocked'
-        ? T.agents.map((a) =>
-            a.id === 'codex'
-              ? { ...a, status: 'login', text: '터미널에서 <span class="mono">codex login</span>을 실행해 로그인한 뒤 다시 확인하세요.' }
-              : a.id === 'gemini'
-                ? { ...a, status: 'missing', text: '설치되어 있지 않습니다. 설치하고 로그인한 뒤 다시 찾기를 누르세요.' }
-                : a,
-          )
-        : T.agents;
-    const ready = list.some((a) => a.status === 'ready');
-    return `<div class="tu-scroll" ${ms('T1', '에이전트 고르기(감지된 에이전트와 상태)')}>${head}
-        <div class="agent-group" role="radiogroup" aria-label="에이전트">${list.map((a, i) => agentRow(a, { focus: a.status === 'ready', tag: i === 1 })).join('')}</div>
-        ${dev}
-      </div>${ready ? foot() : foot({ start: '시작', why: '준비된 에이전트가 없습니다 — 로그인한 뒤 다시 확인하세요' })}`;
+    // list: ready · blocked: none ready (signed out) · none: nothing installed (the install command, no link) · states=all: the five.
+    const statuses = tu.states ? AGENT_STATES : [tu.agents === 'none' ? 'missing' : tu.agents === 'blocked' ? 'login' : 'ready'];
+    const ready = statuses.includes('ready');
+    return `<div class="tu-scroll" ${ms('T1a', tu.states ? '에이전트 고르기 · 행의 다섯 상태(비평용 한 화면)' : '에이전트 고르기(감지된 에이전트와 상태)')}>${head}
+        <div class="agent-group" role="radiogroup" aria-label="에이전트">${statuses.map((st) => agentRow(agentOf(st), { focus: st === 'ready' && tu.backend !== 'fake', tag: true, on: tu.backend !== 'fake' })).join('')}</div>
+        ${tu.states ? '' : dev}
+      </div>${ready ? foot() : foot({ start: '시작', why: 'Claude Code가 준비되지 않았습니다 — 안내를 따른 뒤 다시 확인하세요' })}`;
   }
 
   // Proposal cards (state 7) — M9 note · check question, M10 memory (ADR-0010 §2 "제안"). The sheet order:
@@ -2761,32 +2820,64 @@
   const learnNote = (text) => `<div class="tu-learn-note">${icon('info', 'sm')}<span>${text}</span></div>`;
 
   // Failures (state 8): a request that fails before any answer returns to the composer as a draft, sent from
-  // there with ↩ (one way to send); one that fails mid-answer keeps the partial answer and offers "다시 보내기".
+  // there with ↩ (one way to send); one that fails mid-answer keeps the partial answer and offers "다시 보내기" (not after a lockdown stop).
   const failNotice = (ic, cls, title, text, actions = '', extra = '') =>
-    `<div class="tu-notice" role="alert" ${ms('T1', '실패 안내')}>${icon(ic, cls)}<div class="nt">${title}</div><div class="nt-text">${text}</div>${extra}${actions ? `<div class="nt-actions">${actions}</div>` : ''}</div>`;
+    `<div class="tu-notice" role="alert" ${ms('T1a', '실패 안내')}>${icon(ic, cls)}<div class="nt">${title}</div><div class="nt-text">${text}</div>${extra}${actions ? `<div class="nt-actions">${actions}</div>` : ''}</div>`;
+  const copyCmd = (cmd, label) =>
+    `<div class="nt-cmd"><span class="tu-cmd mono">${cmdHtml(cmd)}</span><span class="icon-btn sm" title="명령 복사" ${ms('T1a', label)}>${icon('copy', 'sm')}</span></div>`;
+  const RETRY_BODY = '질문을 보내지 못했습니다. 에이전트 고르기에서 상태를 확인한 뒤 다시 보내세요. 질문은 입력창에 그대로 있습니다.';
+  const RESEND = `<span class="btn small" title="같은 질문을 처음부터 다시 묻습니다" ${ms('T1a', '다시 보내기(답 도중 실패)')}>다시 보내기</span>`;
+  const PICK = '<span class="btn small">에이전트 고르기…</span>';
+  const read42 = tool('book-open-text', '42쪽 읽음', { title: '42쪽 본문을 읽었습니다' });
   function failure() {
-    if (tu.fail === 'agent') {
+    const f = tu.fail;
+    // Another session is still receiving its answer: no failure, a waiting line above the composer; the question stays in it.
+    if (f === 'busy') return { inner: sessionTitle() + exchange1({ tag: false }), before: waitLine(), composer: composer({ text: Q2, readonly: true }) };
+    // After the answer began: the partial text stays (`failed`, or `stopped` for the user's own stop).
+    const partial = (foot, { cut = true } = {}) =>
+      exchange1({ tag: false }) + userMsg({ text: Q2, scope: true }) + tutorMsg({ tools: [read42], body: `<p>${A2_LEAD.split(',')[0]},${cut ? '<span class="tu-cut"> …</span>' : ''}</p>`, foot });
+    if (f === 'agent') {
       return {
-        inner:
-          exchange1({ tag: false }) +
-          userMsg({ text: Q2, scope: [1, 1, 0] }) +
-          tutorMsg({
-            tools: [tool('book-open-text', '42쪽 읽음', { title: '42쪽 본문을 읽었습니다' })],
-            body: `<p>${A2_LEAD.split(',')[0]},<span class="tu-cut"> …</span></p>`,
-            foot: failNotice('circle-alert', 'c-danger', 'Codex가 답하는 도중 멈췄습니다', '에이전트 프로그램이 예기치 않게 종료되어 답이 중간에 끊겼습니다. 다시 보내면 에이전트를 다시 시작하고 같은 질문을 처음부터 묻습니다.', `<span class="btn small" title="같은 질문을 처음부터 다시 묻습니다" ${ms('T1', '다시 보내기(답 도중 실패)')}>다시 보내기</span>`),
-          }),
+        inner: partial(failNotice('circle-alert', 'c-danger', 'Claude Code가 답하는 도중 멈췄습니다', '에이전트 프로그램이 예기치 않게 종료되어 답이 중간에 끊겼습니다. 다시 보내면 에이전트를 다시 시작하고 같은 질문을 처음부터 묻습니다.', RESEND)),
         composer: composer({}),
       };
     }
-    const n =
-      tu.fail === 'login'
-        ? failNotice('log-in', 'c-warning', 'Codex 로그인이 만료되었습니다', '질문을 보내지 못했습니다. 터미널에서 아래 명령으로 다시 로그인한 뒤 입력창에서 ↩로 보내세요. 질문은 입력창에 그대로 있습니다.', '', `<div class="nt-cmd"><span class="tu-cmd mono">codex login</span><span class="icon-btn sm" title="명령 복사" ${ms('T1', '명령 복사(로그인 안내)')}>${icon('copy', 'sm')}</span></div>`)
-        : failNotice('wifi-off', 'c-warning', '인터넷에 연결되어 있지 않습니다', '질문을 보내지 못했습니다. 연결을 확인한 뒤 입력창에서 ↩로 보내세요. 질문은 입력창에 그대로 있습니다.');
-    return { inner: sessionTitle() + exchange1({ tag: false }) + n, composer: composer({ text: Q2, focus: true, agent: tu.fail === 'login' ? 'login' : 'ready' }) };
+    if (f === 'lockdown') {
+      return {
+        inner: partial(failNotice('circle-alert', 'c-danger', '꺼 둔 도구를 쓰려 해 답을 멈췄습니다', 'Claude Code가 Learn이 꺼 둔 도구를 쓰려 했습니다. 에이전트를 업데이트한 뒤 다시 확인하세요.', PICK)),
+        composer: composer({ agent: 'old' }),
+      };
+    }
+    if (f === 'interrupted') {
+      // Learn quit or crashed mid-answer: found on the next start. The notice stands even when no text had come.
+      return {
+        inner: exchange1({ tag: false }) + userMsg({ text: Q2, scope: true }) + tutorMsg({ foot: failNotice('circle-alert', 'c-danger', '답을 받는 도중 Learn이 종료되었습니다', '다시 보내면 같은 질문을 처음부터 묻습니다.', RESEND) }),
+        composer: composer({}),
+      };
+    }
+    if (f === 'stopped') {
+      // The user's own stop: not a failure — the received text as it is, "중지함" under it, no resend.
+      return {
+        inner: exchange1({ tag: false }) + userMsg({ text: Q2, scope: true }) + tutorMsg({ tools: [read42], body: `<p>${A2_LEAD.split('. ')[0]}. G 단백질은 GTP를 가수분해해</p>`, foot: answerFoot(false, `<span class="t-footnote c-secondary tu-stopped" ${ms('T1a', '중지함 줄')}>중지함</span>`) }),
+        composer: composer({}),
+      };
+    }
+    // Before any answer: the draft returns to the composer and the notice stands where the turn would be.
+    const before = {
+      offline: [failNotice('wifi-off', 'c-warning', '인터넷에 연결되어 있지 않습니다', '질문을 보내지 못했습니다. 연결을 확인한 뒤 입력창에서 ↩로 보내세요. 질문은 입력창에 그대로 있습니다.'), 'ready'],
+      login: [
+        failNotice('log-in', 'c-warning', 'Claude Code 로그인이 필요합니다', '질문을 보내지 못했습니다. 터미널에서 아래 명령으로 로그인한 뒤 입력창에서 ↩로 보내세요. 질문은 입력창에 그대로 있습니다.', '', copyCmd(T.agentStates.login.cmd, '명령 복사(로그인 안내)')),
+        'login',
+      ],
+      notready: [failNotice('plug', 'c-warning', 'Claude Code가 준비되지 않았습니다', RETRY_BODY, PICK), 'adapter'],
+      start: [failNotice('circle-alert', 'c-danger', 'Claude Code가 시작하지 못했습니다', RETRY_BODY, PICK), 'ready'],
+      exited: [failNotice('circle-alert', 'c-danger', 'Claude Code가 답하기 전에 멈췄습니다', '답을 받지 못했습니다. 잠시 뒤 입력창에서 ↩로 다시 보내세요. 질문은 입력창에 그대로 있습니다.'), 'ready'],
+    }[f];
+    return { inner: sessionTitle() + exchange1({ tag: false }) + before[0], composer: composer({ text: Q2, focus: true, agent: before[1] }) };
   }
 
   /** The tutor panel: head, optional fake-backend strip, body, composer, overlays. */
-  const panel = ({ head = {}, body, comp = '', overlay = '', tooltip = '' }) => `${inspHead(head)}${fakeBanner()}${body}${comp}${overlay}${tooltip}`;
+  const panel = ({ head = {}, line = '', body, comp = '', overlay = '', tooltip = '' }) => `${inspHead(head)}${fakeBanner()}${line}${body}${comp}${overlay}${tooltip}`;
   /** 정보 mode: the approved item panel under the same 44 px head (no tutor buttons). In the reader the item is open, so no "열기". */
   const infoPanel = ({ reader = false, tooltip = '' } = {}) => {
     let item = inspectorItem();
@@ -2798,29 +2889,36 @@
     return `${inspHead({ mode: 'info', hover: 'tutor' })}${item}${tooltip}`;
   };
 
+  /** The library sheet is not T1a (J1: the tutor lives in the PDF reader only): its parts carry the J1 mark; the sessions group in its sidebar is T1a's. */
+  const asJ1 = (html) => html.replace(/data-ms="T1a" data-ms-label="([^"]*)"/g, 'data-ms="J1" data-ms-label="$1 (T1a 아님)"');
+
   function tutorScreen() {
     document.documentElement.dataset.msg = tu.msg;
     document.documentElement.dataset.page = tu.page ?? (M.isDark() ? 'dark' : 'original'); // the reader's default page colour unless ?page=
     const s = tu.state;
-    const convo = (inner, opts = {}) => panel({ body: thread(inner, opts.thread), comp: composer(opts.comp), ...opts.panel });
+    const convo = (inner, opts = {}) => panel({ body: thread(inner, opts.thread), comp: (opts.before ?? '') + composer(opts.comp), ...opts.panel });
+    // With the no-text notice the body says only what is true: no pages can be verified (a scan has no text to select either).
+    const emptyBody = tu.text === 'empty' ? '이&nbsp;자료에 대해 물어보세요. 튜터는 일반&nbsp;지식으로 답하고, 답의 쪽은 확인되지 않습니다.' : tu.text ? '이&nbsp;자료에 대해 물어보세요. 본문에서 구간을 선택하면 질문에 붙지만, 답의 쪽은 확인되지 않습니다.' : '이&nbsp;자료에 대해 물어보세요. 본문에서 구간을 선택하면 질문에 붙고, 답에는 근거가 된 쪽이 함께 표시됩니다.';
+    const emptySession = `<div class="pane-empty" ${ms('T1a', '빈 세션')}>${icon('file-text')}<div class="pe-title">${esc(T.item)}</div><div class="pe-text">${emptyBody}</div></div>`;
 
     if (tu.view === 'library') {
+      const libToggle = ['M4', '오른쪽 패널 보기·가리기(T1a 이름)'];
       if (tu.mode === 'info') {
         // The library remembers 정보: the approved item panel with the mode switch above it.
         return M.windowShell({
           tabs: M.standardTabs('library'),
           sidebar: librarySidebar({ extra: librarySessions(), collapsed: true }),
-          main: libraryHeader({ toggleTitle: SLOT_TOGGLE(true), toggleMs: ['T1', '오른쪽 패널 보기·가리기'] }) + libraryTable({ selectedIds: [1], focused: true }),
-          inspector: infoPanel({ tooltip: tip('mode-tutor', '튜터', '⌃⌘2') }),
+          main: libraryHeader({ toggleTitle: SLOT_TOGGLE(true), toggleMs: libToggle }) + libraryTable({ selectedIds: [1], focused: true }),
+          inspector: asJ1(infoPanel({ tooltip: tip('mode-tutor', '튜터', '⌃⌘2') })),
           cls: 'has-modes',
         });
       }
       // The one library sheet of the tutor: tutor mode beside the table, sessions grouped by item in the sidebar.
-      const p = convo(sessionTitle({ item: true }) + exchange1({}), { thread: { end: false }, comp: { focus: true, material: true } });
+      const p = asJ1(convo(sessionTitle({ item: true }) + exchange1({}), { thread: { end: false }, comp: { focus: true, material: true } }));
       return M.windowShell({
         tabs: M.standardTabs('library'),
         sidebar: librarySidebar({ extra: librarySessions(), collapsed: true }),
-        main: libraryHeader({ toggleTitle: SLOT_TOGGLE(true), toggleMs: ['T1', '오른쪽 패널 보기·가리기'] }) + libraryTable({ selectedIds: [1], focused: false }),
+        main: libraryHeader({ toggleTitle: SLOT_TOGGLE(true), toggleMs: libToggle }) + libraryTable({ selectedIds: [1], focused: false }),
         inspector: p,
         cls: 'has-tutor',
         style: `--tutor-w:${tu.width}px`,
@@ -2828,6 +2926,9 @@
     }
     if (tu.menu === 'agent') {
       return readerWindow({ panel: convo(sessionTitle() + exchange1({}), { thread: { end: false }, comp: { menuOpen: true }, panel: { overlay: agentMenu() } }) });
+    }
+    if (tu.menu === 'session') {
+      return readerWindow({ panel: convo(sessionTitle() + exchange1({})), nav: 'sessions', navList: readerSessions(), overlays: `${sessionMenu()}<div class="sim-note">네이티브&nbsp;메뉴입니다. 모양은 시스템이 그립니다.</div>` });
     }
     switch (s) {
       case 1:
@@ -2842,15 +2943,32 @@
         if (tu.consent === 'sheet') return readerWindow({ panel: panel({ head: { buttons: false }, body: tutorOff() }), overlays: consentSheet() });
         return readerWindow({ panel: panel({ head: { buttons: false }, body: tu.later ? tutorOff() : `<div class="tu-scroll">${consentCard()}</div>` }) });
       case 3:
-        return readerWindow({ panel: panel({ head: { buttons: false }, body: agentPicker() }) });
-      case 4:
         return readerWindow({
-          panel: panel({ head: { newDisabled: true }, body: `<div class="pane-empty" ${ms('T1', '빈 세션')}>${icon('file-text')}<div class="pe-title">${esc(T.item)}</div><div class="pe-text">이&nbsp;자료에 대해 물어보세요. 본문에서 구간을 선택하면 질문에 붙고, 답에는 근거가 된 쪽이 함께 표시됩니다.</div></div>`, comp: composer({ attach: true, focus: true }) }),
+          panel: panel({ head: { buttons: false }, body: agentPicker() }),
+          overlays: tu.states ? '<div class="sim-note">비평용&nbsp;판 — 앱은 이&nbsp;행 하나를 지금 상태로 보입니다</div>' : '',
+        });
+      case 4:
+        // A PDF without readable text: the line above the empty session; the selection cannot attach (no text), asking is not blocked.
+        if (tu.text) return readerWindow({ panel: panel({ head: { newDisabled: true }, line: textNote(tu.text), body: emptySession, comp: composer({ focus: true }) }), stageOpts: { scan: tu.text === 'empty' }, overlays: tu.text === 'empty' ? '<div class="sim-note">스캔한&nbsp;쪽 — 글자 층 없음, 그림은 예시</div>' : '' });
+        // A selection across pages attaches the first page's text only; the chip's tooltip says so.
+        if (tu.attach === 'multipage') {
+          return readerWindow({
+            panel: panel({
+              head: { newDisabled: true },
+              body: emptySession,
+              comp: composer({ attach: true, attachHover: true, focus: true }),
+              tooltip: tip('attach-chip', '질문에 붙은 구간 · 42쪽 — 질문과 함께 보냅니다', '', { place: 'above', note: '여러 쪽에 걸친 선택은 첫 쪽의 글만 붙습니다.' }),
+            }),
+            stageOpts: { attached: true },
+          });
+        }
+        return readerWindow({
+          panel: panel({ head: { newDisabled: true }, body: emptySession, comp: composer({ attach: true, focus: true }) }),
           stageOpts: { attached: true },
         });
       case 6:
         return readerWindow({
-          panel: convo(exchange1({ current: 2 }) + userMsg({ text: Q2, scope: [1, 1, 0] }) + answer2({ done: true, tag: true })),
+          panel: convo(exchange1({ current: 2 }) + userMsg({ text: Q2, scope: true }) + answer2({ done: true, tag: true, reasked: tu.reground }) + (tu.reground ? regroundTurn() : '')),
           page: '41',
           current: 41,
           stageOpts: { pages: [41, 42], ring: 41 },
@@ -2859,7 +2977,7 @@
         return readerWindow({
           panel: convo(
             answer1({}) +
-              userMsg({ text: Q3, scope: [1, 1, 0] }) +
+              userMsg({ text: Q3, scope: true }) +
               tutorMsg({ tools: [tool('book-open-text', '42쪽 읽음', { title: '42쪽 본문을 읽었습니다' })], body: '<p>아래처럼 정리해 보았습니다.</p>',
                 foot: learnNote('제안은 저장하기 전까지 노트·문제·기억에 더해지지 않습니다.') + noteCard() + checkCard() + memoryCard(),
               }),
@@ -2867,7 +2985,7 @@
         });
       case 8: {
         const f = failure();
-        return readerWindow({ panel: panel({ body: thread(f.inner), comp: f.composer }) });
+        return readerWindow({ panel: panel({ body: thread(f.inner), comp: (f.before ?? '') + f.composer }) });
       }
       case 9: {
         const overlays = tu.sheet === 'delete' ? deleteSheet() : '';
@@ -2876,7 +2994,7 @@
         }
         if (tu.empty) {
           return readerWindow({
-            panel: panel({ head: { newDisabled: true }, body: `<div class="pane-empty" ${ms('T1', '빈 세션')}>${icon('file-text')}<div class="pe-title">${esc(T.item)}</div><div class="pe-text">이&nbsp;자료에 대해 물어보세요. 본문에서 구간을 선택하면 질문에 붙고, 답에는 근거가 된 쪽이 함께 표시됩니다.</div></div>`, comp: composer({}) }),
+            panel: panel({ head: { newDisabled: true }, body: emptySession, comp: composer({}) }),
             nav: 'sessions',
             navList: readerSessions(),
           });
@@ -2884,26 +3002,32 @@
         return readerWindow({ panel: convo(sessionTitle() + exchange1({})), nav: 'sessions', navList: readerSessions(), overlays });
       }
       case 10: {
-        // design-spec 2.5: the slot first shrinks to its minimum (tutor 320), then folds (T1 below 1000, M9 below 1200).
-        // Opening it in a narrow window folds the sidebar (automatic, not saved; the side opened last wins); if the
-        // reader is still short of the full toolbar (M9 only), the annotation group folds into "필기 ▾".
-        const w = tu.fold === '960' ? 960 : 1040;
+        // design-spec 2.5 (T1a values, reader minimum 440): the slot first shrinks to 320 from a window of 1060 (240 + 380 + 440), folds
+        // below 1000 (240 + 320 + 440); opening it in a narrow window folds the sidebar (automatic, not saved; the side opened last
+        // wins). Measured in the app at implementation (8.10) — until then these are the table's numbers.
+        const w = tu.fold === '960' ? 960 : tu.fold === 'shrunk' ? 1040 : 980;
         const c = (inner) => convo(inner);
         const notes = {
-          collapsed: `창 1040 · 튜터를 최소 320으로 줄여도 240 + 320 + 리더 ${READER_MIN.m9}(M9)이 들어가지 않아 오른쪽 패널이 접혔습니다 — 리더 800 (T1의 리더 ${READER_MIN.t1}이면 튜터가 360으로 줄어 남습니다)`,
-          open: '창 1040 · 튜터를 펼치면 사이드바가 접힙니다(자동, 저장하지 않음) — 리더 660 + 튜터 380 · 여기서 사이드바를 펼치면 튜터가 접힙니다',
-          960: '창 960(최소) · 튜터를 펼치면 사이드바가 접히고 리더 580 — M9 필기 묶음은 ‘필기 ▾’ 하나로 접힙니다',
+          collapsed: '창 980 · 240 + 320 + 리더 440 = 1000에 못 미쳐 오른쪽 패널이 접혔습니다(튜터는 1060 아래에서 줄고 1000 아래에서 접힙니다) — 리더 740',
+          shrunk: '창 1040 · 240 + 380 + 리더 440 = 1060에 못 미쳐 튜터가 360으로 줄었습니다(최소 320까지) — 리더 440',
+          open: '창 980 · 튜터를 펼치면 사이드바가 접힙니다(자동, 저장하지 않음) — 리더 600 + 튜터 380 · 여기서 사이드바를 펼치면 튜터가 접힙니다',
+          960: '창 960(최소) · 슬롯이 접혀 있으면 리더 720, 튜터를 펼치면 사이드바가 접히고 리더 580',
         };
         const win =
           tu.fold === 'collapsed'
             ? readerWindow({ panel: null, winW: w, desktop: true, mainTip: tip('slot-toggle', '오른쪽 패널 보기', '⌥⌘I') })
-            : readerWindow({ panel: c(sessionTitle() + exchange1({})), noSidebar: true, winW: w, winH: tu.fold === '960' ? 640 : 700, desktop: true });
+            : tu.fold === 'shrunk'
+              ? readerWindow({ panel: c(sessionTitle() + exchange1({})), slotW: 360, winW: w, winH: 700, desktop: true })
+              : readerWindow({ panel: c(sessionTitle() + exchange1({})), noSidebar: true, winW: w, winH: tu.fold === '960' ? 640 : 700, desktop: true });
         return `<div class="desktop">${win}<div class="sim-note">${notes[tu.fold]}</div></div>`;
       }
-      default: // 5: conversation, answer streaming
+      default: {
+        // 5: conversation, answer streaming — or, scrolled up (&scrolled=1), the "최신으로" button over the composer.
+        const inner = sessionTitle() + exchange1({ open: !tu.scrolled }) + userMsg({ text: Q2, scope: true }) + answer2({});
         return readerWindow({
-          panel: convo(sessionTitle() + exchange1({ open: true }) + userMsg({ text: Q2, scope: [1, 1, 0] }) + answer2({}), { comp: { streaming: true } }),
+          panel: tu.scrolled ? convo(inner, { thread: { end: false }, before: latestBtn(), comp: { streaming: true } }) : convo(inner, { comp: { streaming: true } }),
         });
+      }
     }
   }
 
@@ -2938,14 +3062,14 @@
         </div>
         <div class="tu-col">
           <section class="panel">
-            <h3>도구 칩 · 보낸 범위 줄</h3>
+            <h3>도구 칩 · 보낸 범위 줄(선택 · 자료)</h3>
             ${row('완료', tool('book-open-text', '41–42쪽 읽음') + tool('text-select', '선택한 구간 확인'))}
-            ${row('진행 중', tool('', '43쪽 읽는 중…', { st: 'is-running' }))}
-            ${row('실패', tool('circle-alert', '43쪽을 읽지 못함', { st: 'is-failed' }))}
+            ${row('진행 중', tool('', '43쪽 읽는 중', { st: 'is-running' }))}
+            ${row('실패', tool('circle-alert', '쪽을 읽지 못함', { st: 'is-failed' }))}
             ${row('포커스', `${tool('book-open-text', '41–42쪽 읽음', { st: 'is-focus' })}<span class="note">누를 수 없는 상태 표시 · 호버와 포커스는 툴팁만</span>`)}
-            ${row('범위 · 호버', `${scopeLine([1, 2, 0])}${scopeLine([1, 2, 0], { st: 'is-hover' })}`)}
-            ${row('포커스', `${scopeLine([1, 2, 0], { st: 'is-focus' })}<span class="note">보내지 못한 요청에는 범위 줄이 없다</span>`)}
-            <div class="state-row" style="align-items:flex-start"><span class="lbl">펼침</span><div class="tu-msg" style="flex:1 1 auto">${scopeLine([1, 2, 0], { open: true, list: SCOPE1_LIST })}</div></div>
+            ${row('범위 · 호버', `${scopeLine({ sel: 1 })}${scopeLine({ sel: 0 }, { st: 'is-hover' })}<span class="note">선택 1 · 선택 0</span>`)}
+            ${row('포커스', `${scopeLine({ sel: 1 }, { st: 'is-focus' })}<span class="note">보내지 못한 요청에는 범위 줄이 없다</span>`)}
+            <div class="state-row" style="align-items:flex-start"><span class="lbl">펼침</span><div class="tu-msg" style="flex:1 1 auto">${scopeLine({ sel: 1 }, { open: true, list: scopeList() })}</div></div>
           </section>
           <section class="panel">
             <h3>제안 카드 — 포커스 · 저장함(비활성)</h3>
@@ -2987,9 +3111,8 @@
             ${row('비활성', `<span class="radio" style="opacity:.45"></span><span class="note">준비되지 않은 에이전트 · 이유는 행의 글</span>`)}
           </section>
           <section class="panel">
-            <h3>에이전트 행 — 준비됨(선택·포커스) · 연결 도구 필요 · 로그인 필요 · 지원하지 않는 버전 · 설치 안 됨 · 개발용</h3>
-            <div class="agent-group">${T.agents.map((a) => agentRow(a, { focus: a.status === 'ready' })).join('')}${agentRow({ id: 'x', name: 'Gemini CLI', status: 'missing', text: '설치되어 있지 않습니다. 설치하고 로그인한 뒤 다시 찾기를 누르세요.' })}</div>
-            <div class="agent-group dev">${fakeAgentRow()}</div>
+            <h3>에이전트 행(Claude Code) — 준비됨(선택·포커스) · 연결 도구 필요 · 로그인 필요 · 지원하지 않는 버전 · 설치 안 됨 · 개발용</h3>
+            <div class="agent-group">${AGENT_STATES.map((st) => agentRow(agentOf(st), { focus: st === 'ready' })).join('')}</div>
           </section>
         </div>
         <div class="tu-col">
@@ -3001,6 +3124,7 @@
             ${sess('선택 · 포커스', { selected: true, focused: true })}
             ${sess('키보드 커서(선택 안 됨)', { cursor: true })}
             ${renameRow({ title: '이름 바꾸기(제자리)' })}
+            ${sessionRow({ title: '정해 둔 답으로 시험한 세션', at: '오늘 오전 9:12 · 가짜 에이전트' }, { ic: 'flask-conical' })}
             <span class="note">시간은 행에 쓰지 않는다 — 날 묶음(오늘 · 어제 · 지난 7일)이 날을, 툴팁이 시간을 말한다</span>
           </section>
           <section class="panel">
@@ -3009,26 +3133,36 @@
             ${sess('호버', { cls: 'is-hover' })}
             ${renameRow({ title: '이름 바꾸기(제자리)' })}
           </section>
+          <section class="panel">
+            <h3>입력창 위 · 대화 열 아래 · 답 아래 줄</h3>
+            ${row('기다림', `<div style="flex:1 1 auto">${waitLine()}</div>`)}
+            ${row('최신으로', latestBtn('static'))}
+            ${row('중지함', `<div class="tu-msg" style="flex:1 1 auto">${answerFoot(false, '<span class="t-footnote c-secondary tu-stopped">중지함</span>')}</div>`)}
+            ${row('끊김', `<div class="tu-msg" style="flex:1 1 auto">${answerFoot(false, '<span class="t-footnote c-secondary tu-stopped">답이 길이 한도에서 끊겼습니다.</span>')}</div>`)}
+            ${row('안내 줄', `<div style="flex:1 1 auto">${textNote('locked')}</div>`)}
+          </section>
         </div>
         <div class="tu-col">
           <section class="panel">
             <h3>에이전트 메뉴(입력창 단추, 웹 팝업)</h3>
             <div class="menu static-menu" role="menu">
-              ${mi('Codex', { check: true })}
-              ${mi('Claude Code — 연결 도구 필요', { disabled: true })}
-              ${mi('Gemini CLI — 로그인 필요', { disabled: true })}
-              ${mi('opencode — 지원하지 않는 버전', { disabled: true })}
-              <div class="msep"></div>
-              ${mi('에이전트 고르기…', { active: true })}
+              ${agentMenuItems().replace(mi('에이전트 고르기…'), mi('에이전트 고르기…', { active: true }))}
             </div>
-            <span class="note">아래 공간이 없으면 단추 위 4px에 연다. 준비되지 않은 항목은 비활성, 이유는 툴팁.</span>
+            <div class="menu static-menu" role="menu">
+              ${agentMenuItems('login')}
+            </div>
+            <span class="note">아래 공간이 없으면 단추 위 4px에 연다. 준비되지 않은 항목은 "Claude Code — 상태"로 비활성, 이유는 툴팁. 가짜 에이전트는 개발·데모 빌드에서만.</span>
           </section>
           <section class="panel">
             <h3>에이전트 단추(입력창)</h3>
-            ${row('준비됨', `<span class="btn small plain has-menu tu-agent">Codex${icon('chevron-down', 'xs')}</span>`)}
-            ${row('누름', `<span class="btn small plain has-menu tu-agent is-pressed">Codex${icon('chevron-down', 'xs')}</span>`)}
-            ${row('준비 안 됨', `<span class="btn small plain has-icon has-menu tu-agent warn">${icon('log-in', 'sm')}Codex · 로그인 필요${icon('chevron-down', 'xs')}</span>`)}
-            ${row('가짜', `<span class="btn small plain has-icon has-menu tu-agent fake">${icon('flask-conical', 'sm')}가짜 백엔드${icon('chevron-down', 'xs')}</span>`)}
+            ${row('준비됨', `<span class="btn small plain has-menu tu-agent">Claude Code${icon('chevron-down', 'xs')}</span>`)}
+            ${row('누름', `<span class="btn small plain has-menu tu-agent is-pressed">Claude Code${icon('chevron-down', 'xs')}</span>`)}
+            ${row('준비 안 됨', `<span class="btn small plain has-icon has-menu tu-agent warn">${icon('log-in', 'sm')}Claude Code · 로그인 필요${icon('chevron-down', 'xs')}</span>`)}
+            ${row('가짜', `<span class="btn small plain has-icon has-menu tu-agent fake">${icon('flask-conical', 'sm')}가짜 에이전트${icon('chevron-down', 'xs')}</span>`)}
+          </section>
+          <section class="panel">
+            <h3>에이전트 행 — 개발용(개발·데모 빌드에서만)</h3>
+            <div class="agent-group dev">${fakeAgentRow()}</div>
           </section>
         </div>
       </div>

@@ -9,7 +9,8 @@ import type { ImportQueueState, ImportReport, LibraryCheck, LibraryItem, Storage
 import { unpackOrganize, type OrganizeSnapshot } from '../../packages/domain/src/organize';
 import { TAG_COLORS, type TagColorId } from '../../packages/domain/src/tag-colors';
 import { settingsContentHeight } from '../../apps/desktop/src/main/settings-geometry';
-import type { FsyncProbeInput, FsyncProbeResult, SeedAssetsInput, SeedAssetsResult } from '../../apps/desktop/src/main/test-hooks';
+import type { FsyncProbeInput, FsyncProbeResult, LearnTestHooks, SeedAssetsInput, SeedAssetsResult, SeedSessionsInput } from '../../apps/desktop/src/main/test-hooks';
+import type { FakeScript } from '../../apps/desktop/src/main/tutor/fake-agent/fake-agent';
 import type { SeedBodyTextInput } from '../../apps/desktop/src/main/text/seed-body-text';
 import { keepMainLog, nextLogFile } from './main-log';
 import { compareShots, isTranslucent, sidebarFallback, type Pixels } from './shot-compare';
@@ -69,6 +70,13 @@ export interface LaunchOptions {
 const CLOSE_GRACE_MS = 10_000;
 
 /**
+ * LEARN_E2E_MAC_WINDOW=1 (off by default): the main window as the macOS runner has it — a 1024 × 768 display fits it to content
+ * 1024 × 656 (docs/mac-verification.md) — at launch and on every later resize, so a Linux run (xvfb at 1024x768x24) meets the Mac's widths.
+ */
+const MAC_WINDOW = { width: 1024, height: 656 } as const;
+const macWindow = () => process.env['LEARN_E2E_MAC_WINDOW'] === '1';
+
+/**
  * Where a launch keeps main's log: the running test's own output folder (main.log, main-2.log… for its later launches),
  * beside the library/ and userdata/ folders tests make there — not inside them, which the Mac upload leaves out. The same
  * for launch(null, null). Outside a test there is no folder to keep it in, and nothing is kept.
@@ -93,6 +101,9 @@ export async function launch(libraryDir: string | null, userDataDir: string | nu
   if (libraryDir !== null) env['LEARN_LIBRARY_DIR'] = libraryDir;
   if (userDataDir !== null) env['LEARN_USER_DATA_DIR'] = userDataDir;
   env['LEARN_E2E'] = '1'; // the shipped menu (no "개발자 도구"); a caller's env can still override it
+  // The reader's right panel starts on 정보, as it was before the tutor: the specs that are not about the tutor look at the info panel.
+  // A spec of the tutor itself, or of the default, passes LEARN_E2E_SETTINGS: '' (nothing is seeded; the default is 튜터).
+  env['LEARN_E2E_SETTINGS'] = JSON.stringify({ 'reader.inspectorMode': 'info' });
   Object.assign(env, opts.env);
   const app = await electron.launch({
     args: opts.executablePath ? [...(opts.args ?? [])] : [...(opts.args ?? []), path.join(ROOT, 'apps/desktop')],
@@ -119,6 +130,16 @@ export async function launch(libraryDir: string | null, userDataDir: string | nu
   };
   try {
     const page = await app.firstWindow();
+    // setMaximumSize clamps every later setContentSize, setSize and setBounds too (checked on Linux).
+    if (macWindow()) {
+      await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((x) => x.webContents.getURL().includes('window=main')))).toBe(true);
+      await (await mainWindow(app)).evaluate((w, max) => {
+        const [cw, ch] = w.getContentSize();
+        const [ww, wh] = w.getSize();
+        w.setMaximumSize(max.width + (ww! - cw!), max.height + (wh! - ch!));
+        w.setContentSize(Math.min(cw!, max.width), Math.min(ch!, max.height));
+      }, MAC_WINDOW);
+    }
     shownTestIds(page);
     await expect(page.getByTestId('app-ready')).toBeAttached();
     // The menu bar stays disabled until the renderer's first ui:reportContext (M3 Task 2).
@@ -210,6 +231,40 @@ export async function settingsFitsContent(app: ElectronApplication, settings: Pa
     return { height, chrome: w.getBounds().height - height, room: screen.getDisplayMatching(w.getBounds()).workArea.height };
   });
   return shown !== null && shown.height === settingsContentHeight(content, shown.room, shown.chrome);
+}
+
+/**
+ * What the display leaves the main window's content: the work area of the display it is on, less the window's frame. The macOS
+ * runner's 1024 × 768 display, with the menu bar and the Dock, leaves the main window (no title bar) 1024 × 684 and a window
+ * with a title bar 1024 × 656. A restart on macOS fits the window into it, width too (Electron's RestoreBounds: AdjustToFit);
+ * on Linux a restart keeps the window's size, and Xvfb, with no window manager, lets a window be larger than its screen.
+ */
+export async function displayRoom(app: ElectronApplication): Promise<{ width: number; height: number }> {
+  return app.evaluate(({ BrowserWindow, screen }) => {
+    const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed() && !x.webContents.isDestroyed() && x.webContents.getURL().includes('window=main'));
+    if (!w) throw new Error('no main window (window=main)');
+    const [ow, oh] = w.getSize();
+    const [cw, ch] = w.getContentSize();
+    const area = screen.getDisplayMatching(w.getBounds()).workArea;
+    return { width: area.width - (ow! - cw!), height: area.height - (oh! - ch!) };
+  });
+}
+
+/**
+ * The largest content size the main window takes when a test asks for more. Its maximum size less the frame bounds both sides
+ * (LEARN_E2E_MAC_WINDOW=1 sets one: content 1024 × 656). The display's room (displayRoom) bounds the height only: macOS fits a
+ * window's height to the work area as it is sized and leaves its width (NSWindow constrainFrameRect:toScreen:), so on the macOS
+ * runner the main window's content is 684 high at most yet 1440 wide when asked. Neither set: no limit (MAX_SAFE_INTEGER).
+ */
+export async function windowReach(app: ElectronApplication): Promise<{ width: number; height: number }> {
+  const max = await (await mainWindow(app)).evaluate((w) => {
+    const [mw, mh] = w.getMaximumSize();
+    const [ow, oh] = w.getSize();
+    const [cw, ch] = w.getContentSize();
+    const reach = (limit: number, frame: number) => (limit === 0 ? Number.MAX_SAFE_INTEGER : limit - frame);
+    return { width: reach(mw!, ow! - cw!), height: reach(mh!, oh! - ch!) };
+  });
+  return { width: max.width, height: Math.min(max.height, (await displayRoom(app)).height) };
 }
 
 /**
@@ -1931,3 +1986,134 @@ export const textJobs = (app: ElectronApplication) => app.evaluate(() => (global
 export const textHold = (app: ElectronApplication, afterPages: number | null) => app.evaluate((_e, arg) => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textHold({ afterPages: arg }), afterPages);
 export const textHeld = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textHeld());
 export const textStats = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textStats());
+
+// ---- T1a tutor (main/test-hooks.ts: the fake agent only — E2E never runs a real agent) -------------------------------------
+
+type WithTutorHooks = { __learnTest: LearnTestHooks };
+/** The script the next fake agent start runs; a live fake that is not answering is closed, so none answers with an old one. */
+export const tutorFakeScript = (app: ElectronApplication, name: FakeScript) => app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.tutorFakeScript(arg), name);
+/** What the fake agents of this run logged (<userData>/fake-agent.log), oldest first. */
+export const tutorFakeLog = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithTutorHooks).__learnTest.tutorFakeLog());
+/** The network as the tutor sees it; null: Electron's own again. */
+export const tutorNetwork = (app: ElectronApplication, mode: 'online' | 'offline' | null) =>
+  app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.tutorNetwork(arg), mode);
+/** Shorter turn limits and idle close. */
+export const tutorTimeouts = (app: ElectronApplication, input: Partial<{ firstUpdateMs: number; betweenMs: number; idleMs: number }>) =>
+  app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.tutorTimeouts(arg), input);
+/** The live agent processes (0 or 1), the most at once since launch or `resetMax`, and whose they are. */
+export const tutorProcesses = (app: ElectronApplication, input?: { resetMax?: true }) =>
+  app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.tutorProcesses(arg ?? undefined), input ?? null);
+/** SIGKILL to the agent's group now. */
+export const tutorKillAgent = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithTutorHooks).__learnTest.tutorKillAgent());
+/** The next `n` tutor:agents calls fail, as a detection that threw. */
+export const tutorFailAgents = (app: ElectronApplication, n: number) => app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.tutorFailAgents(arg), n);
+/** The sidebar dragged by its separator to `width` (180–360; a drag under 180 folds it). */
+export async function dragSidebarTo(page: Page, width: number): Promise<void> {
+  const sep = (await page.locator('#pane-separator').boundingBox())!;
+  const y = sep.y + sep.height / 2;
+  await page.mouse.move(sep.x + sep.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(width, y, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => Math.round((await page.locator('#sidebar').boundingBox())!.width)).toBe(width);
+}
+/**
+ * A name field's note under its row stays inside the sidebar: its box clear of the sidebar's edges by the rows' own 8 px (its shadow's
+ * edge shows), nothing between it and the sidebar scrolls sideways or clips it, and it is over the rows and sections under it — its
+ * middle and its last line are the note's own when hit.
+ */
+export async function expectNoteInsideSidebar(note: Locator): Promise<void> {
+  // Measured again until it holds: right after the note comes, a pointer check was seen to hit the label under it, and one a moment
+  // later the note.
+  await expect(async () => {
+    const at = await note.evaluate((el) => {
+      const side = el.closest('#sidebar')!.getBoundingClientRect();
+      const box = el.getBoundingClientRect();
+      const sideways: string[] = [];
+      const cut: string[] = [];
+      for (let a = el.parentElement; a; a = a.parentElement) {
+        const cs = getComputedStyle(a);
+        if (cs.overflowX !== 'visible' && a.scrollWidth > a.clientWidth) sideways.push(a.className || a.id);
+        if (cs.overflowY !== 'visible' && a.getBoundingClientRect().bottom < box.bottom - 0.5) cut.push(a.className || a.id);
+        if (a.id === 'sidebar') break;
+      }
+      const x = box.left + box.width / 2;
+      // What a pointer there hits: the note, or what covers it.
+      const hit = (y: number) => {
+        const at = document.elementFromPoint(x, y);
+        return at !== null && el.contains(at) ? 'note' : `${at?.tagName ?? 'nothing'}.${at?.className ?? ''} ${at?.getAttribute('data-testid') ?? ''}`.trim();
+      };
+      return { left: box.left - side.left, right: side.right - box.right, sideways, cut, onTop: [hit(box.top + box.height / 2), hit(box.bottom - 4)] };
+    });
+    expect(at.left, 'the note starts inside the sidebar').toBeGreaterThanOrEqual(8);
+    expect(at.right, 'the note ends 8 px or more inside the sidebar').toBeGreaterThanOrEqual(8);
+    expect(at.sideways, 'nothing scrolls sideways').toEqual([]);
+    expect(at.cut, 'nothing clips its last line').toEqual([]);
+    expect(at.onTop, 'over what is under it').toEqual(['note', 'note']);
+  }).toPass({ timeout: 5_000 });
+}
+/**
+ * Finished sessions of one PDF (the performance fixture, the session list's days), announced once. The hook runs in main through the
+ * inspector, which can land it inside a query the window is running; better-sqlite3 then refuses it before anything is written (one
+ * transaction), and it is asked again.
+ */
+export async function seedSessions(app: ElectronApplication, input: SeedSessionsInput): Promise<{ conversationIds: string[] }> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.seedSessions(arg), input);
+    } catch (e) {
+      if (attempt >= 5 || !/busy executing a query/.test(String(e))) throw e;
+      // The window's query ends within its task: a moment later the hook finds the connection free.
+      await new Promise((resolve) => setTimeout(resolve, 50 * attempt));
+    }
+  }
+}
+/** The tool reads recorded on an answer, in order. */
+export const toolReads = (app: ElectronApplication, messageId: string) => app.evaluate((_e, arg) => (globalThis as unknown as WithTutorHooks).__learnTest.toolReads(arg), messageId);
+
+/** The reader toolbar's smallest width (what READER_CONTENT_MIN must hold), at one text size. */
+export interface ToolbarMin {
+  pt: number;
+  /** With the page field's "/ N" (a reader of 480 or more). */
+  withCount: number;
+  /** Without it (a reader under 480, which is where the narrowest reader is). */
+  withoutCount: number;
+}
+
+/**
+ * The border-box width the open PDF's reader toolbar takes at `width: min-content`, with and without the page count, at each text size
+ * (the pref is set for the reading and put back). The toolbar must be on screen. Logged as `[measure] reader-toolbar-min` by the caller.
+ */
+export async function readerToolbarMin(page: Page, sizes: readonly (12 | 13 | 14 | 15)[] = [13, 14, 15]): Promise<ToolbarMin[]> {
+  const read = await page.evaluate(() => window.learn.prefs.get());
+  const original = read.ok ? read.data.fontSize : 13;
+  const out: ToolbarMin[] = [];
+  try {
+    for (const pt of sizes) {
+      expect(await page.evaluate((fontSize) => window.learn.prefs.set({ fontSize }), pt)).toMatchObject({ ok: true });
+      // The page follows the pref (prefsChanged, then <html data-font-size>): read the toolbar once it has.
+      await expect.poll(() => page.evaluate(() => document.documentElement.dataset['fontSize'])).toBe(String(pt));
+      const m = await page.getByTestId('reader-toolbar').evaluate(async (bar) => {
+        const slot = bar.querySelector<HTMLElement>('.page-count-slot');
+        const min = (): number => {
+          const was = bar.style.width;
+          bar.style.width = 'min-content';
+          const w = bar.getBoundingClientRect().width;
+          bar.style.width = was;
+          return w;
+        };
+        await new Promise<void>((r) => requestAnimationFrame(() => r()));
+        const withCount = min();
+        const shown = slot?.style.display ?? '';
+        if (slot) slot.style.display = 'none';
+        const withoutCount = min();
+        if (slot) slot.style.display = shown;
+        return { withCount, withoutCount };
+      });
+      out.push({ pt, withCount: Math.round(m.withCount), withoutCount: Math.round(m.withoutCount) });
+    }
+  } finally {
+    await page.evaluate((fontSize) => window.learn.prefs.set({ fontSize }), original);
+  }
+  return out;
+}

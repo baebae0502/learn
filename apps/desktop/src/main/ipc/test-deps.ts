@@ -18,6 +18,7 @@ export function stubDeps(over: Partial<IpcDeps> = {}): IpcDeps {
       },
       cancel: () => {},
     },
+    tutor: null,
     uiContext: {
       report: () => {},
       current: () => ({ view: 'library', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW }),

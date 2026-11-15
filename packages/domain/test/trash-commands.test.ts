@@ -15,9 +15,9 @@ const inTrash = (over: Partial<CommandContextState> = {}): CommandContextState =
 describe('the trash commands (spec 11.1, P-10, P-11)', () => {
   it('item.trash: ⌘⌫, 파일\'s last group after 휴지통 비우기…, last in the item and trash menus, in the palette', () => {
     expect(commandById('item.trash')).toMatchObject({
-      label: '휴지통으로 이동', accelerator: 'CmdOrCtrl+Backspace', contexts: ['item', 'trash'], palette: true,
-      menu: { menu: 'file', group: 4, order: 2 }, contextMenu: { kinds: ['item', 'trash'], group: 4, order: 1 },
-      stateLabels: { scope: { trash: '영구 삭제…' } },
+      label: '휴지통으로 이동', accelerator: 'CmdOrCtrl+Backspace', contexts: ['item', 'trash', 'session'], palette: true,
+      menu: { menu: 'file', group: 4, order: 2 }, contextMenu: { kinds: ['item', 'trash', 'session'], group: 4, order: 1 },
+      stateLabels: { scope: { trash: '영구 삭제…' }, focus: { session: '세션 삭제' } },
     });
     expect(commandById('trash.empty')).toMatchObject({ label: '휴지통 비우기…', accelerator: 'Shift+CmdOrCtrl+Backspace', contexts: ['library'], menu: { menu: 'file', group: 4, order: 1 } });
     expect(commandById('item.restore')).toMatchObject({ label: '복원', contexts: ['trash'], palette: true, contextMenu: { kinds: ['trash'], group: 1, order: 1 } });
@@ -120,5 +120,21 @@ describe('the trash over IPC (P-10, P-25)', () => {
     }
     expect(sheetResultInput.parse({ kind: 'purge', confirmed: true })).toEqual({ kind: 'purge', confirmed: true });
     expect(sheetResultInput.safeParse({ kind: 'purge' }).success).toBe(false);
+  });
+  it('the purge sheet\'s question names the items to purge, so main counts their sessions (T1a spec 6.2, 12)', () => {
+    expect(confirmPurgeInput.parse({ variant: 'items', items: 1, collections: 0, itemIds: [ID] })).toEqual({ variant: 'items', items: 1, collections: 0, itemIds: [ID] });
+    expect(confirmPurgeInput.safeParse({ variant: 'mixed', items: 1, collections: 1, itemIds: [ID], name: 'x' }).success).toBe(true);
+    expect(confirmPurgeInput.safeParse({ variant: 'items', items: 1, collections: 0, itemIds: ['x'] }).success).toBe(false);
+    expect(confirmPurgeInput.safeParse({ variant: 'items', items: 1, collections: 0, itemIds: Array.from({ length: 1_000_001 }, () => ID) }).success).toBe(false);
+    // The renderer never sends a count of sessions: main counts them.
+    expect(confirmPurgeInput.safeParse({ variant: 'items', items: 1, collections: 0, sessions: 3 }).success).toBe(false);
+  });
+  it('a session row\'s menu names its conversation; a focused session row is part of the reported context (T1a spec 11)', () => {
+    expect(CONTEXT_MENU_KINDS).toContain('session');
+    expect(showContextMenuInput.parse({ kind: 'session', conversationId: ID, x: 1, y: 2 })).toEqual({ kind: 'session', conversationId: ID, x: 1, y: 2 });
+    expect(showContextMenuInput.safeParse({ kind: 'session', conversationId: 'x', x: 1, y: 2 }).success).toBe(false);
+    expect(showContextMenuInput.safeParse({ kind: 'session', x: 1, y: 2 }).success).toBe(false);
+    expect(commandContextInput.parse({ ...base, sessionFocused: true })).toMatchObject({ sessionFocused: true });
+    expect(commandContextInput.safeParse({ ...base, sessionFocused: 'yes' }).success).toBe(false);
   });
 });

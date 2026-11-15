@@ -13,7 +13,7 @@ const SHEET: readonly WindowKind[] = ['sheet'];
  *
  * - main: the library window — all but the settings window's library location and the sheets' own channels. Channels
  *   no page calls yet (collections, tags, trash, the library check) are the main window's (M5, M6) — and the fatal
- *   screen's 업데이트 전 백업 (it is the main window's page).
+ *   screen's 업데이트 전 백업 (it is the main window's page). The tutor and its sessions are the main window's alone.
  * - settings: what SettingsApp calls. Not ui.openSettings: its ⌘, is the menu's, which main runs itself.
  * - sheet: its payload and its answer.
  */
@@ -92,6 +92,23 @@ export const CHANNEL_KINDS: Readonly<Record<Channel, readonly WindowKind[]>> = {
 
   'translation:translate': MAIN,
   'translation:cancel': MAIN,
+
+  'tutor:consent': MAIN,
+  'tutor:agents': MAIN,
+  'tutor:chooseAgent': MAIN,
+  'tutor:view': MAIN,
+  'tutor:warm': MAIN,
+  'tutor:ask': MAIN,
+  'tutor:stop': MAIN,
+  'tutor:resend': MAIN,
+  'tutor:reground': MAIN,
+
+  'sessions:list': MAIN,
+  'sessions:recent': MAIN,
+  'sessions:get': MAIN,
+  'sessions:rename': MAIN,
+  'sessions:delete': MAIN,
+  'sessions:restore': MAIN,
 
   'ui:showContextMenu': MAIN,
   'ui:windowState': MAIN_AND_SETTINGS,

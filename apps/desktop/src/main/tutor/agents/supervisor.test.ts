@@ -597,6 +597,27 @@ describe('stopping and closing', () => {
     expect(sup.processes().count).toBe(0);
   });
 
+  it('closeConversation ends the process of that conversation only — answering or not — and resolves once its group has ended', async () => {
+    const { sup, spawned, timers } = harness();
+    await sup.acquire(KEY_A, 'fake', () => SPEC, async () => ({}), { streaming: true });
+    await expect(sup.closeConversation('conversation-b')).resolves.toBeUndefined();
+    expect(spawned[0]!.events).toEqual([]);
+    let closed = false;
+    const closing = sup.closeConversation('conversation-a').then(() => { closed = true; });
+    expect(spawned[0]!.events).toEqual(['endInput', 'SIGTERM']);
+    await timers.flush();
+    expect(closed).toBe(false);
+    // A second call while it closes waits for the same end.
+    let again = false;
+    void sup.closeConversation('conversation-a').then(() => { again = true; });
+    spawned[0]!.exit(null, 'SIGTERM');
+    await closing;
+    await timers.flush();
+    expect([closed, again]).toEqual([true, true]);
+    expect(sup.processes().count).toBe(0);
+    await expect(sup.closeConversation('conversation-a')).resolves.toBeUndefined();
+  });
+
   it('a group that ends after its leader, before the SIGKILL, is seen within 50 ms and gets no more signals', async () => {
     const { sup, spawned, timers } = harness();
     await sup.acquire(KEY_A, 'fake', () => SPEC, async () => ({}));

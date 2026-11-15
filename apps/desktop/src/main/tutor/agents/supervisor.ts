@@ -44,6 +44,11 @@ export interface Supervisor<C = unknown> {
   interrupt(cancel: () => void, o: { kill: 'always' | 'if-not-ended'; ended(): boolean }): Promise<void>;
   /** No answer in flight: stdin ends, SIGTERM to the group, SIGKILL at termGraceMs; resolves once the group has exited. */
   close(): Promise<void>;
+  /**
+   * The process of this conversation, live or closing, answering or not: closed as close() closes, resolved once its group has
+   * exited; at once when no process is that conversation's.
+   */
+  closeConversation(conversationId: string): Promise<void>;
   /** The quit: the same order within maxMs (an answer in flight is cancelled first), SIGKILL for what is left; nothing starts after it. */
   shutdown(maxMs: number, cancel?: () => void): Promise<void>;
   /** A protocol fault, tutorKillAgent and will-quit's last resort. */
@@ -471,6 +476,11 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
     },
 
     close: closeSession,
+
+    closeConversation(conversationId) {
+      const p = session;
+      return p !== null && p.key.conversationId === conversationId ? close(p) : Promise.resolve();
+    },
 
     async shutdown(maxMs, cancel) {
       quitting = true;

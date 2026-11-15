@@ -56,7 +56,9 @@ function fakeSupervisor() {
   let live: { key: SessionKey; agent: AgentId; streaming: boolean } | null = null;
   /** A closed process is gone: the next start is a new process and a new ACP session. */
   let generation = 0;
-  const log = { views: [] as Array<SessionKey | null>, ended: [] as SessionKey[], rekeys: [] as Array<[SessionKey, SessionKey]>, closes: 0, shutdowns: [] as number[], touches: 0, timeouts: [] as unknown[] };
+  const log = { views: [] as Array<SessionKey | null>, ended: [] as SessionKey[], rekeys: [] as Array<[SessionKey, SessionKey]>, closes: 0, shutdowns: [] as number[], touches: 0, timeouts: [] as unknown[], closedConversations: [] as string[] };
+  /** What closeConversation waits for: its process's group ending. */
+  let closing: Promise<void> = Promise.resolve();
   const sup = {
     view: (k: SessionKey | null) => log.views.push(k),
     current: () => live,
@@ -81,6 +83,10 @@ function fakeSupervisor() {
       live = null;
       generation += 1;
     },
+    closeConversation: (id: string) => {
+      log.closedConversations.push(id);
+      return closing;
+    },
     shutdown: async (ms: number) => {
       log.shutdowns.push(ms);
     },
@@ -97,6 +103,10 @@ function fakeSupervisor() {
     },
     setLive: (l: typeof live) => {
       live = l;
+    },
+    /** closeConversation resolves only when `until` does. */
+    holdClose: (until: Promise<void>) => {
+      closing = until;
     },
     generation: () => generation,
   };
@@ -223,6 +233,17 @@ function rig(o: RigOptions = {}) {
     return t;
   };
   return { service, seed, ctx, repo, prefs, prefsChanged, prioritize, detector, supCtl, be, events, sessions, order, ask, count, ended, answered, net, scopes, setCached: (r: AgentsReport | null) => { cached = r; }, userData };
+}
+
+/** A conversation's work folder and Claude's records of it, made as the agent would have written them. */
+function agentFolders(userData: string, conversationId: string): string[] {
+  const work = path.join(userData, 'Tutor', 'work', conversationId);
+  const folders = [work, ...historyDirs({ agentHome: path.join(userData, 'Tutor', 'agents', 'claude'), work, home: path.join(dir, 'home') })];
+  for (const p of folders) {
+    fs.mkdirSync(p, { recursive: true });
+    fs.writeFileSync(path.join(p, 'transcript'), 'x');
+  }
+  return folders;
 }
 
 const askIds = (a: Awaited<ReturnType<TutorService['ask']>>) => {
@@ -886,6 +907,73 @@ describe('the tutor service', () => {
       expect(r.service.processes()).toEqual({ count: 0, max: 0, conversationIds: [] });
       r.service.setTimeouts({ idleMs: 5, firstUpdateMs: 10 });
       expect(r.supCtl.log.timeouts).toEqual([{ idleMs: 5 }]);
+    });
+
+    it('a new session that fails before its answer leaves no work folder: its process ends first, then its folders go (P-40)', async () => {
+      const r = rig();
+      // The agent wrote the question's transcript before it failed (a login missing after the send).
+      let folders: string[] = [];
+      r.be.ctl.prompt = async (s) => {
+        folders = agentFolders(r.userData, s.key.conversationId!);
+        throw new RpcError(-32000, 'Authentication required');
+      };
+      const hold = gate<void>();
+      r.supCtl.holdClose(hold.p);
+      const a = askIds(await r.ask());
+      await r.ended();
+      expect(r.events.at(-1)).toMatchObject({ kind: 'failed', phase: 'before', code: 'AGENT_LOGIN' });
+      expect(r.count('conversations')).toBe(0);
+      await vi.waitFor(() => expect(r.supCtl.log.closedConversations).toEqual([a.conversationId]), { interval: 1 });
+      // Until its process has ended, the folders stay: the agent may still write there.
+      await new Promise((resolve) => setImmediate(resolve));
+      for (const p of folders) expect(fs.existsSync(p)).toBe(true);
+      hold.resolve();
+      await vi.waitFor(() => expect(folders.filter((p) => fs.existsSync(p))).toEqual([]), { interval: 1 });
+
+      // A start that fails before the prompt (failBefore) does the same.
+      r.be.ctl.start = async (i) => {
+        folders = agentFolders(r.userData, i.key.conversationId!);
+        throw new LearnError('AGENT_START_FAILED', 'no');
+      };
+      const b = askIds(await r.ask());
+      await r.ended(2);
+      await vi.waitFor(() => expect(r.supCtl.log.closedConversations).toEqual([a.conversationId, b.conversationId]), { interval: 1 });
+      await vi.waitFor(() => expect(folders.filter((p) => fs.existsSync(p))).toEqual([]), { interval: 1 });
+
+      // Positive control: a failure that leaves its session (an earlier turn is kept) leaves its process and folders.
+      const prior = r.answered();
+      r.be.ctl.start = async (i) => r.be.open(i);
+      r.be.ctl.prompt = async () => {
+        throw new RpcError(-32000, 'Authentication required');
+      };
+      const kept = agentFolders(r.userData, prior.conversationId);
+      askIds(await r.ask({ conversationId: prior.conversationId }));
+      await r.ended(3);
+      expect(r.count('conversations')).toBe(1);
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(r.supCtl.log.closedConversations).toEqual([a.conversationId, b.conversationId]);
+      for (const p of kept) expect(fs.existsSync(p)).toBe(true);
+    });
+
+    it('removing the folders of a session that is answering stops its answer and ends its process before anything goes (a purge, P-40)', async () => {
+      const r = rig();
+      const answer = gate<PromptOutcome>();
+      r.be.ctl.prompt = () => answer.p;
+      const a = askIds(await r.ask());
+      await vi.waitFor(() => expect(r.be.prompts).toHaveLength(1), { interval: 1 });
+      const folders = agentFolders(r.userData, a.conversationId);
+      const hold = gate<void>();
+      r.supCtl.holdClose(hold.p);
+      const removing = r.service.removeWorkFolders([a.conversationId]);
+      expect(r.be.interrupts).toEqual(['if-not-ended']);
+      expect(r.supCtl.log.closedConversations).toEqual([a.conversationId]);
+      await new Promise((resolve) => setImmediate(resolve));
+      for (const p of folders) expect(fs.existsSync(p)).toBe(true);
+      hold.resolve();
+      await removing;
+      for (const p of folders) expect(fs.existsSync(p)).toBe(false);
+      answer.resolve({ ...OK, stopReason: 'cancelled' });
+      await r.ended();
     });
 
     it('removes a work folder and Claude\'s records of it, with no conversation row left (P-40, N3)', async () => {

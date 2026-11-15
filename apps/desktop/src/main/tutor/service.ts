@@ -40,6 +40,7 @@ export interface TutorService {
   stopConversation(conversationId: string): void;
   resend(i: TutorRetryInput): Promise<{ tutorMessageId: string }>;
   reground(i: TutorRetryInput): Promise<{ userMessageId: string; tutorMessageId: string }>;
+  /** The folders of conversations whose rows are gone (a purge, the startup purge): their answer and process end first. */
   removeWorkFolders(conversationIds: readonly string[]): Promise<void>;
   setTimeouts(t: Partial<{ firstUpdateMs: number; betweenMs: number; idleMs: number }>): void;
   /** E2E only (test hook): the next `n` tutor:agents calls fail with INTERNAL, as a detection that threw. */
@@ -183,9 +184,9 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
     tell(() => d.emitTurn(e));
   };
 
-  /** A turn that failed before its prompt: the same rule as a failure before the answer. */
-  const failBefore = (t: Turn, code: ErrorCode) => {
-    if (shuttingDown) return;
+  /** A turn that failed before its prompt: the same rule as a failure before the answer. True when its pair took the conversation with it. */
+  const failBefore = (t: Turn, code: ErrorCode): boolean => {
+    if (shuttingDown) return false;
     let deleted = false;
     try {
       if (t.beforeAnswer === 'drop-pair') deleted = repo().dropBeforeAnswer(t.userMessageId, t.tutorMessageId).conversationDeleted;
@@ -195,6 +196,7 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
     }
     emitTurn(t.agent, { conversationId: t.conversationId, messageId: t.tutorMessageId, kind: 'failed', phase: t.beforeAnswer === 'drop-pair' ? 'before' : 'during', code });
     sessionsChanged(deleted ? 'deleted' : 'updated', { itemId: t.target.itemId, conversationId: t.conversationId });
+    return deleted;
   };
 
   /** Stopped before the session was ready: nothing reached the agent, so the answer is kept, empty and stopped. */
@@ -217,12 +219,14 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
 
   /** Everything after the start was called: nothing here may throw, and the turn always ends. */
   const play = async (t: Turn, started: Promise<AgentSession>): Promise<void> => {
+    /** The conversation went with the turn's pair: nothing can ever purge what the agent kept of it, so it goes now. */
+    let gone = false;
     try {
       let s: AgentSession;
       try {
         s = await started;
       } catch (e) {
-        failBefore(t, startCode(e));
+        gone = failBefore(t, startCode(e));
         return;
       }
       // Quitting began while the agent started: from here nothing is written (the key is still released below).
@@ -250,7 +254,7 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
         blocks = built.blocks;
       } catch (e) {
         tutorLog('turn-prepare-failed', { code: codeOf(e) });
-        failBefore(t, startCode(e));
+        gone = failBefore(t, startCode(e));
         return;
       }
       let prompted = false;
@@ -279,7 +283,8 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
       // The adapter may live on without the session: the next send starts a process and resumes there.
       if (end.code === 'AGENT_EXITED') void d.backend.close(s).catch((e: unknown) => tutorLog('agent-close-failed', { code: codeOf(e) }));
       // The pair may have taken its conversation with it.
-      sessionsChanged(repo().conversation(t.conversationId) === undefined ? 'deleted' : 'updated', { itemId: t.target.itemId, conversationId: t.conversationId });
+      gone = repo().conversation(t.conversationId) === undefined;
+      sessionsChanged(gone ? 'deleted' : 'updated', { itemId: t.target.itemId, conversationId: t.conversationId });
     } catch (e) {
       tutorLog('turn-failed', { code: codeOf(e) });
       if (shuttingDown) return;
@@ -300,6 +305,7 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
       if (active === t) active = null;
       d.supervisor.streaming(t.key, false);
       d.supervisor.touch();
+      if (gone) void removeWorkFolders([t.conversationId]);
     }
   };
 
@@ -385,6 +391,33 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
     t.stopped = true;
     if (t.session !== null) d.backend.interrupt(t.session, 'if-not-ended');
   };
+
+  /**
+   * P-40: the work folders of conversations whose rows are gone, and Claude's records of them. What still runs for them ends first —
+   * the answer stopped, the process closed and its group gone — or the agent would write the folders back.
+   */
+  async function removeWorkFolders(conversationIds: readonly string[]): Promise<void> {
+    for (const id of conversationIds) if (active?.conversationId === id) stopTurn(active);
+    await Promise.all(conversationIds.map((id) => d.supervisor.closeConversation(id).catch((e: unknown) => tutorLog('agent-close-failed', { code: codeOf(e) }))));
+    // Claude's naming for every id: the conversation row is gone by now, and one session may have had two agents.
+    const claudeHome = agentHomePath(d.tutorHome, 'claude');
+    for (const id of conversationIds) {
+      let work: string;
+      try {
+        work = workDirPath(d.userData, id);
+      } catch {
+        tutorLog('work-folder-skipped', { code: 'VALIDATION_FAILED' });
+        continue;
+      }
+      for (const p of [work, ...historyDirs({ agentHome: claudeHome, work, home: d.home })]) {
+        try {
+          await fs.promises.rm(p, { recursive: true, force: true });
+        } catch (e) {
+          tutorLog('work-folder-remove-failed', { code: (e as NodeJS.ErrnoException).code ?? codeOf(e) });
+        }
+      }
+    }
+  }
 
   return {
     consent() {
@@ -501,26 +534,7 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
       return { userMessageId: b.userMessageId, tutorMessageId: b.tutorMessageId };
     },
 
-    async removeWorkFolders(conversationIds) {
-      // Claude's naming for every id: the conversation row is gone by now, and one session may have had two agents.
-      const claudeHome = agentHomePath(d.tutorHome, 'claude');
-      for (const id of conversationIds) {
-        let work: string;
-        try {
-          work = workDirPath(d.userData, id);
-        } catch {
-          tutorLog('work-folder-skipped', { code: 'VALIDATION_FAILED' });
-          continue;
-        }
-        for (const p of [work, ...historyDirs({ agentHome: claudeHome, work, home: d.home })]) {
-          try {
-            await fs.promises.rm(p, { recursive: true, force: true });
-          } catch (e) {
-            tutorLog('work-folder-remove-failed', { code: (e as NodeJS.ErrnoException).code ?? codeOf(e) });
-          }
-        }
-      }
-    },
+    removeWorkFolders,
 
     failNextAgents(n) {
       agentsFailures = n;

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LearnError } from '@learn/domain';
-import { errorCode, tutorLog } from './log';
+import { codeOf, errorCode, tutorLog } from './log';
 
 describe('tutorLog', () => {
   afterEach(() => vi.restoreAllMocks());
@@ -41,5 +41,17 @@ describe('errorCode', () => {
   it('a code that is not a plain token is not written: the error\'s name instead', () => {
     expect(errorCode(Object.assign(new Error('x'), { code: 'not a code /home/x' }))).toBe('Error');
     expect(errorCode(Object.assign(new Error('x'), { code: 42 }))).toBe('Error');
+  });
+});
+
+describe('codeOf', () => {
+  it('a LearnError\'s code, else the error\'s name: where it differs from errorCode, both are kept as they were', () => {
+    expect(codeOf(new LearnError('AGENT_EXITED', 'the agent at /home/x exited'))).toBe('AGENT_EXITED');
+    expect(codeOf(new TypeError('bad /home/x'))).toBe('TypeError');
+    expect(codeOf('a string thrown')).toBe('UNKNOWN');
+    // A system error is its name here, its code in errorCode; a plain object's code is read by errorCode only.
+    const enoent = Object.assign(new Error('ENOENT: no such file, open /home/x/secret'), { code: 'ENOENT' });
+    expect([codeOf(enoent), errorCode(enoent)]).toEqual(['Error', 'ENOENT']);
+    expect([codeOf({ code: 'ENOENT' }), errorCode({ code: 'ENOENT' })]).toEqual(['UNKNOWN', 'ENOENT']);
   });
 });

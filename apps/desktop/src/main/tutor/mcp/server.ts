@@ -2,7 +2,7 @@ import { LearnError, TUTOR_TOOLS, tutorEnvelope, type TutorTool } from '@learn/d
 import { z } from 'zod';
 import { tutorLog } from '../log';
 import type { AcpScope } from '../scope';
-import { TOOL_ANNOTATIONS, TOOL_DESCRIPTIONS, toolInputSchemas, type ToolCallResult } from '../tools';
+import { TOOL_ANNOTATIONS, TOOL_DESCRIPTIONS, isTutorTool, toolInputSchemas, type ToolCallResult } from '../tools';
 
 /** Newest first: an unknown version asked for gets the first. */
 export const MCP_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'] as const;
@@ -14,7 +14,6 @@ export interface McpConnection { version: McpVersion | null }
 const STRUCTURED: ReadonlySet<McpVersion> = new Set<McpVersion>(['2025-11-25', '2025-06-18']);
 
 const isVersion = (v: string): v is McpVersion => (MCP_VERSIONS as readonly string[]).includes(v);
-const isTutorTool = (name: string): name is TutorTool => (TUTOR_TOOLS as readonly string[]).includes(name);
 
 /*
  * What comes in is read loosely, like ACP (spec 4.1): the fields Learn reads are checked, and any other field — _meta

@@ -87,7 +87,7 @@ type Row = Omit<ToolReadInput, 'tool' | 'ms'>;
 /** A result before the turn is checked: `commit` marks its pages returned once it is known to be kept. */
 interface Built { isError: boolean; text: string; envelope: TutorEnvelope | null; row: Row; commit?: () => void }
 
-const isTutorTool = (name: string): name is TutorTool => (TUTOR_TOOLS as readonly string[]).includes(name);
+export const isTutorTool = (name: string): name is TutorTool => (TUTOR_TOOLS as readonly string[]).includes(name);
 const yesNo = (b: boolean): string => (b ? 'yes' : 'no');
 const provenance = (s: AcpScope): TutorEnvelope['provenance'] => ({ revisionId: s.revisionId, sha256: s.sha256, parser: PDF_TEXT_EXTRACTOR });
 const itemOf = (s: AcpScope): TutorEnvelope['item'] => ({ id: s.itemId, title: wrapMaterial(s.title, s.nonce, 'title') });

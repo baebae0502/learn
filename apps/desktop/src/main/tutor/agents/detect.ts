@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { TUTOR_TIMEOUTS, type AgentId, type AgentState, type AgentStatus, type AgentsReport, type RealAgentId } from '@learn/domain';
 import { AGENT_CATALOG, installAdapter, installBoth, type AgentCatalogEntry } from './catalog';
-import { ENV_ALLOW, agentHome, agentHomePath, loginCommand } from './isolation';
+import { agentHome, agentHomePath, allowedEnv, loginCommand } from './isolation';
 
 /** path: the ':'-joined absolute folders searched for it, login shell's included; the agent's PATH. */
 export interface Detected { entry: AgentCatalogEntry; path: string; cliPath: string | null; cliVersion: string | null; adapterEntry: string | null; adapterVersion: string | null }
@@ -86,11 +86,7 @@ const PATH_MARK = '__LEARN_PATH__';
 export async function loginShellPath(env: NodeJS.ProcessEnv, home: string, runner: DetectDeps['run'] = run): Promise<string | null> {
   const shell = env.SHELL;
   if (shell === undefined || !path.isAbsolute(shell)) return null;
-  const clean: Record<string, string> = {};
-  for (const key of ENV_ALLOW) {
-    const value = env[key];
-    if (value !== undefined) clean[key] = value;
-  }
+  const clean = allowedEnv(env);
   try {
     const out = await runner(shell, ['-ilc', `printf '\\n${PATH_MARK}%s\\n' "$PATH"`], { timeoutMs: TUTOR_TIMEOUTS.loginShellMs, maxBytes: 64 * 1024, env: clean, cwd: home });
     if (out.code !== 0) return null;
@@ -226,11 +222,7 @@ export function createAgentDetector(deps: DetectDeps): AgentDetector {
     if (d.cliPath !== null) {
       try {
         const home = agentHome(deps.tutorHome, e.id);
-        const env: Record<string, string> = {};
-        for (const key of ENV_ALLOW) {
-          const value = deps.env[key];
-          if (value !== undefined) env[key] = value;
-        }
+        const env = allowedEnv(deps.env);
         env.PATH = d.path;
         env.DISABLE_AUTOUPDATER = '1';
         env.CLAUDE_CONFIG_DIR = home;

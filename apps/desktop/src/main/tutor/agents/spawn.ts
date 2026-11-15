@@ -22,6 +22,9 @@ export interface ChildPort {
   groupAlive(): boolean;
 }
 
+/** How long the agent's last reply line may still be on its way after it exited, when its stdout does not end (a process still holds it). */
+export const OUTPUT_GRACE_MS = 250;
+
 const ignore = () => {};
 
 /** child_process.spawn without a shell: argument array, stdio pipes, detached (its own process group); stderr read and dropped. */

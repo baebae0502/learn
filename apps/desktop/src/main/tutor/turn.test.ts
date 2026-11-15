@@ -6,7 +6,8 @@ import { RpcError } from './acp/jsonrpc';
 import type { PromptOutcome, SessionUpdate } from './acp/client';
 import { classifyFailure, runTurn, stripErrorTail, type TurnDeps, type TurnEnd, type TurnInput } from './turn';
 
-vi.mock('./log', () => ({ tutorLog: vi.fn() }));
+// The log line is watched; its code helpers stay real.
+vi.mock('./log', async (importOriginal) => ({ ...(await importOriginal<typeof import('./log')>()), tutorLog: vi.fn() }));
 
 const NOW = '2026-11-10T09:31:00.000Z';
 const SENT = { selection: 0, replayedTurns: 0, preamble: true } as const;

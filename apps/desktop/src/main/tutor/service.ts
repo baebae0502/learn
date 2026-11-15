@@ -11,11 +11,12 @@ import { mainStrings } from '../strings';
 import type { PromptOutcome } from './acp/client';
 import type { AgentDetector } from './agents/detect';
 import { agentHomePath, historyDirs, isLoginRequired, workDirPath } from './agents/isolation';
-import type { SessionKey, Supervisor } from './agents/supervisor';
+import type { Supervisor } from './agents/supervisor';
 import type { AgentSession, StartInput, TutorBackend } from './backend';
-import { tutorLog } from './log';
+import { codeOf, tutorLog } from './log';
 import { buildPrompt, regroundInstruction, replayWindow } from './prompts';
 import { guardPromptSelection, type ScopeRegistry, type TurnSelection } from './scope';
+import { sameKey, type SessionKey } from './session-key';
 import { runTurn, type TurnDeps, type TurnEnd } from './turn';
 
 export interface TutorServiceDeps {
@@ -74,8 +75,6 @@ interface Turn {
 
 /** What a stop before the prompt was sent ends with: no prompt, the answer stopped. */
 const NOT_SENT: PromptOutcome = { stopReason: 'cancelled', lockdown: false, model: null, inputTokens: null, outputTokens: null };
-const sameKey = (a: SessionKey, b: SessionKey) => a.itemId === b.itemId && a.conversationId === b.conversationId;
-const codeOf = (e: unknown): string => (e instanceof LearnError ? e.code : e instanceof Error ? e.name : 'UNKNOWN');
 const invalid = () => new LearnError('VALIDATION_FAILED', 'This tutor request does not fit the session.');
 /** Learn is quitting: never told as a failure, and nothing is written or started. */
 const quitting = () => new LearnError('CANCELLED', 'Learn is quitting.');

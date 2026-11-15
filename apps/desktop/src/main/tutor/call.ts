@@ -1,6 +1,6 @@
-import { LearnError, type ToolChip, type TutorTool, type TutorTurnEvent } from '@learn/domain';
+import type { ToolChip, TutorTool, TutorTurnEvent } from '@learn/domain';
 import type { ConversationsRepository } from '@learn/db';
-import { tutorLog } from './log';
+import { codeOf, tutorLog } from './log';
 import type { AcpScope } from './scope';
 import { callTool, type ToolCallResult, type ToolDeps } from './tools';
 
@@ -10,8 +10,6 @@ export interface TutorCallDeps {
   emitTurn(e: TutorTurnEvent): void;
   now(): string;
 }
-
-const codeOf = (e: unknown): string => (e instanceof LearnError ? e.code : e instanceof Error ? e.name : 'UNKNOWN');
 
 /**
  * Learn's MCP server calls a tool through this. The read is kept on the answer of the question that was being answered

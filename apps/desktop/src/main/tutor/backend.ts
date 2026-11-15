@@ -6,13 +6,14 @@ import type { AgentDetector } from './agents/detect';
 import {
   agentCwd, agentEnv, agentHome, ceilingDir, idleDir, isLearnToolCall, isLoginRequired, launchSpec, probeDir, sessionMeta, systemPromptParam, tmpDir, workDir, type LaunchSpec,
 } from './agents/isolation';
-import type { ChildPort } from './agents/spawn';
+import { OUTPUT_GRACE_MS, type ChildPort } from './agents/spawn';
 import { timeLastAsync } from '../perf';
-import type { SessionKey, Supervisor } from './agents/supervisor';
-import { tutorLog } from './log';
+import type { Supervisor } from './agents/supervisor';
+import { codeOf, tutorLog } from './log';
 import type { McpTransport } from './mcp/http';
 import { INSTRUCTIONS } from './prompts';
 import type { AcpScope, ScopeRegistry } from './scope';
+import { copyKey, type SessionKey } from './session-key';
 
 /** One ACP session: a sessionId on one agent process, with its own scope, nonce and first prompt (spec 4.1). */
 export interface AgentSession {
@@ -56,8 +57,6 @@ export interface AcpBackendDeps {
   onLockdown(agent: AgentId): void;
 }
 
-/** How long the agent's last reply line may still be on its way after it exited, when its stdout does not end. */
-const OUTPUT_GRACE_MS = 250;
 /** The fake agent has no catalog row: whether it resumes is what its initialize announces. */
 const FAKE_RESUME = { resume: true, load: true } as const;
 
@@ -71,8 +70,6 @@ interface SessionState {
   interrupted: 'always' | 'if-not-ended' | null;
 }
 
-const copy = (k: SessionKey): SessionKey => ({ itemId: k.itemId, conversationId: k.conversationId });
-const codeOf = (e: unknown): string => (e instanceof LearnError ? e.code : e instanceof Error ? e.name : 'UNKNOWN');
 
 /** A start's failure as the turn tells it: the agent's own codes, a missing login, else the start failed. */
 function startFailure(e: unknown): LearnError {
@@ -162,7 +159,7 @@ export function createAcpBackend(d: AcpBackendDeps): TutorBackend {
   };
 
   const begin = async (child: ChildPort, key: SessionKey, agent: AgentId): Promise<BackendConn> => {
-    const session: Session = { key: copy(key), agent, sessionId: null, scope: null, firstPrompt: true, resumedBy: null };
+    const session: Session = { key: copyKey(key), agent, sessionId: null, scope: null, firstPrompt: true, resumedBy: null };
     const client = connect(child, agent, () => closeScope(session), () => states.get(session)?.prompting === true);
     states.set(session, { client, opening: null, prompts: 0, prompting: false, interrupted: null });
     // The process was spawned just before this (supervisor): its start to initialize's answer, timed for tutor-perf (spec 15).
@@ -219,7 +216,7 @@ export function createAcpBackend(d: AcpBackendDeps): TutorBackend {
       const s = conn.session as Session;
       // A new empty session's process now belongs to the conversation its first question made; a warm sharing the
       // same start may finish after it, so the key only ever moves to a conversation.
-      if (s.key.conversationId === null && i.key.conversationId !== null) s.key = copy(i.key);
+      if (s.key.conversationId === null && i.key.conversationId !== null) s.key = copyKey(i.key);
       if (i.conversation === null || s.sessionId !== null) return s;
       const st = states.get(s)!;
       // A warm and a question may both reach here: one session/new.

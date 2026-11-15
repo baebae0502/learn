@@ -17,7 +17,8 @@ import { tutorLog } from './log';
 import { createScopeRegistry } from './scope';
 import { lastMs } from '../perf';
 
-vi.mock('./log', () => ({ tutorLog: vi.fn() }));
+// The log line is watched; its code helpers stay real.
+vi.mock('./log', async (importOriginal) => ({ ...(await importOriginal<typeof import('./log')>()), tutorLog: vi.fn() }));
 
 const ITEM = '0d4f5b8e-1c2a-4e7f-9a3b-5c6d7e8f9a01';
 const CONV_ID = '6a1b2c3d-4e5f-4a7b-8c9d-0e1f2a3b4c5d';

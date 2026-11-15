@@ -9,6 +9,16 @@ import type { Detected } from './detect';
 /** What an agent process may inherit from Learn's own environment; everything else, API keys included, stays behind. */
 export const ENV_ALLOW: readonly string[] = ['PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LC_ALL', 'TMPDIR', 'HTTPS_PROXY', 'HTTP_PROXY'];
 
+/** The ENV_ALLOW variables `base` sets, and no other. */
+export function allowedEnv(base: NodeJS.ProcessEnv): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const key of ENV_ALLOW) {
+    const value = base[key];
+    if (value !== undefined) env[key] = value;
+  }
+  return env;
+}
+
 const privateDir = (dir: string): string => {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   fs.chmodSync(dir, 0o700);
@@ -50,11 +60,7 @@ export function agentEnv(
   base: NodeJS.ProcessEnv,
   o: { path: string; agentHome: string; tmpDir: string; ceiling: string; cliPath: string | null; fake?: { script: string; log: string | null } },
 ): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const key of ENV_ALLOW) {
-    const value = base[key];
-    if (value !== undefined) env[key] = value;
-  }
+  const env = allowedEnv(base);
   env.PATH = o.path;
   env.ELECTRON_RUN_AS_NODE = '1';
   env.NO_PROXY = '127.0.0.1,localhost';

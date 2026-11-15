@@ -1,8 +1,9 @@
 import { LearnError, TUTOR_LIMITS, TUTOR_TIMEOUTS, type AgentId } from '@learn/domain';
+import { copyKey, sameKey, type SessionKey } from '../session-key';
 import type { LaunchSpec } from './isolation';
-import type { ChildPort } from './spawn';
+import { OUTPUT_GRACE_MS, type ChildPort } from './spawn';
 
-export interface SessionKey { itemId: string; conversationId: string | null }
+export type { SessionKey } from '../session-key';
 export interface LiveAgent<C = unknown> { readonly key: SessionKey; readonly agent: AgentId; readonly child: ChildPort; conn: C; streaming: boolean }
 export interface Supervisor<C = unknown> {
   /** The session on screen (tutor:view); null: none. A process that is not this one's closes now, or when its answer ends. */
@@ -63,8 +64,6 @@ export interface Supervisor<C = unknown> {
 
 /** How often a group whose leader has exited is looked at again, until its last process has gone. */
 const GROUP_POLL_MS = 50;
-/** How long a reply may still be on its way after the agent exited, when its stdout does not end (a process still holds it). */
-const OUTPUT_GRACE_MS = 250;
 
 interface Group {
   readonly child: ChildPort;
@@ -96,9 +95,6 @@ interface Start<C> { key: SessionKey; readonly agent: AgentId; promise: Promise<
 /** agent null: the key is reserved for whichever agent its process runs. */
 interface Reservation { key: SessionKey; readonly agent: AgentId | null }
 
-const sameKey = (a: SessionKey | null | undefined, b: SessionKey | null | undefined): boolean =>
-  a != null && b != null && a.itemId === b.itemId && a.conversationId === b.conversationId;
-const copy = (k: SessionKey): SessionKey => ({ itemId: k.itemId, conversationId: k.conversationId });
 const noop = () => {};
 const busy = () => new LearnError('AGENT_BUSY', 'Another answer is streaming.');
 const quit = () => new LearnError('AGENT_EXITED', 'Learn is quitting.');
@@ -129,9 +125,9 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
   const wanted = (key: SessionKey, agent: AgentId) => viewed === undefined || sameKey(viewed, key) || reservedFor(key, agent);
 
   const busyWith = (key: SessionKey): SessionKey | null => {
-    if (answer !== null && !sameKey(answer.key, key)) return copy(answer.key);
+    if (answer !== null && !sameKey(answer.key, key)) return copyKey(answer.key);
     const p = session;
-    if (p && p.streaming && !sameKey(p.key, key)) return copy(p.key);
+    if (p && p.streaming && !sameKey(p.key, key)) return copyKey(p.key);
     return null;
   };
   /** This key's answer belongs to another agent: switching now would close the process it streams on. */
@@ -229,7 +225,7 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
   };
 
   const onLeaderExit = (g: Proc<C>, e: { code: number | null; signal: NodeJS.Signals | null }) => {
-    const key = g.kind === 'probe' ? 'probe' : copy(g.key);
+    const key = g.kind === 'probe' ? 'probe' : copyKey(g.key);
     g.leaderExited();
     // An agent that ended by itself leaves its CLI orphaned in the group: it is ended with it.
     if (!g.closing) {
@@ -354,7 +350,7 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
 
   return {
     view(key) {
-      viewed = key === null ? null : copy(key);
+      viewed = key === null ? null : copyKey(key);
       const p = session;
       if (!p || p.closing || sameKey(p.key, key)) return;
       if (!held(p)) {
@@ -375,7 +371,7 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
       if (busyWith(key) || otherAgentAnswers(key, agent)) return Promise.reject(busy());
       if (quitting) return Promise.reject(quit());
       if (!streaming && !wanted(key, agent)) return Promise.reject(unwanted());
-      const mine: Reservation | null = streaming ? { key: copy(key), agent } : null;
+      const mine: Reservation | null = streaming ? { key: copyKey(key), agent } : null;
       if (mine) answer = mine;
       const release = (e: unknown): never => {
         if (mine !== null && answer === mine) answer = null;
@@ -390,7 +386,7 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
         if (sameKey(s.key, key) && s.agent === agent) return s.promise.catch(release);
       }
       // Registered before its body runs: a spec that throws at once still removes it.
-      const s = { key: copy(key), agent } as Start<C>;
+      const s = { key: copyKey(key), agent } as Start<C>;
       starts.add(s);
       s.promise = (async () => {
         try {
@@ -404,17 +400,17 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
     },
 
     rekey(from, to) {
-      if (session && sameKey(session.key, from)) session.key = copy(to);
-      if (answer !== null && sameKey(answer.key, from)) answer.key = copy(to);
-      if (viewed && sameKey(viewed, from)) viewed = copy(to);
-      for (const s of starts) if (sameKey(s.key, from)) s.key = copy(to);
+      if (session && sameKey(session.key, from)) session.key = copyKey(to);
+      if (answer !== null && sameKey(answer.key, from)) answer.key = copyKey(to);
+      if (viewed && sameKey(viewed, from)) viewed = copyKey(to);
+      for (const s of starts) if (sameKey(s.key, from)) s.key = copyKey(to);
     },
 
     streaming(key, on) {
       const p = session && sameKey(session.key, key) ? session : null;
       if (on) {
         if (busyWith(key)) throw busy();
-        if (answer === null || !sameKey(answer.key, key)) answer = { key: copy(key), agent: answeringAgent(key) };
+        if (answer === null || !sameKey(answer.key, key)) answer = { key: copyKey(key), agent: answeringAgent(key) };
         if (p && p.ready && !p.closing && reservedFor(p.key, p.agent)) markAnswering(p);
         return;
       }

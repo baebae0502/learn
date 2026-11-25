@@ -12,6 +12,12 @@
  *                  &tabs=2|many|drag (one reader tab, 12 tabs that overflow, a tab being dragged)  &history=none|back|both
  *                  &view=menu|menu-scroll|menu-spread  &scroll=horizontal|page  &spread=odd  &menu=tab  &sidebar=hidden  &w=1024
  *   reader-video   ?state=nosubs|nomatch
+ *                  M8a (with &m=8a — the M7b tab strip, a toolbar with 자막 ▾ only, the 대본 pane, the controls of spec 6.2):
+ *                  &play=paused &hover=1|far &drag=1 &speed=1.25 &muted=1 &sub=two &track=en &tip=play|captions
+ *                  &menu=subtitles|speed (&tracks=0) &state=match|nomatch|nosubs|unplayable|opening &follow=off &cursor=1 &cue=long
+ *                  &drop=subs &toast=attached|attach-failed|removed &full=1 (&idle=1) &w=1024|960 (&volume=hover)
+ *   library        ?m=8a (M8a): &panel=video-subs|video-subs-many &matches=time|time2|time-many (&scroll=end) &search=scope-menu
+ *                  &state=noresults&scope=fulltext &state=drop &toast=unpaired
  *   reader-image   ?m=7c (M7c): &bg=light|dark|checker &img=small|transparent|diagram &zoom=width|400 &rotate=90 &menu=zoom|view
  *                  &state=loading|error|missing|trashed &w=1024 &sidebar=nopages
  *   library        ?m=7c (M7c): &search=scope-states|scope-menu (&indexing=1) &scope=fulltext&q=형광 &matches=3|many|loading|indexing|empty|locked
@@ -475,7 +481,7 @@
 
   function scopeMenu({ full, indexing }) {
     return `<div class="menu" data-anchor="scope-btn" style="width:320px" role="menu" aria-label="검색 범위" ${ms('M7c', '검색 범위 메뉴(정보 · 정보와 본문 · 본문 색인 진행)')}>
-      ${miTwo('정보', SEARCHED, !full)}${miTwo('정보와 본문', 'PDF 본문 포함', full, !full && !indexing)}
+      ${miTwo('정보', SEARCHED, !full)}${miTwo('정보와 본문', params.get('m') === '8a' ? 'PDF 본문·자막 포함' : 'PDF 본문 포함', full, !full && !indexing)}
       ${indexing ? `<div class="msep"></div><div class="mi info"><span class="check"></span><span>본문 색인 37${NBSP_SLASH}120</span></div>` : ''}
     </div>`;
   }
@@ -580,12 +586,41 @@
   };
   const BIG_BOOK_ROW = { id: 503, kind: 'pdf', title: BIG_BOOK.title, authors: BIG_BOOK.authors, year: 2021, progress: 7, added: '2026. 10. 2.', tags: [], mark: '형광' };
 
+  /** The video's item panel with the 자막 line (M8a, spec 6.8): after 원래 이름, the tracks in their order. */
+  const video8aItem = (tracks) => ({ ...VIDEO_ITEM, file: [...VIDEO_ITEM.file, ['자막', tracks]] });
+
+  /**
+   * The 본문 일치 section for a video (M8a, spec 8.2): rows are subtitle sentences — "18:20" and a two-line snippet; with two
+   * tracks "18:20 · 영어"; the head counts 문장 (a sentence is one match). `kind`: time | time2 | time-many.
+   */
+  function matchSectionTime(kind) {
+    const count = (n) => `<span class="c-tertiary t-footnote num">${n}</span>`;
+    const row = (t, snip, track = '', cls = '') =>
+      `<div class="match-row ${cls}" role="option" aria-label="${t}${track ? `, ${track}` : ''}, ${esc(snip.replace(/<[^>]+>/g, ''))}"><span class="pg num">${t}${track ? ` · ${track}` : ''}</span><span class="snip">${snip}</span></div>`;
+    let head;
+    let body;
+    if (kind === 'time2') {
+      head = sectionHead('본문 일치', count('문장\u00a03개'));
+      body = `<div class="match-list tracks" role="listbox" aria-label="본문 일치">${D.timeTwoTracks.map(([t, sn, tr], i) => row(t, sn, tr, i === 1 ? 'is-hover' : '')).join('')}</div>`;
+    } else if (kind === 'time-many') {
+      head = sectionHead('본문 일치', count('문장\u00a034개'));
+      const rows = D.timeMatchTimes.map((t, i) => row(t, t === '18:20' ? D.timeSnippets[0][1] : D.timeSnippets[1 + (i % 5)][1])).join('');
+      body = `<div class="match-list" role="listbox" aria-label="본문 일치">${rows}</div><div class="match-more" id="match-more">외 14문장</div>`;
+    } else {
+      head = sectionHead('본문 일치', count('문장\u00a03개'));
+      body = `<div class="match-list" role="listbox" aria-label="본문 일치">${D.timeSnippets.slice(0, 3).map(([t, sn], i) => row(t, sn, '', i === 1 ? 'is-hover' : i === 2 ? 'is-cursor' : '')).join('')}</div>`;
+    }
+    return `<section class="section" ${ms('M8a', '본문 일치 절(동영상: 시작 시각 + 조각, 최대 20행 · 외 N문장)')}>${head}${body}</section>`;
+  }
+
   function libraryWindow7c() {
     const q = (k) => params.get(k);
     const search = q('search');
     const matches = q('matches');
     const panel = q('panel');
     const indexing = q('indexing') === '1';
+    const is8a = params.get('m') === '8a';
+    const timeKind = is8a && ['time', 'time2', 'time-many'].includes(matches);
     const full = q('scope') === 'fulltext' || !!matches || (search === 'scope-menu' && indexing);
     const scope = full ? 'full' : 'meta';
     let header;
@@ -593,7 +628,17 @@
     let insp;
     let overlays = '';
 
-    if (matches || (q('scope') === 'fulltext' && q('q') && state !== 'noresults')) {
+    if (timeKind) {
+      // M8a: the video's 본문 일치 rows are subtitle sentences — the start time (and the track when there are two) and a snippet.
+      const by = (id) => D.items.find((x) => x.id === id);
+      const two = matches === 'time2';
+      const many = matches === 'time-many';
+      const query = two ? 'cAMP' : '증폭';
+      const rowsShown = many ? [by(1), by(2), { ...by(4), mark: query }, by(5)] : two ? [by(2), by(3), by(6)] : [by(1), by(2), { ...by(4), mark: query }];
+      header = libraryHeader({ count: `${rowsShown.length}개 / 48개`, scope7c: { scope: 'full', value: query, focus: false } });
+      table = libraryTable({ items: rowsShown, selectedIds: [2], focused: false, cols: COLS_KIND, kindCol: true });
+      insp = inspectorItem({ ...video8aItem(two ? '한국어 · 영어' : '한국어'), matches: matchSectionTime(matches), scrollTo: q('scroll') === 'end' ? '#match-more' : '' });
+    } else if (matches || (q('scope') === 'fulltext' && q('q') && state !== 'noresults')) {
       const kind = matches || '3';
       const cut = kind === 'truncated' || kind === 'truncated-none';
       header = libraryHeader({ count: cut ? '8개 / 48개' : '7개 / 48개', scope7c: { scope: 'full', value: q('q') || '형광', focus: false } });
@@ -613,7 +658,7 @@
       const query = one ? '효' : '효소 억제제';
       header = libraryHeader({ count: '0개 / 48개', scope7c: { scope, value: query } });
       const searched = full && !one;
-      const where = `‘분자생물학’\u2060의 ${SEARCHED}${searched ? '\u2060·PDF\u00a0본문' : ''}에서 찾았습니다.`;
+      const where = `‘분자생물학’\u2060의 ${SEARCHED}${searched ? (is8a ? '\u2060·PDF\u00a0본문·자막' : '\u2060·PDF\u00a0본문') : ''}에서 찾았습니다.`;
       const extra = !full ? '' : one ? '본문은 두\u00a0글자 이상인 낱말로 찾습니다.' : indexing ? `본문 색인이 끝나면 더 찾을 수 있습니다(37${NBSP_SLASH}120).` : '';
       table = libraryTable({
         cols: COLS_KIND,
@@ -632,7 +677,11 @@
       let selected = [1];
       let items = withImages();
       insp = inspectorItem();
-      if (panel === 'image') {
+      if (is8a) {
+        // M8a: the video's item panel — the 자막 line of the 파일 section (a lecture with 한국어 · 영어; 외 2개 past three tracks).
+        selected = [2];
+        insp = inspectorItem(video8aItem(panel === 'video-subs-many' ? '한국어 · 영어 외\u00a02개' : '한국어 · 영어'));
+      } else if (panel === 'image') {
         selected = [401];
         const small = photoSvg({ width: 213, height: 160 });
         insp = inspectorItem({ ...D.imageItem, kindIcon: 'image', preview: `<div class="item-preview" ${ms('M7c', '이미지 미리보기(높이 ≤ 160, 바탕 --bg-sunken)')}>${small}</div>` });
@@ -659,17 +708,26 @@
       if (open) overlays = scopeMenu({ full, indexing });
       else if (search === 'scope-states') overlays = scopeStates();
     }
+    if (is8a && state === 'drop') overlays = dropOverlay();
+    else if (is8a && q('toast') === 'unpaired') {
+      overlays = `<div class="toasts" role="status" ${ms('M8a', '짝 없는 자막의 가져오기 실패 토스트')}>${resultToast({
+        ic: 'circle-alert',
+        tone: 'c-danger',
+        title: '파일 1개를 가져오지 못했습니다',
+        body: `${failRow('lecture04.ko.srt', '자막 파일은 동영상에 붙입니다')}<span class="t-next">동영상 탭에 끌어 놓거나 자막 ▾의 ‘자막 파일 추가…’로 붙이세요.</span>`,
+      })}</div>`;
+    }
     // The approved M7b tab strip: the library tab (active) with an image tab and a PDF tab open.
     const tabs = [
       { id: 'library', title: '라이브러리', icon: 'library-big', home: true, active: true },
-      { id: 'r-img', title: '수용체 분포 형광 현미경 사진', icon: 'image' },
+      is8a ? { id: 'r-vid', title: '강의 04 · 세포 신호', icon: 'clapperboard' } : { id: 'r-img', title: '수용체 분포 형광 현미경 사진', icon: 'image' },
       { id: 'r-pdf', title: '분자생물학 6장 · 신호 전달', icon: 'file-text' },
     ];
     return M.windowShell({ tabs, tabsCls: 'm7b', sidebar: librarySidebar(), main: header + table, inspector: insp, overlays });
   }
 
   function libraryWindow(opts = {}) {
-    if (params.get('m') === '7c') return libraryWindow7c();
+    if (params.get('m') === '7c' || params.get('m') === '8a') return libraryWindow7c();
     const st = opts.state ?? state;
     let header = libraryHeader(opts.header);
     let table;
@@ -814,7 +872,7 @@
       <div class="drop-panel">
         <div class="glyph">${icon('download', 'xl')}</div>
         <h1>놓으면 라이브러리로 가져옵니다</h1>
-        <div class="files">${params.get('m') === '7c' ? '파일 3개(PDF 1 · 이미지 2)' : '파일 3개(PDF 2 · 동영상 1)'}</div>
+        <div class="files">${params.get('m') === '8a' ? '파일 3개(동영상 1 · 자막 2)' : params.get('m') === '7c' ? '파일 3개(PDF 1 · 이미지 2)' : '파일 3개(PDF 2 · 동영상 1)'}</div>
         <div class="drop-modes">
           <div class="drop-mode is-on">${icon('copy')}<span class="dm-title">사본으로 가져오기</span>
             <span class="dm-text">라이브러리 폴더에 복사합니다.<br>원본은 그대로 둡니다.</span></div>
@@ -1786,7 +1844,253 @@
     return `${head}<div class="video-stage"><div class="video-frame">${lectureSlide()}<div class="subtitle" ${ms('M8', '자막 오버레이')}>그래서 이 단계에서 신호가 수백 배로 증폭됩니다.</div></div></div>${videoControls()}`;
   }
 
+  // ── M8a: the video reader v2 (docs/superpowers/specs/2026-11-23-m8a-video-subtitles-design.md §6, §7) ─────────────────
+  // The toolbar holds only 자막 ▾ (the title is in the tab since M7b); the sidebar is the 대본 pane without the
+  // [대본 | 시간 메모] segment and the stage has no 시간 메모 button (both M9). Scene parameters are listed at the top of this file.
+  const NB = ' ';
+  const toSec = (t) => t.split(':').reduce((a, n) => a * 60 + Number(n), 0);
+  const TOTAL_SEC = 52 * 60 + 10;
+
+  /** All the scene's choices, read once. */
+  function video8aOpts() {
+    const q = (k) => params.get(k);
+    const st = q('state');
+    const track = q('track') === 'en' || ['attached', 'removed'].includes(q('toast') ?? '') ? 'en' : 'ko';
+    const match = st === 'match';
+    return {
+      st,
+      track,
+      match,
+      nosubs: st === 'nosubs' || q('tracks') === '0',
+      paused: q('play') === 'paused' || st === 'opening' || st === 'nosubs',
+      hover: q('hover'),
+      drag: q('drag') === '1',
+      speed: q('speed') === '1.25' || q('menu') === 'speed' ? '1.25×' : '1×',
+      muted: q('muted') === '1',
+      two: q('sub') === 'two',
+      full: q('full') === '1',
+      idle: q('idle') === '1',
+      w: Number(q('w')) || 1440,
+      menu: q('menu'),
+      toast: q('toast'),
+      drop: q('drop') === 'subs',
+      follow: q('follow') !== 'off',
+      cursor: q('cursor') === '1',
+      long: q('cue') === 'long',
+      volume: q('volume'),
+      tip: q('tip'),
+      at: match ? '19:34' : st === 'nosubs' || st === 'opening' ? '0:00' : '18:20',
+    };
+  }
+
+  /** The cue list of a track with the current one marked by time (the list scrolls so it sits in the upper third). */
+  function cueList8a(o) {
+    let list = o.track === 'en' ? D.cuesEn : D.cues8a;
+    if (o.track === 'en') list = list.filter((c) => c[0] !== '19:34');
+    if (o.long && o.track === 'ko') list = list.map((c) => (c[0] === D.cueLong[0] ? D.cueLong : c));
+    const idx = list.findIndex((c) => c[0] === o.at);
+    return { list, idx };
+  }
+
+  function videoSidebar8a(o) {
+    const head = `<div class="reader-nav-head"><div class="nav-title" ${ms('M8a', '대본 머리')}>대본</div></div>`;
+    if (o.st === 'unplayable') {
+      return `<div class="pane-empty top" ${ms('M8a', '표시할 대본 없음(재생 불가·원본 없음·열기 실패)')}>${icon('captions-off')}<div class="pe-title">표시할 대본이 없습니다</div></div>`;
+    }
+    if (o.st === 'opening') {
+      const ph = Array.from({ length: 7 }, () => `<div class="cue ph"><span class="ts"></span><span class="tx"></span></div>`).join('');
+      return `${head}<div class="nav-search is-disabled" ${ms('M8a', '대본 검색(여는 중은 비활성)')}><div class="field small is-disabled">${icon('search', 'sm')}<span class="placeholder">대본에서 찾기</span></div></div>
+        <div class="transcript is-placeholder" aria-busy="true" ${ms('M8a', '대본 자리 상자(여는 중)')}>${ph}</div>
+        <div class="transcript-foot is-disabled" ${ms('M8a', '현재 위치 따라가기(여는 중은 비활성)')}><span class="switch is-on"></span><span>현재 위치 따라가기</span></div>`;
+    }
+    if (o.nosubs) {
+      return `${head}<div class="pane-empty top" ${ms('M8a', '자막 없음 빈 상태')}>
+        ${icon('captions-off')}
+        <div class="pe-title">자막이 없습니다</div>
+        <div class="pe-text">SRT나 VTT 자막 파일을 추가하면 대본이 여기에 표시되고, 문장을 눌러 그${NB}시간으로 이동할 수 있습니다.</div>
+        <div class="btn">자막 파일 추가…</div>
+      </div>`;
+    }
+    const query = o.match ? '칼슘 펌프' : o.st === 'nomatch' ? '칼슘 펌프' : '';
+    const count = o.match ? '2개' : '0개';
+    const clear = `<span title="검색어 지우기 esc">${icon('circle-x', 'sm')}</span>`;
+    const field = query
+      ? `<div class="nav-search" ${ms('M8a', '대본 검색')}><div class="field small is-focus">${icon('search', 'sm')}<span class="value">${query}</span><span class="caret"></span><span class="spacer"></span><span class="c-tertiary num">${count}</span>${clear}</div></div>`
+      : `<div class="nav-search" ${ms('M8a', '대본 검색')}><div class="field small">${icon('search', 'sm')}<span class="placeholder">대본에서 찾기</span></div></div>`;
+    if (o.st === 'nomatch') {
+      return `${head}${field}<div class="pane-empty top" ${ms('M8a', '대본 검색 결과 없음')}>
+        ${icon('search-x')}
+        <div class="pe-title">‘칼슘 펌프’가 나오는 문장이 없습니다</div>
+        <div class="pe-text">자막 파일의 글자에서만 찾습니다. 다른${NB}낱말로 찾아보세요.</div>
+      </div>`;
+    }
+    const { list, idx } = cueList8a(o);
+    // Following keeps the current cue in the upper third (a few cues above it); unfollowed, the user has scrolled it lower.
+    const first = o.follow ? Math.max(0, idx - 3) : Math.max(0, idx - 7);
+    const cursorAt = o.cursor ? idx + 3 : -1;
+    const rows = list
+      .slice(first)
+      .map(([ts, tx], j) => {
+        const i = j + first;
+        const cur = i === idx;
+        const past = i < idx;
+        let text = esc(tx);
+        if (o.match) text = text.replace(/칼슘 펌프/g, (m) => `<mark class="${cur ? 'is-current' : ''}">${m}</mark>`);
+        return `<div class="cue ${cur ? 'is-current' : ''} ${past ? 'is-past' : ''} ${i === cursorAt ? 'is-cursor' : ''}" role="option"><span class="ts">${ts}</span><span class="tx">${text}</span></div>`;
+      })
+      .join('');
+    return `${head}${field}
+      <div class="transcript" role="listbox" aria-label="대본" ${ms('M8a', '대본 목록')}>${rows}</div>
+      <div class="transcript-foot" ${ms('M8a', '현재 위치 따라가기 스위치')}><span class="switch ${o.follow ? 'is-on' : ''}"></span><span>현재 위치 따라가기</span></div>`;
+  }
+
+  /** The scrubber, the row of 32 and — when the volume bar is folded — its hover pop-up. */
+  function videoControls8a(o, { disabled = false, folded = false } = {}) {
+    const sec = toSec(o.at);
+    const played = Math.round((sec / TOTAL_SEC) * 1000) / 10;
+    const hoverAt = o.hover === 'far' ? 62 : played;
+    const hoverTime = o.hover === 'far' ? '32:20' : o.at;
+    const sc = `${o.hover || o.drag ? ' is-hover' : ''}${o.drag ? ' is-dragging' : ''}`;
+    const bubble = o.hover || o.drag ? `<span class="hover-time" style="left:${hoverAt}%">${hoverTime}</span>` : '';
+    const pointer = o.hover && !o.drag ? `<span class="hover-pos" style="left:${hoverAt}%"></span>` : '';
+    const dis = disabled ? 'is-disabled' : '';
+    const capsOff = o.nosubs;
+    const capsTitle = capsOff ? '자막 없음' : '자막 끄기 C';
+    const volIcon = o.muted ? 'volume-x' : 'volume-2';
+    const volTitle = o.muted ? '음소거 해제 M' : '음소거 M';
+    const speedPressed = o.menu === 'speed' ? 'is-pressed' : '';
+    const volPop = folded && o.volume === 'hover' ? `<span class="vol-pop" role="presentation"><span class="vtrack"><i style="inset:0 ${o.muted ? 100 : 30}% 0 0"></i></span></span>` : '';
+    const tips = (o.tip === 'play' ? tip('play-btn', o.paused ? '재생' : '일시정지', 'K · 스페이스', { place: 'above' }) : '') +
+      (o.tip === 'captions' ? tip('caps-btn', '자막 켜기/끄기', 'C', { place: 'above', note: '자막 없음' }) : '');
+    return `<div class="video-controls ${dis}" ${ms('M8a', '재생 컨트롤(±10초·재생·시간·속도·자막·음량·전체 화면)')}>
+      <div class="scrubber${sc}" role="slider" aria-label="재생 위치" aria-valuetext="${o.at} / 52:10">
+        <div class="track"><span class="buffered" style="width:${sec === 0 ? (o.st === 'opening' ? 0 : 6) : Math.max(58, played + 8)}%"></span><span class="played" style="width:${played}%"></span><span class="knob" style="left:${played}%"></span></div>
+        ${pointer}${bubble}
+      </div>
+      <div class="control-row">
+        <span class="icon-btn" title="10초 뒤로 J">${icon('rotate-ccw')}</span>
+        <span class="icon-btn" id="play-btn" title="${o.paused ? '재생 K · 스페이스' : '일시정지 K · 스페이스'}" style="color:var(--text-primary)">${icon(o.paused ? 'play' : 'pause', 'lg')}</span>
+        <span class="icon-btn" title="10초 앞으로 L">${icon('rotate-cw')}</span>
+        <span class="time"><b>${o.at}</b> / 52:10</span>
+        <span class="spacer"></span>
+        <span class="speed-btn ${speedPressed}" id="speed-btn" title="재생 속도 ⇧, ⇧." aria-haspopup="menu">${o.speed}</span>
+        <span class="icon-btn ${capsOff ? 'is-disabled' : 'is-on'}" id="caps-btn" title="${capsTitle}">${icon(capsOff ? 'captions-off' : 'captions')}</span>
+        <div class="volume ${folded ? 'is-folded' : ''}" id="vol-group"><span class="icon-btn ${folded && o.volume === 'hover' ? 'is-hover' : ''}" id="vol-btn" title="${volTitle}">${icon(volIcon)}</span>${folded ? '' : `<span class="vtrack"><i style="inset:0 ${o.muted ? 100 : 30}% 0 0"></i></span>`}${volPop}</div>
+        <span class="icon-btn" title="${o.full ? '전체 화면 끝내기 F' : '전체 화면으로 보기 F'}">${icon(o.full ? 'minimize' : 'maximize')}</span>
+      </div>
+      ${tips}
+    </div>`;
+  }
+
+  /** The video box with its subtitle: one line, or two lines (two cues cover the time, in order of start). */
+  function videoStage8a(o) {
+    if (o.st === 'opening') return `<div class="video-stage is-opening" aria-busy="true" ${ms('M8a', '여는 중(첫 프레임 전의 어두운 무대)')}></div>`;
+    const lines = [];
+    if (!o.nosubs) {
+      const { list, idx } = cueList8a({ ...o, long: false });
+      if (o.two && o.track === 'ko') lines.push(list[idx - 1][1], list[idx][1]);
+      else if (o.two) lines.push(list[idx - 1][1], list[idx][1]);
+      else lines.push(list[idx][1]);
+    }
+    const slide = o.nosubs ? titleSlide() : lectureSlide();
+    const sub = lines.length ? `<div class="subtitle" ${ms('M8a', '자막 오버레이(영상 높이 × 3.1%, 줄 높이 1.45)')}>${lines.map((l) => `<div class="sub-line">${esc(l)}</div>`).join('')}</div>` : '';
+    return `<div class="video-stage" tabindex="0" aria-label="강의 04 · 세포 신호"><div class="video-frame">${slide}${sub}</div></div>`;
+  }
+
+  function codecStage8a() {
+    return `<div class="video-stage"><div class="stage-center"><div class="codec-notice" role="status" ${ms('M8a', '재생 불가 안내(.stage-center 안, 단추 줄바꿈 허용)')}>
+        <div class="glyph">${icon('video-off', 'xl')}</div>
+        <h2>이${NB}동영상은 재생할 수 없습니다</h2>
+        <p>Learn의 재생 엔진이 이${NB}파일의 형식을 지원하지 않습니다. MP4(H.264/AAC)&#8288;로 변환한 파일을 가져오면 재생할 수 있습니다. 원본${NB}파일은 그대로 보관됩니다.</p>
+        <div class="file">seminar-0915.avi · 1.3${NB}GB</div>
+        <div class="actions"><div class="btn has-icon" title="⇧⌘R">${icon('folder-search')}Finder에서 보기</div><div class="btn has-icon">${icon('external-link')}기본 앱으로 열기</div></div>
+      </div></div></div>`;
+  }
+
+  function subtitleMenu8a(o) {
+    const items = o.nosubs
+      ? mi('자막 파일 추가…')
+      : `${mi('한국어', { check: o.track === 'ko' })}${mi('영어', { check: o.track === 'en' })}${mi('끄기', { shortcut: 'C' })}
+         <div class="msep"></div>${mi('자막 파일 추가…')}<div class="msep"></div>${mi('이 자막 제거')}`;
+    return `<div class="menu" data-anchor="sub-btn" data-align="end" style="width:216px" role="menu" aria-label="자막" ${ms('M8a', '자막 메뉴(트랙 · 끄기 · 파일 추가 · 제거)')}>${items}</div>`;
+  }
+
+  function speedMenu8a() {
+    const rows = ['0.5×', '0.75×', '1×', '1.25×', '1.5×', '1.75×', '2×'];
+    return `<div class="menu" data-anchor="speed-btn" data-place="above" style="width:112px" role="menu" aria-label="재생 속도" ${ms('M8a', '속도 메뉴(0.5× … 2×)')}>${rows.map((r) => mi(r, { check: r === '1.25×' })).join('')}</div>`;
+  }
+
+  const dropSubs8a = () => `<div class="drop-overlay in-reader" role="dialog" aria-label="자막 놓기" ${ms('M8a', '영상 탭 끌어 놓기 오버레이')}>
+      <div class="frame"></div>
+      <div class="drop-panel">
+        <div class="glyph">${icon('captions', 'xl')}</div>
+        <h1>자막으로 붙이기</h1>
+        <div class="files">SRT · VTT 파일을 이${NB}동영상에 붙입니다</div>
+      </div>
+    </div>`;
+
+  /** A failure toast row (the app's `failureBody`): the file name, cut first when the row is too long, and its cause. */
+  const failRow = (name, cause) => `<span class="t-fail"><span class="n ellipsis">${esc(name)}</span><span class="c">${esc(cause)}</span></span>`;
+
+  function toast8a(kind) {
+    const body = {
+      attached: resultToast({ title: `자막 1개를 붙였습니다` }),
+      'attach-failed': resultToast({
+        ic: 'circle-alert',
+        tone: 'c-danger',
+        title: '자막 2개를 붙이지 못했습니다',
+        body: `${failRow('lecture04.ko.srt', '글자 인코딩을 알아볼 수 없습니다')}${failRow('notes.vtt', '자막 문장을 찾지 못했습니다')}`,
+      }),
+      removed: resultToast({ title: '‘한국어’ 자막을 제거했습니다', action: '<div class="btn small plain accent">실행 취소</div>' }),
+    }[kind];
+    return body ? `<div class="toasts above-controls" role="status" ${ms('M8a', '자막 토스트')}>${body}</div>` : '';
+  }
+
+  function videoWindow8a() {
+    const o = video8aOpts();
+    const final = o.st === 'unplayable';
+    const opening = o.st === 'opening';
+    const title = final ? '수용체 탈감작 세미나 녹화' : o.nosubs ? '강의 05 · 2차 전령' : '강의 04 · 세포 신호';
+    const trackName = o.track === 'en' ? '영어' : '한국어';
+    // The button names the track on; with no track it says so (spec 6.5).
+    const subBtn = o.nosubs
+      ? { ic: 'captions-off', label: '자막 없음' }
+      : { ic: 'captions', label: trackName };
+    const subDis = opening ? 'is-disabled' : '';
+    const toolbar = final
+      ? ''
+      : `<div class="reader-toolbar" role="toolbar" aria-label="동영상 도구">
+          <span class="spacer"></span>
+          <span class="btn small plain has-icon has-menu ${o.menu === 'subtitles' ? 'is-pressed' : ''} ${subDis}" id="sub-btn" title="자막" aria-haspopup="menu" ${ms('M8a', '자막 ▾ 단추(도구 막대의 유일한 단추)')}>${icon(subBtn.ic, 'sm')}${subBtn.label}${icon('chevron-down', 'xs')}</span>
+        </div>`;
+    const stage = final ? codecStage8a() : videoStage8a(o);
+    const narrow = o.volume === 'hover' || (o.w - 240 < 560);
+    const controls = final ? '' : videoControls8a(o, { disabled: opening, folded: narrow });
+    let overlays = '';
+    if (o.menu === 'subtitles') overlays = subtitleMenu8a(o);
+    else if (o.menu === 'speed') overlays = speedMenu8a();
+    else if (o.drop) overlays = dropSubs8a();
+    else if (o.toast) overlays = toast8a(o.toast);
+    const main = `${toolbar}${stage}${controls}`;
+    if (o.full) {
+      // 무대 모드: no tab strip, sidebar or toolbar; the stage and the controls fill the window. Idle: controls and pointer hidden.
+      return `<div class="stage-window ${o.idle ? 'is-idle' : ''}" ${ms('M8a', '영상 전체 화면(무대 모드)')}>${videoStage8a(o)}${o.idle ? '' : videoControls8a(o)}</div>`;
+    }
+    const tabs = [
+      { id: 'library', title: '라이브러리', icon: 'library-big', home: true },
+      { id: 'v', title, icon: 'clapperboard', active: true },
+      { id: 'pdf', title: '분자생물학 6장 · 신호 전달', icon: 'file-text' },
+    ];
+    const shell = (extra = {}) => M.windowShell({ tabs, tabsCls: 'm7b', sidebar: videoSidebar8a(o), main, overlays, ...extra });
+    if (o.w >= 1440) return shell();
+    const h = o.w === 960 ? 640 : 768;
+    const folded = narrow ? ' · 음량 막대는 접히고 호버하면 단추 위로 뜹니다(리더 560 미만일 때의 모양을 보이려고 접어서 그렸습니다)' : '';
+    const note = `창 ${o.w} · 사이드바 240 + 리더 ${o.w - 240}${final ? ' — 안내와 단추가 리더 폭 안에 듭니다. 단추는 좁아지면 줄을 바꿉니다' : ''}${folded}`;
+    return `<div class="desktop">${shell({ style: `--win-w:${o.w}px;--win-h:${h}px` })}<div class="sim-note">${note}</div></div>`;
+  }
+
   function videoWindow({ codec = false } = {}) {
+    if (params.get('m') === '8a' && !codec) return videoWindow8a();
     if (codec) {
       return M.windowShell({
         tabs: [

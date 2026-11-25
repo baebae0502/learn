@@ -1903,6 +1903,7 @@ h2,
   aspect-ratio: 16 / 9;
   max-height: 100%;
   overflow: hidden;
+  container-type: size; /* M8a: the subtitle's size follows the video box's height (cqh) */
 }
 .subtitle {
   position: absolute;
@@ -1910,11 +1911,11 @@ h2,
   bottom: 6%;
   translate: -50% 0;
   max-width: 78%;
-  padding: 4px 12px 5px;
+  padding: 0.2em 0.6em 0.25em; /* local: the 4 / 12 / 5 px of the 22 px subtitle, kept in proportion to the text */
   border-radius: var(--radius-sm);
   background: oklch(0% 0 0 / 0.72);
   color: oklch(100% 0 0);
-  font: 500 22px/32px var(--font-ui); /* local: subtitle size scales with the frame */
+  font: 500 clamp(14px, 3.1cqh, 40px) / 1.45 var(--font-ui); /* local: spec 6.4 — subtitle size is 3.1 % of the video box's height */
   text-align: center;
   word-break: keep-all;
 }
@@ -2023,6 +2024,9 @@ h2,
   color: var(--text-primary);
   font-weight: 500;
 }
+.speed-btn.is-pressed {
+  background: var(--fill-pressed);
+}
 .speed-btn {
   height: 24px;
   padding: 0 var(--space-8);
@@ -2047,6 +2051,28 @@ h2,
   background: var(--bg-track);
   position: relative;
 }
+.volume {
+  position: relative;
+}
+.volume.is-folded > .vtrack {
+  display: none;
+}
+.vol-pop {
+  /* M8a: a folded volume bar floats over its button while the pointer is on the button (reader narrower than 560). */
+  position: absolute;
+  z-index: 5;
+  bottom: calc(100% + var(--space-4));
+  left: 50%;
+  translate: -50% 0;
+  padding: var(--space-12) var(--space-12);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-e1);
+}
+.vol-pop .vtrack {
+  display: block;
+  width: 80px; /* local: the bar's length in the pop-up */
+}
 .volume .vtrack i {
   position: absolute;
   inset: 0 30% 0 0;
@@ -2058,6 +2084,46 @@ h2,
   min-height: 0;
   overflow: hidden;
   padding: var(--space-4) var(--space-8) var(--space-8);
+}
+/* M8a: 대본 pane. The head is one line (the panel-head grammar); the placeholder rows stand in while the video opens. */
+.nav-title {
+  display: flex;
+  align-items: center;
+  height: 28px; /* local: one line of the headline role plus the segment's old height */
+  padding: 0 var(--space-4);
+  font: var(--type-headline);
+}
+.transcript.is-placeholder .cue.ph {
+  gap: var(--space-6);
+}
+.transcript.is-placeholder .cue.ph .ts,
+.transcript.is-placeholder .cue.ph .tx {
+  display: block;
+  height: 10px; /* local: a bar the height of a footnote's x-height */
+  border-radius: var(--radius-xs);
+  background: var(--bg-track);
+}
+.transcript.is-placeholder .cue.ph .ts {
+  width: 36px;
+}
+.transcript.is-placeholder .cue.ph .tx {
+  width: 88%;
+  height: 12px; /* local: a bar the height of a paragraph's x-height */
+}
+.nav-search.is-disabled,
+.transcript-foot.is-disabled,
+.video-controls.is-disabled .control-row,
+.video-controls.is-disabled .scrubber {
+  opacity: 0.45;
+}
+.video-controls.is-disabled .knob {
+  display: none;
+}
+.video-stage.is-opening {
+  background: var(--video-stage);
+}
+.subtitle .sub-line + .sub-line {
+  margin-top: 0;
 }
 .cue {
   /* Stacked: time above text, so the cue text gets the full sidebar width (240 px pane). */
@@ -2087,6 +2153,9 @@ h2,
   background: var(--find-match);
   color: inherit;
   border-radius: 2px;
+}
+.cue mark.is-current {
+  background: var(--find-match-current);
 }
 .transcript-foot {
   flex: none;
@@ -2135,6 +2204,8 @@ h2,
 }
 .codec-notice .actions {
   display: flex;
+  flex-wrap: wrap; /* M8a 9.2: two buttons wrap instead of being cut in a narrow stage */
+  justify-content: center;
   gap: var(--space-8);
   margin-top: var(--space-4);
 }
@@ -4568,4 +4639,54 @@ h2,
 }
 .agent-row .inline-flag {
   white-space: nowrap;
+}
+
+/* ── M8a: video reader v2 (spec 6) ───────────────────────────────────────────── */
+/* 무대 모드: the stage and the controls fill the window; idle hides the controls and the pointer, and the box takes their place. */
+.stage-window {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--video-stage);
+  overflow: hidden;
+}
+.stage-window.is-idle {
+  cursor: none;
+}
+/* The drop overlay of the video tab covers the reader area (right of the sidebar, under the tab strip). */
+.drop-overlay.in-reader {
+  inset: var(--toolbar-height) 0 0 var(--sidebar-w);
+}
+.drop-overlay.in-reader .drop-panel {
+  width: 360px; /* local: two short lines; the window overlay's 520 holds the two mode cards */
+}
+/* Reader toasts rise above the controls so they do not cover the buttons. */
+.toasts.above-controls {
+  bottom: 96px; /* local: the controls bar (about 76) plus 16 */
+}
+.toast .t-fail {
+  display: flex;
+  gap: var(--space-8);
+  min-width: 0;
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.toast .t-fail .n {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.toast .t-fail .c {
+  flex: none;
+  color: var(--text-primary);
+}
+.toast .t-next {
+  display: block;
+  margin-top: var(--space-4);
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.match-list.tracks .match-row {
+  grid-template-columns: 92px minmax(0, 1fr); /* local: "18:14 · 한국어" is about 84 wide */
 }

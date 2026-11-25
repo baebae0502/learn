@@ -446,7 +446,7 @@
 
 이 표는 목업의 `data-ms` 태그와 **같은 목록**이다. 렌더 스크립트가 모든 대화형 요소(버튼, 필드, 탭, 행, 칩, 메뉴 항목, 컨트롤 …)가 태그 안에 있는지 검사하고(`report.json`의 `milestones.missing`, 현재 0건), 태그 목록을 `docs/design/renders/milestones.txt`에 쓴다. `?ms=1`로 열면 같은 태그가 점선 테두리와 배지로 보인다. 공통 셸: M3 사이드바 토글·⌘K 실행기·통합 도구 막대 제목, M7 탭 줄(M3–M6은 탭 하나라 탭 줄 없음).
 
-### 10.1 라이브러리 — `library.html` (`?state=none|multi|noresults|loading|empty-collection|trash|duplicates|edited`, M7a: `?columns=progress`; M7c는 `&m=7c`와 함께 `?search=scope-states|scope-menu`(`&indexing=1`), `?scope=fulltext&q=형광`, `?matches=3|many|loading|indexing|empty|locked|truncated|truncated-none`(many는 `&scroll=end`), `?panel=image|image-large|pdf-indexing|pdf-failed`, `?state=noresults&scope=fulltext`(`&indexing=1` | `&onechar=1`))
+### 10.1 라이브러리 — `library.html` (`?state=none|multi|noresults|loading|empty-collection|trash|duplicates|edited`, M7a: `?columns=progress`; M7c는 `&m=7c`와 함께 `?search=scope-states|scope-menu`(`&indexing=1`), `?scope=fulltext&q=형광`, `?matches=3|many|loading|indexing|empty|locked|truncated|truncated-none`(many는 `&scroll=end`), `?panel=image|image-large|pdf-indexing|pdf-failed`, `?state=noresults&scope=fulltext`(`&indexing=1` | `&onechar=1`); M8a는 `&m=8a`와 함께 `?panel=video-subs|video-subs-many`, `?matches=time|time2|time-many`(`&scroll=end`), `?search=scope-menu`, `?state=noresults&scope=fulltext`, `?state=drop`, `?toast=unpaired`)
 | 요소 | 마일스톤 |
 |---|---|
 | 창(숨긴 제목 막대, 신호등, 비브런시, 테마, 밀도, 패널 크기 조절·기억), 사이드바 토글, ⌘K 실행기, 가져오기 단추·메뉴 | M3 |
@@ -506,7 +506,7 @@
 | (`m=7a`) 상태: 암호로 보호된 PDF(암호 입력란, 틀리면 "암호가 맞지 않습니다."), 열기 실패, 원본 없음, 휴지통, 여는 중 — 창 도구 막대가 이미 제목을 보이므로 리더 도구 막대(여는 중에는 비활성으로 남김)와 인스펙터를 그리지 않는다(여는 중은 예외: 인스펙터가 자리를 지키고 번역 절이 비활성으로 보인다, M7b R39) | M7a |
 | (`m=7a`) 좁은 창: 1024(사이드바 240 + 리더 464 + 항목 패널 320, 리더 최소 440이라 펼침), 960(항목 패널 접힘) | M7a |
 
-### 10.4 동영상 리더 — `reader-video.html` (`?state=nosubs|nomatch`)
+### 10.4 동영상 리더 — `reader-video.html` (`?state=nosubs|nomatch`; M8a는 `&m=8a`와 함께 ① `?play=paused`, `?hover=1|far`, `?drag=1`, `?speed=1.25`, `?muted=1`, `?sub=two`, `?track=en`, `?tip=play|captions`, ② `?menu=subtitles|speed`(`&tracks=0`), ③ `?state=match|nomatch|nosubs`, `?follow=off`, `?cursor=1`, `?cue=long`, ④ `?drop=subs`, `?toast=attached|attach-failed|removed`, ⑤ `?full=1`(`&idle=1`), ⑥ `?w=1024|960`(`&volume=hover`), `?state=unplayable&w=1024`, `?state=opening`)
 | 요소 | 마일스톤 |
 |---|---|
 | 재생 컨트롤(재생, ±10초, 시간, 스크러버+버퍼, 속도, 자막 토글, 음량, 전체 화면), 자막 오버레이, 자막 메뉴, 대본 칸, 대본 검색, 대본 목록(현재 큐 강조), 현재 위치 따라가기, 위치 기억 | M8 |

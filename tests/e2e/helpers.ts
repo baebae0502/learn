@@ -2117,3 +2117,14 @@ export async function readerToolbarMin(page: Page, sizes: readonly (12 | 13 | 14
   }
   return out;
 }
+
+// ---- M8a video stage (main/video-stage.ts, main/test-hooks.ts) -----------------------------------------------------------
+
+/** The main window's video stage, its full screen, and whether a full-screen change of the stage controller is in flight. */
+export interface StageState {
+  stage: boolean;
+  fullScreen: boolean;
+  pending: boolean;
+}
+type WithStageHooks = { __learnTest: { stageState(): StageState } };
+export const stageState = (app: ElectronApplication): Promise<StageState> => app.evaluate(() => (globalThis as unknown as WithStageHooks).__learnTest.stageState());

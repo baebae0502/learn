@@ -5,6 +5,7 @@ import { COLUMN_WIDTH_MAX, STORED_COLUMN_IDS_MAX, LIBRARY_SORT_COLUMNS } from '.
 import { libraryScopeSchema } from './organize';
 import { DEFAULT_TRANSLATION_PREFS, translationPrefsSchema } from './translation';
 import { DEFAULT_TUTOR_PREFS, tutorPrefsSchema } from './tutor';
+import { isPlaybackRate } from './video';
 
 const storedColumnId = z.string().min(1).max(64);
 /**
@@ -71,6 +72,12 @@ export const SETTINGS = {
    * settings window reads it through app.backupInfo, which gives the folder's name only.
    */
   'backup.last': z.object({ at: z.string().min(1).max(64), folder: z.string().min(2).max(4096).startsWith('/') }).strict(),
+  /** The video reader's speed, one of PLAYBACK_RATES for every video (spec 4.4): unset reads as 1. */
+  'video.playbackRate': z.number().refine(isPlaybackRate),
+  /** The video reader's volume for every video: unset reads as 1. */
+  'video.volume': z.number().min(0).max(1),
+  /** Whether videos play muted: unset reads as false. */
+  'video.muted': z.boolean(),
 } as const;
 
 export type SettingKey = keyof typeof SETTINGS;

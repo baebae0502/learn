@@ -120,6 +120,7 @@ export const CHANNEL_KINDS: Readonly<Record<Channel, readonly WindowKind[]>> = {
   'ui:themeShown': MAIN_AND_SETTINGS,
   'ui:showColumnMenu': MAIN,
   'ui:reportIdle': MAIN,
+  'ui:stage': MAIN,
 
   'sheet:payload': SHEET,
   'sheet:resolve': SHEET,

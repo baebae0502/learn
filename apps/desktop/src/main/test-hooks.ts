@@ -566,6 +566,14 @@ export interface LearnTestHooks {
   seedSessions(input: SeedSessionsInput): { conversationIds: string[] };
   /** The tool reads recorded on an answer, in order. */
   toolReads(messageId: string): Array<ToolReadInput & { seq: number }>;
+  /** The main window's video stage, its full screen, and whether a full-screen change is in flight (video-stage.ts). */
+  stageState(): StageHookState;
+}
+
+export interface StageHookState {
+  stage: boolean;
+  fullScreen: boolean;
+  pending: boolean;
 }
 
 /** Main's side of the body-text scheduler's first start (textState): what it waits on, as main saw it. */
@@ -627,6 +635,8 @@ export function installTestHooks(deps: {
   broadcast(name: 'libraryChanged', payload: LearnEventMap['libraryChanged']): void;
   /** The tutor (index.ts, once the library is open); absent in tests that do not use it. */
   tutor?: TutorHooksDeps;
+  /** The main window's stage (index.ts); absent in tests that do not use it. */
+  stage?: () => StageHookState;
 }): void {
   // The IPC call counter (ipc/register.ts countCall): a test reads which channels a change called.
   (globalThis as { __learnIpcCalls?: Record<string, number> }).__learnIpcCalls = {};
@@ -851,5 +861,9 @@ export function installTestHooks(deps: {
     tutorFailAgents: (n) => tutor('tutorFailAgents').service.failNextAgents(n),
     seedSessions: (input) => tutor('seedSessions').seed(input),
     toolReads: (messageId) => tutor('toolReads').sessions().toolReads(messageId),
+    stageState() {
+      if (!deps.stage) throw new Error('stageState: no stage to read');
+      return deps.stage();
+    },
   };
 }

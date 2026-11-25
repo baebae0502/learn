@@ -32,7 +32,7 @@ function lecture(dir: string): string {
 async function focusBounce(app: ElectronApplication): Promise<void> {
   await app.evaluate(({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('window=main'))!;
-    for (const focused of [false, true]) w.webContents.send('evt:window-state', { fullscreen: w.isFullScreen(), focused, sheetOpen: false, main: focused });
+    for (const focused of [false, true]) w.webContents.send('evt:window-state', { fullscreen: w.isFullScreen(), focused, sheetOpen: false, main: focused, stage: false });
   });
 }
 

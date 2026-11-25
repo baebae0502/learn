@@ -26,3 +26,4 @@ export * from './translation';
 export * from './tutor';
 export * from './web-annotation';
 export * from './subtitles';
+export * from './video';

@@ -22,6 +22,14 @@ vi.mock('electron', () => ({
   dialog: { showMessageBox: messageBox },
 }));
 
+/** What the sender window's stage controller was asked (video-stage.ts has its own tests). */
+const stageAsked = vi.hoisted(() => [] as string[]);
+let senderStage = true;
+vi.mock('../video-stage', () => ({
+  stageOf: () => false,
+  stageControllerOf: (w: unknown) => (w === fakeWindow && senderStage ? { request: (action: string) => void stageAsked.push(action) } : undefined),
+}));
+
 vi.mock('../menu/column-menu', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../menu/column-menu')>()),
   popupColumnMenu: vi.fn(async () => ({ toggle: 'year' as const })),
@@ -70,6 +78,8 @@ const call = (raw?: unknown) => invoke('ui:windowState', MAIN, raw);
 beforeEach(() => {
   Object.assign(win, { fullscreen: false, focused: true, destroyed: false });
   senderWindow = fakeWindow;
+  senderStage = true;
+  stageAsked.length = 0;
   opened.length = 0;
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -102,9 +112,9 @@ describe('ui.openSettings (the main-owned ⌘, behind the fatal screen\'s 설정
 
 describe('ui.windowState (query; the windowState push stays)', () => {
   it("answers the sender window's current fullscreen and focus state", async () => {
-    expect(await call()).toEqual({ ok: true, data: { fullscreen: false, focused: true, sheetOpen: false, main: true } });
+    expect(await call()).toEqual({ ok: true, data: { fullscreen: false, focused: true, sheetOpen: false, main: true, stage: false } });
     Object.assign(win, { fullscreen: true, focused: false });
-    expect(await call({})).toEqual({ ok: true, data: { fullscreen: true, focused: false, sheetOpen: false, main: false } });
+    expect(await call({})).toEqual({ ok: true, data: { fullscreen: true, focused: false, sheetOpen: false, main: false, stage: false } });
   });
 
   it('NOT_FOUND when the sender has no (live) window; extra input is VALIDATION_FAILED', async () => {
@@ -114,6 +124,30 @@ describe('ui.windowState (query; the windowState push stays)', () => {
     win.destroyed = true;
     expect(await call()).toMatchObject({ ok: false, code: 'NOT_FOUND' });
     expect(await call({ extra: 1 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+  });
+});
+
+describe('ui.stage (spec 6.6: the page asks, main changes the full screen and the stage)', () => {
+  it("hands the main window's toggle and exit to its stage controller, in order", async () => {
+    expect(await invoke('ui:stage', MAIN, { action: 'toggle' })).toEqual({ ok: true, data: undefined });
+    expect(await invoke('ui:stage', MAIN, { action: 'exit' })).toEqual({ ok: true, data: undefined });
+    expect(stageAsked).toEqual(['toggle', 'exit']);
+  });
+  it('the settings window and a sheet are PERMISSION_DENIED; anything but toggle / exit is refused', async () => {
+    for (const from of [SETTINGS, SHEET]) expect(await invoke('ui:stage', from, { action: 'toggle' })).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+    for (const bad of [undefined, {}, { action: 'enter' }, { action: 'toggle', on: true }]) expect(await invoke('ui:stage', MAIN, bad)).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+    expect(stageAsked).toEqual([]);
+  });
+  it('NOT_FOUND when the sender has no (live) window or no stage', async () => {
+    senderWindow = null;
+    expect(await invoke('ui:stage', MAIN, { action: 'toggle' })).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+    senderWindow = fakeWindow;
+    senderStage = false;
+    expect(await invoke('ui:stage', MAIN, { action: 'toggle' })).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+    senderStage = true;
+    win.destroyed = true;
+    expect(await invoke('ui:stage', MAIN, { action: 'toggle' })).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+    expect(stageAsked).toEqual([]);
   });
 });
 

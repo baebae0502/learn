@@ -119,6 +119,8 @@ export const translateInput = z.object({ text: z.string().min(1).max(20000), fro
 export type TranslateInput = z.input<typeof translateInput>;
 /** ui.themeShown: the theme a page now shows (its own resolution of the pref; T13R4-m1). */
 export const themeShownInput = z.object({ shade: z.enum(['light', 'dark']) }).strict();
+/** ui.stage: the video stage on or off (toggle), or off if it is on (exit); main changes the window's full screen for it. */
+export const stageInput = z.object({ action: z.enum(['toggle', 'exit']) }).strict();
 export const savePositionInput = z.object({
   itemId: z.uuid(),
   revisionId: z.uuid(),
@@ -281,6 +283,7 @@ export type SettingGetInput = z.input<typeof settingGetInput>;
 export type SettingSetInput = z.input<typeof settingSetInput>;
 export type PrefsSetInput = z.input<typeof prefsSetInput>;
 export type ThemeShownInput = z.input<typeof themeShownInput>;
+export type StageInput = z.input<typeof stageInput>;
 export type UpdateMetadataInput = z.input<typeof updateMetadataInput>;
 export type CreateCollectionInput = z.input<typeof createCollectionInput>;
 export type SavePositionInput = z.input<typeof savePositionInput>;
@@ -460,6 +463,11 @@ export interface LearnApi {
     reportIdle(): Promise<Result<void>>;
     /** The column header menu: the column picked to show or hide, a reset, or null when dismissed. */
     showColumnMenu(input: ShowColumnMenuInput): Promise<Result<{ toggle: LibraryColumnId } | { reset: true } | null>>;
+    /**
+     * The video stage (spec 6.6), the main window only: main changes the window's full screen one step at a time, the
+     * last request winning, and reports the stage in windowState.stage — the page follows that, never this answer.
+     */
+    stage(input: StageInput): Promise<Result<void>>;
   };
   /** The tutor (spec 12): the main window only. Nothing runs before consent; the agent is started by main, never by a page. */
   tutor: {

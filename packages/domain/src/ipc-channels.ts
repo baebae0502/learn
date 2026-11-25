@@ -31,6 +31,7 @@ export const Channels = {
   ui: {
     showContextMenu: 'ui:showContextMenu', windowState: 'ui:windowState', reportContext: 'ui:reportContext', confirm: 'ui:confirm', confirmPurge: 'ui:confirmPurge',
     showShortcuts: 'ui:showShortcuts', openSettings: 'ui:openSettings', themeShown: 'ui:themeShown', reportIdle: 'ui:reportIdle', showColumnMenu: 'ui:showColumnMenu',
+    stage: 'ui:stage',
   },
   translation: { translate: 'translation:translate', cancel: 'translation:cancel' },
   tutor: {

@@ -1,13 +1,15 @@
 import { BrowserWindow, dialog, type MessageBoxOptions, type WebContents } from 'electron';
 import { readOrganizeSnapshot } from '@learn/db';
 import {
-  COMMANDS, Channels, LearnError, SESSION_TARGET, SUBMENUS, TRASH_TARGET, commandContextInput, confirmInput, confirmPurgeInput, emptyInput, itemTarget, showColumnMenuInput, showContextMenuInput, themeShownInput, toLearnError,
+  COMMANDS, Channels, LearnError, SESSION_TARGET, SUBMENUS, TRASH_TARGET, commandContextInput, confirmInput, confirmPurgeInput, emptyInput, itemTarget, showColumnMenuInput, showContextMenuInput, stageInput,
+  themeShownInput, toLearnError,
   type CommandTargetInfo,
 } from '@learn/domain';
 import { refreshItemAvailability } from '../item-availability';
 import { columnMenuEntries, popupColumnMenu } from '../menu/column-menu';
 import { contextMenuEntries, kindHasMenu, popupCommandMenu } from '../menu/context-menu';
 import { menuNeedsOrganize } from '../menu/submenus';
+import { stageControllerOf } from '../video-stage';
 import { windowStateOf } from '../window-state';
 import type { Handle, IpcDeps } from './register';
 import { mainStrings } from '../strings';
@@ -112,6 +114,15 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window || window.isDestroyed()) throw new LearnError('NOT_FOUND', mainStrings.windowGone);
     return windowStateOf(window);
+  });
+
+  // The video stage (spec 6.6), the main window's only (CHANNEL_KINDS): its controller changes the full screen one step at
+  // a time and pushes the stage in windowState; the page draws from that push.
+  handle(Channels.ui.stage, stageInput, ({ action }, event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const stage = window && !window.isDestroyed() ? stageControllerOf(window) : undefined;
+    if (!stage) throw new LearnError('NOT_FOUND', mainStrings.windowGone);
+    stage.request(action);
   });
 
   // Sheets hang over the main window only: a sheet (or the settings window) cannot open one over itself.

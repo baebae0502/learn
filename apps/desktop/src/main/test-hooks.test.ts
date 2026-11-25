@@ -61,6 +61,18 @@ describe('E2E seeding hook (P-22)', () => {
     expect(broadcast.mock.calls).toEqual([['libraryChanged', { reason: 'import' }]]);
     delete (globalThis as { __learnTest?: unknown }).__learnTest;
   });
+  it("stageState reads the main window's stage as index.ts gives it, and says so when there is none to read", () => {
+    const g = globalThis as { __learnTest?: LearnTestHooks };
+    const state = { stage: true, fullScreen: true, pending: false };
+    installTestHooks({ importCommits: () => ({}) as never, repo: () => ({}) as never, organize: () => { throw new Error('not used'); }, broadcast: vi.fn(), stage: () => state });
+    try {
+      expect(g.__learnTest!.stageState()).toEqual(state);
+      installTestHooks({ importCommits: () => ({}) as never, repo: () => ({}) as never, organize: () => { throw new Error('not used'); }, broadcast: vi.fn() });
+      expect(() => g.__learnTest!.stageState()).toThrow('stageState');
+    } finally {
+      delete g.__learnTest;
+    }
+  });
   it('also installs the IPC call counter createHandle fills', () => {
     const g = globalThis as { __learnIpcCalls?: Record<string, number> };
     delete g.__learnIpcCalls;

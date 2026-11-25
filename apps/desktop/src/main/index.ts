@@ -59,7 +59,8 @@ import { createGoogleWebEngine } from './translation/google-web';
 import { createTranslationNetIntercept } from './translation/net-intercept';
 import { createTranslationService } from './translation/service';
 import { applyChromeTheme, shouldUseVibrancy, type ChromeOptions } from './window-options';
-import { isSheetOpen, resyncAllWindowStates, sheetClosed, sheetShown } from './window-state';
+import { attachStageController, stageControllerOf } from './video-stage';
+import { isSheetOpen, resyncAllWindowStates, resyncWindowState, sheetClosed, sheetShown } from './window-state';
 import { windowUrl } from './window-url';
 import { createTutorCall } from './tutor/call';
 import { createAgentDetector, loginShellPath, run as runProgram } from './tutor/agents/detect';
@@ -159,6 +160,8 @@ function openMainWindow(): BrowserWindow {
     url: windowUrl(rendererBase, 'main', urlOptions),
     chrome: chrome(),
   });
+  // Every full-screen change of ours goes through the window's stage controller, one at a time (spec 6.6, 9.1).
+  attachStageController(win, () => resyncWindowState(win));
   // The macOS 전체 화면 item says what it will do (전체 화면 시작 / 종료).
   win.on('enter-full-screen', refreshFullScreenItem);
   win.on('leave-full-screen', refreshFullScreenItem);
@@ -262,7 +265,8 @@ function installAppMenu(): void {
         if (!mainWindow || mainWindow.isDestroyed()) return;
         const fullscreen = mainWindow.isFullScreen();
         demoShortcut('Ctrl+Cmd+F', FULL_SCREEN.stateLabels[fullscreen ? 'fullscreen' : 'windowed']);
-        mainWindow.setFullScreen(!fullscreen);
+        // Through the stage controller: it waits for a change in flight, and leaving full screen ends the video stage.
+        stageControllerOf(mainWindow)?.toggleWindow();
       },
     }),
   );
@@ -859,6 +863,12 @@ if (!app.requestSingleInstanceLock()) {
         seedFiles: () => {
           const c = getContext();
           return { db: c.db, repo: c.repo, layout: c.layout };
+        },
+        stage: () => {
+          const win = liveMainWindow();
+          const stage = win ? stageControllerOf(win) : undefined;
+          if (!win || !stage) throw new Error('stageState: no main window');
+          return { stage: stage.stage(), fullScreen: win.isFullScreen(), pending: stage.pending() };
         },
         check: {
           state: () => ({ check: ctx?.check ?? null, auto: autoCheck }),

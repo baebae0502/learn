@@ -19,6 +19,11 @@ export interface WindowState {
    * that is not main dims its chrome (design-spec 2.1).
    */
   main: boolean;
+  /**
+   * The video stage (spec 6.6): the main window is full screen for the video, and the page shows only the stage and its
+   * controls. Main turns it on and off (ui.stage); it is never on outside full screen, nor in the settings window.
+   */
+  stage: boolean;
 }
 
 /** Why `libraryChanged` was sent; the renderer decides from it what to read again. */

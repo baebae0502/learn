@@ -23,7 +23,7 @@ exposeSurface({
     translation: ['translate', 'cancel'],
     tutor: ['consent', 'agents', 'chooseAgent', 'view', 'warm', 'ask', 'stop', 'resend', 'reground'],
     sessions: ['list', 'recent', 'get', 'rename', 'delete', 'restore'],
-    ui: ['showContextMenu', 'windowState', 'reportContext', 'confirm', 'confirmPurge', 'showShortcuts', 'openSettings', 'themeShown', 'showColumnMenu', 'reportIdle'],
+    ui: ['showContextMenu', 'windowState', 'reportContext', 'confirm', 'confirmPurge', 'showShortcuts', 'openSettings', 'themeShown', 'showColumnMenu', 'reportIdle', 'stage'],
   },
   events: [
     'menuCommand', 'libraryChanged', 'windowState', 'settingsChanged', 'prefsChanged', 'nativeMenu', 'demoShortcut', 'import:progress', 'import:finished', 'item:openRequested',

@@ -21,7 +21,15 @@ export const readingLocatorSchema = z.discriminatedUnion('kind', [
     /** The document's page count when this was saved: what a reading of the item (progress, the panel) can say without opening it. */
     pages: z.number().int().min(1).optional(),
   }),
-  z.object({ kind: z.literal('video'), timeMs: z.number().int().min(0) }),
+  z.object({
+    kind: z.literal('video'),
+    timeMs: z.number().int().min(0),
+    /**
+     * The subtitle track this video showed and whether it was on (spec 4.4); absent before subtitles existed, and the
+     * reader then picks its default track. A track no longer attached reads the same way.
+     */
+    captions: z.object({ assetId: z.uuid(), on: z.boolean() }).optional(),
+  }),
   z.object({
     kind: z.literal('image'),
     /** Absent is 'fit'. */

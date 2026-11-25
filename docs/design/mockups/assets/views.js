@@ -2128,7 +2128,7 @@
       : o.volume === 'hover'
         ? `창 ${o.w} · 리더 ${o.w - sbw} — 이${NB}폭에서는 접히지 않습니다. 컨트롤 줄이 넘칠 때(큰 글자 설정)나 리더가 560보다 좁을 때만 접는 보호 장치라, 접힌 모양과 호버 모양을 보이려고 접어서 그렸습니다`
         : `창 ${o.w} · 사이드바 ${sbw} + 리더 ${o.w - sbw}${o.st === 'unplayable' && o.w < 1000 ? ` — 안내 글과 단추 둘이 이${NB}폭에서도 잘리지 않습니다(창 최소 960에는 못 미치는 폭을 보이려고 그렸습니다)` : ''}`;
-    const noteCls = o.toast ? 'sim-note top' : 'sim-note';
+    const noteCls = 'sim-note';
     const shell = (extra = {}) => M.windowShell({ tabs, tabsCls: 'm7b', sidebar: videoSidebar8a(o), main, overlays, ...extra });
     if (o.w >= 1440) return o.toast ? shell({ above: `<div class="${noteCls}">${note}</div>` }) : shell();
     const h = o.w === 960 || o.w < 700 ? 640 : 768;

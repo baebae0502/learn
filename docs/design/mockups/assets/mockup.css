@@ -1515,6 +1515,7 @@ h2,
   grid-template-columns: 20px minmax(0, 1fr);
   column-gap: var(--space-8);
   row-gap: 2px;
+  align-content: start; /* the taller card must not spread its rows: the two titles stay on one line */
 }
 .drop-mode.is-on {
   /* --accent-ring: 3:1 on the raised card in dark, where the accent fill (tuned for white text) is 2.37:1 (critic T11-n1). */
@@ -1525,6 +1526,7 @@ h2,
   margin-top: 1px;
 }
 .drop-mode .dm-title {
+  min-height: 24px; /* local: the ⌥ key chip makes one card's title row taller; both rows are as tall as the chip */
   display: flex;
   align-items: center;
   gap: var(--space-8);
@@ -4715,10 +4717,6 @@ h2,
 .subtitle.is-lifted {
   bottom: max(6%, calc(var(--lift) - var(--lb, 0px)));
 }
-.sim-note.top {
-  bottom: auto;
-  top: calc(var(--toolbar-height) + var(--space-8));
-}
 .loading.on-stage {
   color: oklch(85% 0.004 250); /* local: the always-dark stage */
 }
@@ -4734,7 +4732,9 @@ h2,
   inset: 0;
   z-index: 3;
   pointer-events: none;
-  box-shadow: inset 0 0 0 var(--focus-ring-width) var(--image-focus-dark);
+  /* Two-tone: the 2 px ring between a 1 px stage-dark line on each side, so it keeps 3:1 against a light slide or sidebar edge
+     (the ring is about 8:1 on the dark lines). */
+  box-shadow: inset 0 0 0 1px var(--video-stage), inset 0 0 0 3px var(--image-focus-dark), inset 0 0 0 4px var(--video-stage);
 }
 .scrubber.is-focus .knob {
   box-shadow: 0 0 0 2px var(--bg-window), 0 0 0 4px var(--focus);

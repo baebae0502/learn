@@ -251,7 +251,7 @@ export const VARIANTS = [
     ['reader-video', { m: '8a', state: 'opening', slow: '1' }, 'm8a-opening-slow', '⑥ 여는 중 · 300ms를 넘음 · 스피너'],
     ['reader-video', { m: '8a', w: '960', sidebar: '360' }, 'm8a-w960-sidebar360', '⑥ 닿을 수 있는 가장 좁은 리더(창 960 + 사이드바 360 = 600)'],
     ['reader-video', { m: '8a', state: 'unplayable', stage: '360' }, 'm8a-unplayable-stage360', '⑥ 재생 불가 안내 · 더 좁은 무대 360(실제 창에는 못 미치는 폭) · 글과 단추 둘이 그래도 잘리지 않음'],
-    ['reader-video', { m: '8a', state: 'unplayable', stage: '440' }, 'm8a-unplayable-stage440', '⑥ 재생 불가 안내 · 좁은 무대 440(실제 창에는 못 미치는 폭) · 단추 줄바꿈'],
+    ['reader-video', { m: '8a', state: 'unplayable', stage: '440' }, 'm8a-unplayable-stage440', '⑥ 재생 불가 안내 · 좁은 무대 440(실제 창에는 못 미치는 폭) · 글과 단추 둘이 잘리지 않음'],
     ['library', { m: '8a' }, 'm8a-library', '⑦ 동영상 항목 패널 · 자막 한국어 · 영어'],
     ['library', { m: '8a', panel: 'video-subs' }, 'm8a-panel-video-subs', '⑦ 항목 패널 파일 절 · 자막 · 한국어 · 영어'],
     ['library', { m: '8a', panel: 'video-subs-many' }, 'm8a-panel-video-subs-many', '⑦ 항목 패널 · 한국어 · 영어 외 2개'],

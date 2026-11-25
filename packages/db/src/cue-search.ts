@@ -51,18 +51,18 @@ const INDEX_CUES = `cue_texts_fts f
   CROSS JOIN subtitle_tracks st ON st.asset_id = a.id
   CROSS JOIN item_assets ia ON ia.item_id = st.item_id AND ia.asset_id = st.asset_id AND ia.role = 'subtitle'
   CROSS JOIN items i ON i.id = st.item_id AND i.deleted_at IS NULL AND i.type = 'video'`;
+/** `range` bounds the index plan to the ids this video's cues lie in (the cues of one file are written together), so the index is not read for the whole library. */
 const FTS_FROM = (likes: number, plan: CuesPlan): string =>
   plan === 'cues'
     ? `FROM ${TRACK_CUES} CROSS JOIN cue_texts_fts f ON f.rowid = c.id WHERE st.item_id = ? AND cue_texts_fts MATCH ?${LIKE_CLAUSE.repeat(likes)}`
-    : `FROM ${INDEX_CUES} WHERE st.item_id = ? AND cue_texts_fts MATCH ?${LIKE_CLAUSE.repeat(likes)}`;
+    : `FROM ${INDEX_CUES} WHERE st.item_id = ? AND cue_texts_fts MATCH ? AND f.rowid BETWEEN ? AND ?${LIKE_CLAUSE.repeat(likes)}`;
 const ITEM_ORDER = `ORDER BY c.start_ms, st.position LIMIT ${TEXT_LIMITS.pagesShown}`;
 
-function cuesPlan(db: Db, itemId: string): CuesPlan {
-  const cues = db
-    .prepare('SELECT COUNT(*) FROM subtitle_tracks st JOIN assets a ON a.id = st.asset_id JOIN cue_texts c ON c.sha256 = a.sha256 WHERE st.item_id = ?')
-    .pluck()
-    .get(itemId) as number;
-  return cues <= CUE_WALK_MAX ? 'cues' : 'index';
+function cuesPlan(db: Db, itemId: string): { plan: CuesPlan; lo: number; hi: number } {
+  const r = db
+    .prepare('SELECT COUNT(*) AS n, MIN(c.id) AS lo, MAX(c.id) AS hi FROM subtitle_tracks st JOIN assets a ON a.id = st.asset_id JOIN cue_texts c ON c.sha256 = a.sha256 WHERE st.item_id = ?')
+    .get(itemId) as { n: number; lo: number | null; hi: number | null };
+  return { plan: r.n <= CUE_WALK_MAX ? 'cues' : 'index', lo: r.lo ?? 0, hi: r.hi ?? 0 };
 }
 
 /**
@@ -75,11 +75,15 @@ export function cueMatches(db: Db, itemId: string, words: BodyWords): { matches:
   const tracks = db.prepare('SELECT COUNT(*) FROM subtitle_tracks WHERE item_id = ?').pluck().get(itemId) as number;
   const trackOf = (assetId: string): string | null => (tracks >= 2 ? assetId : null);
   if (words.fts.length > 0) {
-    const from = FTS_FROM(likes.length, cuesPlan(db, itemId));
-    const args = [itemId, ftsMatch(words.fts), ...likes];
-    const rows = db
-      .prepare(`SELECT c.start_ms AS startMs, st.asset_id AS assetId, snippet(cue_texts_fts, 0, char(57344), char(57345), '…', 48) AS snippet ${from} ${ITEM_ORDER}`)
-      .all(...args) as Array<{ startMs: number; assetId: string; snippet: string }>;
+    const { plan, lo, hi } = cuesPlan(db, itemId);
+    const from = FTS_FROM(likes.length, plan);
+    const args = [itemId, ftsMatch(words.fts), ...(plan === 'index' ? [lo, hi] : []), ...likes];
+    // The twenty rows are chosen first: a snippet is computed for each of them only, not for every matching cue before the sort.
+    const chosen = db
+      .prepare(`SELECT c.id AS id, c.start_ms AS startMs, st.asset_id AS assetId ${from} ${ITEM_ORDER}`)
+      .all(...args) as Array<{ id: number; startMs: number; assetId: string }>;
+    const snippetOf = db.prepare(`SELECT snippet(cue_texts_fts, 0, char(57344), char(57345), '…', 48) FROM cue_texts_fts WHERE rowid = ? AND cue_texts_fts MATCH ?`).pluck();
+    const rows = chosen.map((r) => ({ startMs: r.startMs, assetId: r.assetId, snippet: snippetOf.get(r.id, args[1]) as string }));
     const total = rows.length < TEXT_LIMITS.pagesShown ? rows.length : (db.prepare(`SELECT COUNT(*) ${from}`).pluck().get(...args) as number);
     return { matches: rows.map((r) => ({ kind: 'time', startMs: r.startMs, snippet: r.snippet, track: trackOf(r.assetId) })), total };
   }

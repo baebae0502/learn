@@ -121,6 +121,20 @@ describe('cueMatches', () => {
     expect(and.matches.map((m) => m.startMs)).toEqual([14000]);
   });
 
+  it('a long video whose two tracks surround another video\'s cues does not show them', () => {
+    const a = video();
+    const b = video();
+    const long = (tag: string) => Array.from({ length: CUE_WALK_MAX + 1 }, (_, i) => `칼슘 ${tag}${i}`);
+    const one = track(a, long('가'));
+    track(b, long('나'));
+    const two = track(a, long('다'));
+    const r = cueMatches(db, a, bodyQueryWords('칼슘'));
+    expect(r.total).toBe(2 * (CUE_WALK_MAX + 1));
+    expect(r.matches).toHaveLength(20);
+    expect(r.matches.slice(0, 2).map((m) => [m.startMs, m.track])).toEqual([[0, one.id], [0, two.id]]);
+    expect(r.matches.every((m) => !m.snippet.includes('나'))).toBe(true);
+  });
+
   it('another video, a trashed one and a PDF give none', () => {
     const a = video();
     const b = video();

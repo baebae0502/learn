@@ -24,6 +24,7 @@ import { runFirstIdle, type FirstIdleReport } from './first-idle';
 import { registerAllIpc } from './ipc/all';
 import { revealBackupFolder, revealRestoredFolder } from './ipc/backup';
 import { IMPORT_FILTERS } from './ipc/library';
+import { attachAndAnnounce } from './ipc/subtitles';
 import { endPositionNotices } from './ipc/reader';
 import { removeFilesAfter } from './ipc/trash';
 import { createHandle, type IpcDeps } from './ipc/register';
@@ -503,6 +504,7 @@ if (!app.requestSingleInstanceLock()) {
         return filed.length;
       },
       announce: (itemIds) => broadcast('libraryChanged', { reason: 'import', itemIds }),
+      attachSubtitles: (itemId, paths) => attachAndAnnounce(getContext(), itemId, paths),
     });
     // Body text (spec 5.1): one file at a time while the work line is free, from the window's first idle on.
     if (ctx) {

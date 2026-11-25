@@ -1,4 +1,5 @@
 import type { BodyTextState } from './body-search';
+import type { AttachFailure } from './subtitles';
 import type { ErrorCode } from './errors';
 import type { ItemMetadata } from './metadata';
 import type { TagColorId } from './tag-colors';
@@ -178,6 +179,8 @@ export interface ImportReport {
   collectionId: string | null;
   /** Files 취소 left untouched: not started, gathered as duplicates and not asked, or the one stopped mid-way. 0 for a run that was not stopped. */
   untouched: number;
+  /** The subtitle files put in with the run's videos: how many were attached, and the ones that were not (by file name). */
+  subtitles: { attached: number; failed: AttachFailure[] };
 }
 
 /** The import queue as its progress toast shows it. `current` is a file name, never a path. */

@@ -1,22 +1,24 @@
 import { Channels, nowIso, subtitlesAttachInput, subtitlesItemInput, subtitlesRestoreInput, subtitlesTrackInput, type AttachResult } from '@learn/domain';
 import { attachSubtitleFiles } from '@learn/library';
 import { broadcast } from '../events';
+import type { LibraryContext } from '../library-context';
 import { mainStrings } from '../strings';
 import { showOpen } from './library';
 import type { Handle, IpcDeps } from './register';
 
 const NOTHING_PICKED: AttachResult = { added: [], already: [], failed: [] };
 
+/** The attach every route shares, announced only when a track was really added (a refused or already attached file changes nothing). */
+export async function attachAndAnnounce(ctx: Pick<LibraryContext, 'repo' | 'subtitles' | 'importer'>, itemId: string, paths: readonly string[]): Promise<AttachResult> {
+  const result = await attachSubtitleFiles({ repo: ctx.repo, subtitles: ctx.subtitles, importer: ctx.importer }, itemId, paths);
+  if (result.added.length > 0) broadcast('subtitles:changed', { itemId });
+  return result;
+}
+
 /** A video's subtitles (spec 5, 11): reads, the attach through the file panel or by path, remove and restore. Each change is announced once its rows are committed. */
 export function registerSubtitlesIpc(handle: Handle, deps: IpcDeps): void {
   const announce = (itemId: string): void => broadcast('subtitles:changed', { itemId });
-  /** The attach, announced only when a track was really added (a refused or already attached file changes nothing). */
-  const attach = async (itemId: string, paths: readonly string[]): Promise<AttachResult> => {
-    const ctx = deps.getContext();
-    const result = await attachSubtitleFiles({ repo: ctx.repo, subtitles: ctx.subtitles, importer: ctx.importer }, itemId, paths);
-    if (result.added.length > 0) announce(itemId);
-    return result;
-  };
+  const attach = (itemId: string, paths: readonly string[]): Promise<AttachResult> => attachAndAnnounce(deps.getContext(), itemId, paths);
 
   handle(Channels.subtitles.list, subtitlesItemInput, ({ itemId }) => ({ tracks: deps.getContext().subtitles.list(itemId) }));
   handle(Channels.subtitles.cues, subtitlesTrackInput, ({ itemId, assetId }) => ({ cues: deps.getContext().subtitles.cues(itemId, assetId) }));

@@ -4,7 +4,7 @@ import { LIST_REFRESH_WAIT_MS, failureLines, importToast, settledWithin } from '
 
 const UNSUPPORTED = '지원하지 않는 형식입니다. 지금은 PDF와 동영상(MP4 · MOV · WebM)을 가져올 수 있습니다.';
 const report = (over: Partial<ImportReport> = {}): ImportReport => ({
-  imported: 0, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: 0, cancelled: false, mode: 'managed', collectionId: null, untouched: 0, ...over,
+  imported: 0, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: 0, cancelled: false, mode: 'managed', collectionId: null, untouched: 0, subtitles: { attached: 0, failed: [] }, ...over,
 });
 const into = { name: '학회 준비' };
 

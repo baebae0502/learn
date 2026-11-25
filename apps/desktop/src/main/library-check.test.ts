@@ -71,7 +71,7 @@ function queueOf(ctx: LibraryContext) {
             await batch.afterCommit?.(o);
           }
         }
-        const report: ImportReport = { imported, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: batch.paths.length, cancelled: false, untouched: 0, mode: batch.mode, collectionId: null };
+        const report: ImportReport = { imported, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: batch.paths.length, cancelled: false, untouched: 0, mode: batch.mode, collectionId: null, subtitles: { attached: 0, failed: [] } };
         for (const cb of [...finished]) cb(report, null);
         batch.onSettled?.();
       })();

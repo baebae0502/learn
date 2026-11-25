@@ -150,7 +150,7 @@
     - 무대 때문에 창 전체 화면에 들어갔으면, 나올 때 창도 나온다.
   - 바깥 변경: 사용자가 신호등·⌃⌘F로 전체 화면을 나오면 무대도 꺼진다. Linux 메뉴의 `role: 'togglefullscreen'`도 사건으로 들어온다.
   - 무대는 `WindowState.stage`로 알린다(`windowStateOf`·`trackWindowState`의 비교에 더함). 렌더러는 그 값만 따른다.
-  - `APP_PERMISSIONS`에서 `'fullscreen'`을 뺀다.
+  - `APP_PERMISSIONS`에서 `'fullscreen'`을 빼는 일은 Task 11이 한다. `first-session.spec.ts:129`가 F 키 길로 바뀌는 작업과 같아야 그 사이 시험이 깨지지 않는다(309e9e5 판의 P-10).
   - 비용: 명세가 정함 — 없음.
   - → Task 9·11
 
@@ -206,7 +206,7 @@
   - E2E 도우미는 같은 이름으로 `E/helpers.ts`에 둔다.
   - 렌더러 손잡이 `window.__learnVideo`(`window.__learnImage`와 같은 자리·같은 조건, `R/viewers/readerScope.tsx:183-190`): `{ state(): VideoProbe }`. `VideoProbe = { timeMs, paused, rate, volume, muted, cueText: string | null, trackId: string | null, captionsOn: boolean, follow: boolean, frameMs: number }`이다.
   - → Task 6·8·9·10·12·13
-- **P-26 Mac 실행**: 중간 `e2e`는 Task 15 뒤(화면이 모두 들어간 때), 끝 `all`은 Task 17이다. 최종 코드에서 두 번까지다. 모두 컨트롤러가 돌린다. → 작업 목록
+- **P-26 Mac 실행**: 중간 `e2e`는 Task 13 뒤(리더와 자막이 끝난 때 — 명세 15절), 끝 `all`은 Task 17이다. 최종 코드에서 두 번까지다. 모두 컨트롤러가 돌린다. → 작업 목록
 - **P-27 호스트 확인**:
   - 이 세션은 호스트를 옮겨 다닌다. `bce-colab-g02`에는 Xvfb·ffmpeg·Electron의 GTK 라이브러리가 없었고, `g01`에는 있다.
   - 컨트롤러는 작업마다 보내기 전에 `command -v xvfb-run ffmpeg`와 `ldd <electron> | grep 'not found'`(비어야 함)를 본다. 없으면 보내지 않고 소유자에게 알린다.
@@ -328,15 +328,15 @@
 | 6 | 붙이기(main): `attachSubtitleFiles`·`placeManaged`·`subtitles:*` IPC·알림·시작 때 고아 치우기·시험 훅 | 화면 무관 (승인 대기 중 진행) | sonnet | 5 |
 | 7 | 가져오기 짝짓기: `pairSubtitles`·큐의 자막·`ImportReport.subtitles`·열기 필터·500개 나누기 | 화면 무관 (승인 대기 중 진행) | sonnet | 6 |
 | 8 | 자막 본문 검색: 큐 질의·합집합·`search:matches`·검색 성능 증거의 큐 | 화면 무관 (승인 대기 중 진행) | sonnet | 5 |
-| 9 | 설정·locator·무대 제어기(main)·`WindowState.stage`·`ui:stage`·권한 | 화면 무관 (승인 대기 중 진행) | **opus** | — |
+| 9 | 설정·locator·무대 제어기(main)·`WindowState.stage`·`ui:stage` | 화면 무관 (승인 대기 중 진행) | **opus** | — |
 | — | **소유자 목업 승인** (P-1) | | | 2 |
 | 10 | 영상 리더 v2: 무대·도구 막대·재생 컨트롤·스크러버·속도 ▾·음량·키·설정 기억·여는 중·재생 불가 안내 | 목업 승인 뒤 | sonnet | 승인, 9 |
 | 11 | 영상 전체 화면(무대 모드): F·esc·단추·컨트롤 숨김·빠른 토글·첫 세션 시험 고침 | 목업 승인 뒤 | sonnet | 10 |
 | 12 | 자막 오버레이·자막 ▾·추가·제거와 되돌리기·기본 트랙·locator·항목 패널 "자막" 줄 | 목업 승인 뒤 | sonnet | 6, 10 |
 | 13 | 대본 칸: 가상화 목록·클릭과 ↩·따라가기 스위치·대본 검색·⌘F·끝 상태·`video-perf` | 목업 승인 뒤 | sonnet | 12 |
 | 14 | 영상 탭에 끌어 놓기·가져오기 화면(요약 '자막'·토스트 '· 자막 N'·실패 행) | 목업 승인 뒤 | sonnet | 7, 12 |
+| — | **Mac 중간 `e2e`** (P-26, 컨트롤러) | | | 13 |
 | 15 | 자막 본문 검색 화면: 범위 설명·결과 없음·시간 행·시각으로 열기·읽기 절 영상 줄 | 목업 승인 뒤 | sonnet | 8, 13 |
-| — | **Mac 중간 `e2e`** (P-26, 컨트롤러) | | | 15 |
 | 16 | 증거 사진 `m8a-shots`(suite `m8a`)·투어 장면·axe·키보드 여정 | 목업 승인 뒤 | sonnet | 15 |
 | 17 | 마무리: 데모·문서(명세 17절, P-2·P-7·P-14·P-18·P-19의 명세 고침)·Mac `all` | 목업 승인 뒤 | sonnet(+컨트롤러) | 16 |
 
@@ -1075,7 +1075,7 @@
 
 ---
 
-### Task 9: 설정 · locator · 무대 제어기 (main) · 권한
+### Task 9: 설정 · locator · 무대 제어기 (main)
 
 **Files:**
 - Create:
@@ -1090,7 +1090,6 @@
   - `M/window-state.ts:45-76`(`windowStateOf`에 `stage`, `pushState` 비교에 `stage`), `M/window-state.test.ts`
   - `M/ipc/ui.ts`(`ui:stage` 처리기), `M/ipc/channel-kinds.ts`, `P/main.ts`, `P/surfaces.test.ts`
   - `M/index.ts`: `openMainWindow`(:155-185)에서 제어기를 만든다. `onToggleFullScreen`(:262-266) → `stage.toggleWindow()`.
-  - `M/permissions.ts:7`(`'fullscreen'` 뺌)과 그 시험
   - `M/test-hooks.ts`(`stageState`), `E/helpers.ts`
   - `R/shell/useWindowState.ts:9`(`data-video-stage` 속성만 — 화면 규칙은 Task 11)
 
@@ -1167,9 +1166,8 @@
   - 50ms 간격으로 다섯 번 → `pending: false`가 될 때까지 기다린 뒤 `stage === fullScreen`이다(양성 대조로 첫 토글의 `true`를 먼저 봄).
   - `exit` → 둘 다 `false`.
   - 시험 쪽에서 창을 `setFullScreen(false)`로 직접 나오게 하면 무대 `false`.
-  - 권한: 페이지에서 `document.documentElement.requestFullscreen()`이 거절된다(`catch`의 이름 `TypeError`/`NotAllowedError`를 보고, 창 `isFullScreen()`은 그대로 `false`).
 
-- [ ] **Step 1–3**: 시험 → 실패 → 구현 → 통과. **Step 4**: `taskset -c 0-1`로 `video-stage.spec.ts`를 `--repeat-each=10`으로 돌린다(1920×1200). **Step 5**: 작업마다 녹색. 커밋 `feat(video): settings and the video locator's captions; main serializes full screen for the video stage — one transition at a time, the last wish wins, a two-second settle; the window state carries the stage; pages may no longer enter HTML full screen`.
+- [ ] **Step 1–3**: 시험 → 실패 → 구현 → 통과. **Step 4**: `taskset -c 0-1`로 `video-stage.spec.ts`를 `--repeat-each=10`으로 돌린다(1920×1200). **Step 5**: 작업마다 녹색. 커밋 `feat(video): settings and the video locator's captions; main serializes full screen for the video stage — one transition at a time, the last wish wins, a two-second settle; the window state carries the stage`.
 
 ---
 
@@ -1368,10 +1366,10 @@
 
 ---
 
-### Task 11: 영상 전체 화면 — 무대 모드 (목업 승인 뒤)
+### Task 11: 영상 전체 화면 — 무대 모드 · `fullscreen` 권한 빼기 (목업 승인 뒤)
 
 **Files:**
-- Modify: `D/commands.ts`(명령 둘, `videoStage`), `D/ipc.ts`(`commandContextInput`), `R/commands/registry.ts`, `RV/videoActions.ts`·`RV/VideoControls.tsx`(전체 화면 단추), `RV/VideoReader.tsx`(컨트롤 숨김), `R/app/MainWindow.tsx`(무대에서 숨김, 영상을 떠나면 `exit`), `R/styles/screens/video.css`·`R/styles/screens/shell.css`, `E/video.spec.ts`, `E/first-session.spec.ts:37-54,129,157-180`, `E/commands-coverage.spec.ts`.
+- Modify: `M/permissions.ts:7`(`'fullscreen'` 뺌)과 그 시험, `D/commands.ts`(명령 둘, `videoStage`), `D/ipc.ts`(`commandContextInput`), `R/commands/registry.ts`, `RV/videoActions.ts`·`RV/VideoControls.tsx`(전체 화면 단추), `RV/VideoReader.tsx`(컨트롤 숨김), `R/app/MainWindow.tsx`(무대에서 숨김, 영상을 떠나면 `exit`), `R/styles/screens/video.css`·`R/styles/screens/shell.css`, `E/video.spec.ts`, `E/first-session.spec.ts:37-54,129,157-180`, `E/commands-coverage.spec.ts`.
 
 **Interfaces:**
 - Consumes: `window.learn.ui.stage`, `WindowState.stage`, `<html data-video-stage>`(Task 9).
@@ -1390,6 +1388,7 @@
   - 무대 모드에서 재생 중이고 포인터가 `VIDEO_TIMING.controlsIdleMs` 동안 움직이지 않으면 `data-idle`이다. 컨트롤과 포인터(`cursor: none`)를 숨기고, 오버레이 자리를 내린다(Task 12의 오버레이가 이 속성을 읽음).
   - 포인터 움직임·키 누름·정지면 다시 보인다.
 - 전체 화면 단추: `maximize`/`minimize`, 툴팁 "전체 화면으로 보기 F"/"전체 화면 끝내기 F".
+- 권한: `APP_PERMISSIONS`에서 `'fullscreen'`을 뺀다(명세 6.6·9.1, P-16). 이 작업에서 `first-session.spec.ts`가 F 길로 바뀌므로 함께 한다.
 - 무대를 떠나는 경우: 무대 모드에서 보이는 탭이 영상 리더가 아니게 되거나(탭 바꿈·닫기·휴지통) 영상이 재생 불가가 되면 `exit`를 보낸다.
 - 시험 고침:
   - `first-session.spec.ts`의 `toggleFullscreen`을 F 길로 바꾼다: 무대 포커스 → F → `stageState()`가 `{ stage: true, fullScreen: true }`를 기다림 → F → 둘 다 `false`. `requestFullscreen`/`exitFullscreen`/`fullscreenElement` 단언을 지운다.
@@ -1403,9 +1402,10 @@
 - 창 직접 나옴(`app.evaluate`로 `setFullScreen(false)`) → 무대 끝.
 - 재생 중 포인터를 멈추면 `data-idle` → 포인터 움직이면 사라짐.
 - 무대에서 ⌃Tab으로 다른 탭 → 무대 끝.
+- 권한: 페이지에서 `document.documentElement.requestFullscreen()`이 거절되고(약속이 거부됨), 창 `isFullScreen()`은 그대로 `false`다.
 - `commands-coverage`에 두 명령을 더한다.
 
-- [ ] **Step 1–3**: 시험 → 구현 → 통과(`first-session.spec.ts`와 `video.spec.ts`를 `--repeat-each=10`, `taskset -c 0-1`). **Step 4**: 투어 PNG → 비평. **Step 5**: 작업마다 녹색. 커밋 `feat(video): full screen as a stage mode — window full screen through main's serializer, the chrome hidden, idle controls hidden; the macOS fast-toggle freeze test becomes a settle test on both platforms`.
+- [ ] **Step 1–3**: 시험 → 구현 → 통과(`first-session.spec.ts`와 `video.spec.ts`를 `--repeat-each=10`, `taskset -c 0-1`). **Step 4**: 투어 PNG → 비평. **Step 5**: 작업마다 녹색. 커밋 `feat(video): full screen as a stage mode — window full screen through main's serializer, the chrome hidden, idle controls hidden; pages may no longer enter HTML full screen; the macOS fast-toggle freeze test becomes a settle test on both platforms`.
 
 ---
 
@@ -1617,6 +1617,8 @@
   - 대본 검색 입력 → 강조 그리기 p95 ≤ 50ms.
   - `budget.ts`에 줄들을 더한다(2배 넘으면 실패).
 
+- 컨트롤러: 이 작업 뒤 CI 녹색이면 Mac 중간 `e2e`(P-26).
+
 - [ ] **Step 1–3**: 시험 → 구현 → 통과. **Step 4**: 투어 PNG → 비평. **Step 5**: 작업마다 녹색(증거 config 포함). 커밋 `feat(video): the transcript pane — a virtualized list that seeks on click and return, follows the current sentence until the user scrolls, searches within the track with wrap-around, ⌘F; video-perf evidence`.
 
 ---
@@ -1720,7 +1722,6 @@
 - PDF의 쪽 행은 그대로 그 쪽에서 연다(회귀).
 
 - [ ] **Step 1–3**: 시험 → 구현 → 통과. **Step 4**: 투어 PNG → 비평. **Step 5**: 작업마다 녹색. 커밋 `feat(search): subtitle matches in the item panel — time rows that open the video at that sentence with the transcript search filled; the scope copy names subtitles; the reading section's video line`.
-- 컨트롤러: CI 녹색 뒤 Mac 중간 `e2e`(P-26).
 
 ---
 

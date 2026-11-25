@@ -22,11 +22,12 @@ function cells(): Uint16Array {
  */
 export function decodeCp949(bytes: Uint8Array): string | null {
   const t = cells();
-  const out: string[] = [];
+  const out = new Uint16Array(bytes.length);
+  let n = 0;
   for (let i = 0; i < bytes.length; i++) {
     const b = bytes[i]!;
     if (b < 0x80) {
-      out.push(String.fromCharCode(b));
+      out[n++] = b;
       continue;
     }
     if (b < LEAD_MIN || b > LEAD_MAX) return null;
@@ -34,7 +35,10 @@ export function decodeCp949(bytes: Uint8Array): string | null {
     if (trail === undefined || trail < TRAIL_MIN || trail > TRAIL_MAX) return null;
     const cp = t[(b - LEAD_MIN) * TRAILS + (trail - TRAIL_MIN)]!;
     if (cp === 0) return null;
-    out.push(String.fromCharCode(cp));
+    out[n++] = cp;
   }
-  return out.join('');
+  const parts: string[] = [];
+  // Chunked so the argument list stays small.
+  for (let k = 0; k < n; k += 8192) parts.push(String.fromCharCode(...out.subarray(k, Math.min(n, k + 8192))));
+  return parts.join('');
 }

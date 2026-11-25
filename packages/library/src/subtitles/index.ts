@@ -11,16 +11,16 @@ export function readSubtitle(bytes: Uint8Array, name: string): SubtitleResult {
   if (bytes.length > SUBTITLE_LIMITS.bytes) return { ok: false, reason: 'too-large' };
   const decoded = decodeSubtitleBytes(bytes);
   if (decoded === null) return { ok: false, reason: 'unreadable' };
-  const isVtt = /^[﻿\s]*WEBVTT/.test(decoded.text);
+  const isVtt = /^\s*WEBVTT/.test(decoded.text);
   const format: SubtitleFormat = isVtt ? 'vtt' : 'srt';
   let cues: Cue[];
   let headLanguage: string | null = null;
   if (isVtt) {
-    const v = parseVtt(decoded.text);
+    const v = parseVtt(decoded.text, SUBTITLE_LIMITS.cues);
     cues = v.cues;
     headLanguage = v.language;
   } else {
-    cues = parseSrt(decoded.text);
+    cues = parseSrt(decoded.text, SUBTITLE_LIMITS.cues);
   }
   if (cues.length > SUBTITLE_LIMITS.cues) return { ok: false, reason: 'too-many-cues' };
   if (cues.length === 0) return { ok: false, reason: 'no-cues' };

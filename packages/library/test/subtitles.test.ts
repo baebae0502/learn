@@ -57,6 +57,22 @@ describe('VTT', () => {
   });
 });
 
+describe('time lines', () => {
+  it('splits VTT cues that touch without a blank line, and a header with no blank line', () => {
+    const r = ok(readSubtitle(enc('WEBVTT\n00:00:01.000 --> 00:00:02.000\n하나\n2\n00:00:03.000 --> 00:00:04.000\n둘\n'), 'a.vtt'));
+    expect(r.cues.map((c) => c.text)).toEqual(['하나', '둘']);
+  });
+  it('reads a "-->" line that is not a time line as cue text, in SRT and in VTT', () => {
+    const srt = '1\n00:00:01,000 --> 00:00:02,000\nATP --> ADP\n다음\n\n2\n00:00:03,000 --> 00:00:04,000\n둘\n';
+    expect(cuesOf(srt).map((c) => c.text)).toEqual(['ATP --> ADP\n다음', '둘']);
+    const vtt = 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nA --> B\n';
+    expect(ok(readSubtitle(enc(vtt), 'a.vtt')).cues.map((c) => c.text)).toEqual(['A --> B']);
+  });
+  it('treats a line with an unparseable time as text outside any cue', () => {
+    expect(cuesOf('00:00:01,000 --> 00:99:02,000\n나쁨\n\n00:00:03,000 --> 00:00:04,000\n좋음\n').map((c) => c.text)).toEqual(['좋음']);
+  });
+});
+
 describe('cue text', () => {
   it('removes tags and ruby annotations', () => {
     expect(cleanCueText('<i>기울임</i> <font color="red">빨강</font> <c.yellow>노랑</c> <v 교수>말</v> <ruby>漢<rt>한</rt></ruby>')).toBe('기울임 빨강 노랑 말 漢');
@@ -64,9 +80,18 @@ describe('cue text', () => {
   it('removes overrides and time tags, and decodes entities once', () => {
     expect(cleanCueText('{\\an8}위 <00:00:01.000>시각 &amp; &lt;b&gt; &#44032; &#xAC00; &unknown;')).toBe('위 시각 & <b> 가 가 &unknown;');
   });
-  it('keeps &nbsp; as U+00A0 even at a line edge', () => {
+  it('keeps &nbsp; inside a line and trims it at a line edge like any other space', () => {
     expect(cleanCueText('a&nbsp;b')).toBe('a b');
+    expect(cleanCueText('&nbsp;a&nbsp;\n b ')).toBe('a\nb');
     expect(cleanCueText('&lrm;가')).toBe('‎가');
+  });
+  it('leaves an unknown or inherited entity name as written', () => {
+    expect(cleanCueText('a &constructor; b &toString; &__proto__;')).toBe('a &constructor; b &toString; &__proto__;');
+  });
+  it('keeps a "<" that is not a tag, across a line too', () => {
+    expect(cleanCueText('a < b and c > d')).toBe('a < b and c > d');
+    expect(cleanCueText('x < y\n그리고 z > w')).toBe('x < y\n그리고 z > w');
+    expect(cleanCueText('3 <5 and 7> 2 <b>x</b>')).toBe('3 <5 and 7> 2 x');
   });
   it('folds lines from the fourth into the third', () => {
     expect(cleanCueText('a\nb\nc\nd\ne')).toBe('a\nb\nc d e');
@@ -140,6 +165,11 @@ describe('limits and failures', () => {
     expect(cuesOf(manyCues(20_000)).length).toBe(20_000);
     expect(readSubtitle(enc(manyCues(20_001)), 'a.srt')).toEqual({ ok: false, reason: 'too-many-cues' });
   });
+  it('stops at the 20,001st cue instead of reading the rest', () => {
+    const t0 = performance.now();
+    expect(readSubtitle(enc(manyCues(20_001) + '\n' + 'x'.repeat(10)), 'a.srt')).toEqual({ ok: false, reason: 'too-many-cues' });
+    expect(performance.now() - t0).toBeLessThan(1000);
+  });
   it('reports no cues for text without a time line', () => {
     expect(readSubtitle(fixture('broken.srt'), 'broken.srt')).toEqual({ ok: false, reason: 'no-cues' });
   });
@@ -155,4 +185,32 @@ describe('limits and failures', () => {
     console.log('[measure] parse-20000', ms);
     expect(ms).toBeLessThan(1000);
   });
+});
+
+describe('adversarial single cues stay linear', () => {
+  const head = '1\n00:00:01,000 --> 00:00:02,000\n';
+  const MAX = 5 * 1024 * 1024 - 4096;
+  const shapes: [string, string][] = [
+    ['a long run of spaces inside a line', 'x' + ' '.repeat(200_000) + 'y'],
+    ['80,000 "<"', '<'.repeat(80_000)],
+    ['80,000 "<" with letters', '<a'.repeat(80_000)],
+    ['an unclosed <rt>', '<rt>'.repeat(80_000)],
+    ['an unclosed <rp> after text', 'a<rp>'.repeat(80_000)],
+    ['an unclosed "{\\"', '{\\'.repeat(80_000)],
+    ['80,000 "&" with no ";"', '&amp'.repeat(80_000)],
+    ['a single cue of nearly 5 MiB', 'x '.repeat(MAX / 2)],
+    ['a single cue of nearly 5 MiB of unclosed <rt>', '<rt>'.repeat(MAX / 4)],
+    ['a single cue of nearly 5 MiB of "<"', '<'.repeat(MAX)],
+  ];
+  for (const [label, body] of shapes) {
+    it(`reads ${label} in under a second`, () => {
+      const bytes = enc(head + body + 'z\n');
+      const t0 = performance.now();
+      const r = ok(readSubtitle(bytes, 'a.srt'));
+      const ms = Math.round(performance.now() - t0);
+      console.log('[measure] adversarial', label, ms);
+      expect(r.cues.length).toBe(1);
+      expect(ms).toBeLessThan(1000);
+    });
+  }
 });

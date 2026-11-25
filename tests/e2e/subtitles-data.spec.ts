@@ -131,7 +131,8 @@ test('remove keeps the copy until the next start sweeps it; a restored track sta
 });
 
 test('purging the video takes its cue texts and its subtitle copy', async ({}, testInfo) => {
-  const s = await launch(...dirs(testInfo));
+  const [lib, ud] = dirs(testInfo);
+  const s = await launch(lib, ud);
   try {
     const [video] = (await videos(s.page, 1)) as [string];
     const r = await attach(s.page, video, [fixture('lecture-60s.ko.srt')]);
@@ -142,7 +143,9 @@ test('purging the video takes its cue texts and its subtitle copy', async ({}, t
     const purged = await s.page.evaluate((itemIds) => window.learn.library.purge({ itemIds, collectionIds: [] }), [video]);
     expect(purged.ok).toBe(true);
     expect(await cueTextCount(s.app, { sha256: asset!.sha256 })).toBe(0);
-    await expect.poll(async () => (await subtitleAssets(s.app)).length).toBe(0);
+    expect(await subtitleAssets(s.app)).toEqual([]);
+    // The file goes after the purge's commit.
+    await expect.poll(() => fs.existsSync(path.join(lib, 'assets', asset!.sha256.slice(0, 2), asset!.sha256))).toBe(false);
   } finally {
     await s.app.close();
   }

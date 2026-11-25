@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LibraryRepository, SubtitlesRepository, migrate, openDatabase, type Db } from '@learn/db';
-import { SUBTITLE_LIMITS, type AttachResult } from '@learn/domain';
+import { LibraryRepository, SubtitlesRepository, migrate, openDatabase, removeUnusedAssets, type Db } from '@learn/db';
+import { LearnError, SUBTITLE_LIMITS, type AttachResult } from '@learn/domain';
 import { Importer, attachSubtitleFiles, ensureLayout, libraryLayout, resolveAssetPath } from '../src/index';
 import { cleanupTemp, tempDir, writeMp4, writePdf } from './helpers';
 
@@ -76,9 +76,13 @@ describe('attachSubtitleFiles', () => {
     const big = path.join(tempDir('src'), 'big.srt');
     fs.writeFileSync(big, Buffer.alloc(SUBTITLE_LIMITS.bytes + 1, 0x20));
     const read = vi.spyOn(fsp, 'readFile');
-    const r = await attachSubtitleFiles(deps, await video('a'), [big]);
+    const itemId = await video('a');
+    const r = await attachSubtitleFiles(deps, itemId, [big]);
     expect(r.failed).toEqual([{ name: 'big.srt', reason: 'too-large' }]);
     expect(read).not.toHaveBeenCalled();
+    // The spy sees attach's reads: a small file is read once.
+    await attachSubtitleFiles(deps, itemId, [sub('lecture-60s.ko.srt')]);
+    expect(read).toHaveBeenCalledTimes(1);
   });
 
   it('refuses the whole call for an item that is not a live video', async () => {
@@ -115,6 +119,73 @@ describe('attachSubtitleFiles', () => {
     fs.rmSync(file);
     await attachSubtitleFiles(deps, b, [sub('lecture-60s.ko.srt')]);
     expect(fs.existsSync(file)).toBe(true);
+  });
+
+  it('refuses a file that is not a regular file (a folder named like a subtitle) without reading it', async () => {
+    const { deps, video } = await setup();
+    const dir = path.join(tempDir('src'), 'folder.srt');
+    fs.mkdirSync(dir);
+    const read = vi.spyOn(fsp, 'readFile');
+    const r = await attachSubtitleFiles(deps, await video('a'), [dir]);
+    expect(r.failed).toEqual([{ name: 'folder.srt', reason: 'io' }]);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('a copy that changed while it was placed (HASH_MISMATCH) is io and adds nothing', async () => {
+    const { deps, video, subtitles } = await setup();
+    const itemId = await video('a');
+    const importer = { placeManaged: async () => { throw new LearnError('HASH_MISMATCH', 'changed'); } };
+    const r = await attachSubtitleFiles({ ...deps, importer }, itemId, [sub('lecture-60s.ko.srt')]);
+    expect(r).toEqual({ added: [], already: [], failed: [{ name: 'lecture-60s.ko.srt', reason: 'io' }] });
+    expect(subtitles.list(itemId)).toEqual([]);
+  });
+
+  it('an error that is no file error is thrown when nothing was added, and leaves no rows', async () => {
+    const { deps, video, subtitles } = await setup();
+    const itemId = await video('a');
+    const importer = { placeManaged: async () => { throw new Error('bug'); } };
+    await expect(attachSubtitleFiles({ ...deps, importer }, itemId, [sub('lecture-60s.ko.srt')])).rejects.toThrow('bug');
+    expect(subtitles.list(itemId)).toEqual([]);
+  });
+
+  it('a failure on the second path still reports the first as added', async () => {
+    const { deps, video, subtitles } = await setup();
+    const itemId = await video('a');
+    let calls = 0;
+    const importer = {
+      placeManaged: (src: string, sha: string, signal?: AbortSignal) => {
+        calls += 1;
+        if (calls === 2) throw new Error('disk full');
+        return deps.importer.placeManaged(src, sha, signal);
+      },
+    };
+    const r = await attachSubtitleFiles({ ...deps, importer }, itemId, [sub('lecture-60s.ko.srt'), sub('lecture-60s.en.vtt'), sub('notes.ko.srt')]);
+    expect(r.added.map((t) => t.language)).toEqual(['ko']);
+    expect(r.failed).toEqual([{ name: 'lecture-60s.en.vtt', reason: 'io' }]);
+    expect(subtitles.list(itemId)).toHaveLength(1);
+  });
+
+  it('a reused asset whose row a purge deletes while the copy is placed gets a new row, and the attach succeeds', async () => {
+    const { deps, video, repo, subtitles, db } = await setup();
+    const a = await video('a');
+    const b = await video('b');
+    const first = await attachSubtitleFiles(deps, a, [sub('lecture-60s.ko.srt')]);
+    const oldId = first.added[0]!.assetId;
+    const importer = {
+      placeManaged: async (src: string, sha: string, signal?: AbortSignal) => {
+        const rel = await deps.importer.placeManaged(src, sha, signal);
+        // The purge of video a commits meanwhile (without the path's lock): its subtitle asset and cues go.
+        db.prepare('DELETE FROM item_assets WHERE item_id = ?').run(a);
+        removeUnusedAssets(db, new Set([oldId]));
+        return rel;
+      },
+    };
+    const r = await attachSubtitleFiles({ ...deps, importer }, b, [sub('lecture-60s.ko.srt')]);
+    expect(r.failed).toEqual([]);
+    expect(r.added).toHaveLength(1);
+    expect(r.added[0]!.assetId).not.toBe(oldId);
+    expect(repo.getAsset(oldId)).toBeUndefined();
+    expect(subtitles.list(b)[0]!.cueCount).toBeGreaterThan(0);
   });
 
   it('attaches a 20,000-cue file stays within three times the one-second ceiling (the full suite runs it 2x slower than alone)', async () => {

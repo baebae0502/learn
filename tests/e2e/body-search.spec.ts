@@ -172,13 +172,15 @@ test("the page's search API answers from the index", async ({}, testInfo) => {
     expect(indexed.ok && indexed.data.searched && indexed.data.itemIds.length > 0).toBe(true);
     expect(await body('xylophone')).toEqual({ ok: true, data: { itemIds: [], searched: true } });
 
-    const pages = await page.evaluate((id) => window.learn.search.pages({ itemId: id, query: '형광' }), hit.data.itemIds[0]!);
-    if (!pages.ok) throw new Error(`search.pages failed: ${pages.code}`);
-    expect(pages.data.pages.length).toBeGreaterThan(0);
-    expect(pages.data.total).toBeGreaterThanOrEqual(pages.data.pages.length);
-    const order = pages.data.pages.map((p) => p.pageIndex);
+    const found = await page.evaluate((id) => window.learn.search.matches({ itemId: id, query: '형광' }), hit.data.itemIds[0]!);
+    if (!found.ok) throw new Error(`search.matches failed: ${found.code}`);
+    const pages = found.data.matches.flatMap((m) => (m.kind === 'page' ? [m] : []));
+    expect(pages.length).toBeGreaterThan(0);
+    expect(pages).toHaveLength(found.data.matches.length);
+    expect(found.data.total).toBeGreaterThanOrEqual(pages.length);
+    const order = pages.map((p) => p.pageIndex);
     expect(order).toEqual([...order].sort((a, b) => a - b));
-    for (const p of pages.data.pages) expect(p.snippet).toContain('\ue000');
+    for (const p of pages) expect(p.snippet).toContain('\ue000');
 
     expect(await page.evaluate(() => window.learn.search.progress())).toEqual({ ok: true, data: { done: 20, total: 20 } });
   } finally {
@@ -337,8 +339,8 @@ test('two Korean letters search the body, one letter does not and says so; an NF
     // korean.pdf's page 2 is decomposed (NFD) in the file; the stored text is NFC, so the NFC query finds it there too.
     await field(page).fill('변환기는');
     await expect.poll(() => titles(page)).toEqual([korean.title]);
-    const pages = await page.evaluate((id) => window.learn.search.pages({ itemId: id, query: '변환기는' }), korean.id);
-    expect(pages.ok && pages.data.pages.map((p) => p.pageIndex)).toContain(1);
+    const pages = await page.evaluate((id) => window.learn.search.matches({ itemId: id, query: '변환기는' }), korean.id);
+    expect(pages.ok && pages.data.matches.map((m) => m.kind === 'page' && m.pageIndex)).toContain(1);
   } finally {
     await app.close();
   }
@@ -581,8 +583,8 @@ test('본문 일치: right under the head, "쪽 30개" and twenty pages named "N
     await expect(matches(page).getByTestId('matches-count')).toHaveText('쪽 3개');
     await expect(matches(page).getByTestId('matches-more')).toHaveCount(0);
 
-    // A PDF whose index is done and has no match: nothing for 300 ms, 찾는 중… while search:pages is held, then no section.
-    await holdReplies(app, ['search:pages'], 1200);
+    // A PDF whose index is done and has no match: nothing for 300 ms, 찾는 중… while search:matches is held, then no section.
+    await holdReplies(app, ['search:matches'], 1200);
     await field(page).fill('형광');
     // The body answer is in the table: the query has settled, so the panel asks for this query's pages only.
     await expect.poll(() => titles(page)).toEqual([search30.title, titled.title].sort());
@@ -601,7 +603,7 @@ test('본문 일치: right under the head, "쪽 30개" and twenty pages named "N
     expect(wait.shown - wait.asked, 'nothing for the first 300 ms').toBeGreaterThanOrEqual(300);
     await expect(matches(page)).toHaveCount(0);
     await expect(page.getByTestId('info-section')).toBeVisible();
-    await holdReplies(app, ['search:pages'], 0);
+    await holdReplies(app, ['search:matches'], 0);
   } finally {
     await app.close();
   }

@@ -45,7 +45,7 @@ export interface SnippetPart {
 }
 
 /**
- * A search:pages snippet in parts, the marked ones between U+E000 and U+E001: the screen draws each part as text (a mark
+ * A search:matches snippet in parts, the marked ones between U+E000 and U+E001: the screen draws each part as text (a mark
  * as <mark>), so nothing in a PDF's text is ever read as HTML. Marks that do not pair up mark nothing: the text alone.
  */
 export function snippetParts(snippet: string): SnippetPart[] {

@@ -20,6 +20,12 @@ export interface ExtractPayload { sha256: string; type: 'pdf'; nextPage: number;
 export const MARK_START = '';
 export const MARK_END = '';
 
+/** A matching page of a PDF, and a matching cue of a video (the time it starts at; `track` is the subtitle's asset id when the video has several). */
+export interface PageMatch { kind: 'page'; pageIndex: number; snippet: string }
+export interface TimeMatch { kind: 'time'; startMs: number; snippet: string; track: string | null }
+export type BodyMatch = PageMatch | TimeMatch;
+export interface BodyMatches { matches: BodyMatch[]; total: number }
+
 /** Body words: three or more code points go to the trigram index, exactly two to a scan. */
 export interface BodyWords { fts: string[]; like: string[] }
 

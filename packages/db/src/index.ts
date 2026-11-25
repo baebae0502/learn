@@ -12,6 +12,7 @@ export * from './organize-query';
 export * from './trash';
 export * from './text-repository';
 export * from './body-search';
+export * from './cue-search';
 export * from './duplicates';
 export * from './translation-cache-repository';
 export * from './conversations-repository';

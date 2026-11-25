@@ -96,7 +96,7 @@ describe("본문 일치's pages as the item panel reads them (keyed as the table
     expect(search).not.toHaveBeenCalled();
     expect(result.data).toBe(cached);
   });
-  it('once settled it asks search:pages for that item and query, once', async () => {
+  it('once settled it asks search:matches for that item and query, once', async () => {
     const found = pages(3);
     const search = vi.fn<BodyPagesCall>(() => Promise.resolve(found));
     const result = await readPages(client(), '형광', '형광', true, search);

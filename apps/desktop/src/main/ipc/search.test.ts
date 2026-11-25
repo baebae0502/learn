@@ -23,10 +23,10 @@ const searchBody = vi.fn((_db: unknown, query: string, signal: AbortSignal) => {
     calls.push(call);
   });
 });
-const searchPages = vi.fn(() => ({ pages: [], total: 0 }));
+const searchMatches = vi.fn(() => ({ matches: [], total: 0 }));
 const progress = vi.fn(() => ({ done: 1, total: 2 }));
 const ctx = { db: {}, repo: {}, text: { progress } };
-registerSearchIpc(createHandle(null), stubDeps({ getContext: () => ctx as never }), { searchBody: searchBody as never, searchPages: searchPages as never });
+registerSearchIpc(createHandle(null), stubDeps({ getContext: () => ctx as never }), { searchBody: searchBody as never, searchMatches: searchMatches as never });
 
 const W1 = fakeSender(1, 'main');
 const W2 = fakeSender(2, 'main');
@@ -85,14 +85,14 @@ describe('search:body', () => {
   });
 });
 
-describe('search:pages and search:progress', () => {
+describe('search:matches and search:progress', () => {
   it('pages passes a valid request through; a bad item id, an empty query and an unknown key are refused', async () => {
-    expect(await call(W1, 'search:pages', { itemId: ITEM, query: 'abc' })).toEqual({ ok: true, data: { pages: [], total: 0 } });
-    expect(searchPages).toHaveBeenCalledTimes(1);
-    expect(await call(W1, 'search:pages', { itemId: 'nope', query: 'abc' })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
-    expect(await call(W1, 'search:pages', { itemId: ITEM, query: '' })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
-    expect(await call(W1, 'search:pages', { itemId: ITEM, query: 'abc', x: 1 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
-    expect(searchPages).toHaveBeenCalledTimes(1);
+    expect(await call(W1, 'search:matches', { itemId: ITEM, query: 'abc' })).toEqual({ ok: true, data: { matches: [], total: 0 } });
+    expect(searchMatches).toHaveBeenCalledTimes(1);
+    expect(await call(W1, 'search:matches', { itemId: 'nope', query: 'abc' })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+    expect(await call(W1, 'search:matches', { itemId: ITEM, query: '' })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+    expect(await call(W1, 'search:matches', { itemId: ITEM, query: 'abc', x: 1 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+    expect(searchMatches).toHaveBeenCalledTimes(1);
   });
 
   it('progress answers the index progress', async () => {

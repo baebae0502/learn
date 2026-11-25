@@ -1,13 +1,14 @@
-import { bodyItemIds, bodyLikeChunks, bodyPages, type Db } from '@learn/db';
-import { LearnError, bodyQueryWords, hasBodyWords } from '@learn/domain';
+import { bodyItemIds, bodyLikeChunks, bodyPages, cueItemIds, cueLikeChunks, cueMatches, type Db } from '@learn/db';
+import { LearnError, bodyQueryWords, hasBodyWords, type BodyMatches } from '@learn/domain';
 import { mainStrings } from '../strings';
 
 const cancelled = (): LearnError => new LearnError('CANCELLED', mainStrings.jobs.cancelled);
 
 /**
- * The items with a page that holds every word of `query`. Without a body word (a single letter) nothing is searched. Words
- * of three letters go to the index in one statement; a query of two-letter words alone scans the page texts in chunks and
- * lets the process breathe between them, so a newer query can stop it.
+ * The items with a page (a PDF) or a cue (a video) that holds every word of `query`. Without a body word (a single letter)
+ * nothing is searched. Words of three letters go to the index in one statement each for pages and cues; a query of two-letter
+ * words alone scans the page texts and then the cue texts in chunks and lets the process breathe between them, so a newer
+ * query can stop it.
  */
 export async function searchBody(db: Db, query: string, signal: AbortSignal, chunk?: number): Promise<{ itemIds: string[]; searched: boolean }> {
   const words = bodyQueryWords(query);
@@ -15,22 +16,29 @@ export async function searchBody(db: Db, query: string, signal: AbortSignal, chu
   if (words.fts.length > 0) {
     // A newer query may have come while this one waited: the statement is not started for nothing.
     if (signal.aborted) throw cancelled();
-    const ids = bodyItemIds(db, words);
+    const ids = new Set(bodyItemIds(db, words));
     if (signal.aborted) throw cancelled();
-    return { itemIds: ids, searched: true };
+    for (const id of cueItemIds(db, words)) ids.add(id);
+    if (signal.aborted) throw cancelled();
+    return { itemIds: [...ids], searched: true };
   }
   const found = new Set<string>();
-  for (const ids of bodyLikeChunks(db, words.like, chunk)) {
-    for (const id of ids) found.add(id);
-    await new Promise((resolve) => setImmediate(resolve));
-    if (signal.aborted) throw cancelled();
+  for (const chunks of [bodyLikeChunks(db, words.like, chunk), cueLikeChunks(db, words.like, chunk)]) {
+    for (const ids of chunks) {
+      for (const id of ids) found.add(id);
+      await new Promise((resolve) => setImmediate(resolve));
+      if (signal.aborted) throw cancelled();
+    }
   }
   return { itemIds: [...found], searched: true };
 }
 
-/** The pages of one PDF item that match, in page order. The trash has no body matches; a file that is not a PDF has no pages. */
-export function searchPages(db: Db, itemId: string, query: string): { pages: Array<{ pageIndex: number; snippet: string }>; total: number } {
-  const none = { pages: [], total: 0 };
+/**
+ * The matches of one item: a PDF's pages in page order, a video's cues by start time. The trash has no body matches; any other
+ * kind of item has none.
+ */
+export function searchMatches(db: Db, itemId: string, query: string): BodyMatches {
+  const none: BodyMatches = { matches: [], total: 0 };
   const words = bodyQueryWords(query);
   if (!hasBodyWords(words)) return none;
   const row = db
@@ -41,6 +49,11 @@ export function searchPages(db: Db, itemId: string, query: string): { pages: Arr
     )
     .get(itemId) as { type: string; deletedAt: string | null; sha256: string } | undefined;
   if (!row) throw new LearnError('NOT_FOUND', mainStrings.itemFile.noItem);
-  if (row.type !== 'pdf' || row.deletedAt !== null) return none;
-  return bodyPages(db, row.sha256, words);
+  if (row.deletedAt !== null) return none;
+  if (row.type === 'pdf') {
+    const { pages, total } = bodyPages(db, row.sha256, words);
+    return { matches: pages.map((p) => ({ kind: 'page' as const, pageIndex: p.pageIndex, snippet: p.snippet })), total };
+  }
+  if (row.type === 'video') return cueMatches(db, itemId, words);
+  return none;
 }

@@ -18,7 +18,7 @@ exposeSurface({
     settings: ['get', 'set'],
     prefs: ['get', 'set'],
     reader: ['open', 'getPosition', 'savePosition'],
-    search: ['body', 'pages', 'progress'],
+    search: ['body', 'matches', 'progress'],
     backup: ['create', 'cancel', 'restore'],
     translation: ['translate', 'cancel'],
     tutor: ['consent', 'agents', 'chooseAgent', 'view', 'warm', 'ask', 'stop', 'resend', 'reground'],

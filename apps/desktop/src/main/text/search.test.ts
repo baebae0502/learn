@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { LearnError, MARK_START, newId, nowIso } from '@learn/domain';
-import { LibraryRepository, migrate, openDatabase, type AssetRow, type Db } from '@learn/db';
-import { searchBody, searchPages } from './search';
+import { LibraryRepository, SubtitlesRepository, migrate, openDatabase, type AssetRow, type Db } from '@learn/db';
+import { searchBody, searchMatches } from './search';
 
 let db: Db;
 let repo: LibraryRepository;
@@ -106,28 +106,78 @@ describe('searchBody', () => {
   });
 });
 
-describe('searchPages', () => {
-  it('gives the pages in order with marked snippets and the total; a video and a trashed item give none', () => {
+function cuesOf(itemId: string, texts: string[], extra = 0): string {
+  seq += 1;
+  const sha = (0x9000 + seq).toString(16).padStart(64, 'c');
+  const now = nowIso();
+  const asset: AssetRow = {
+    id: newId(), sha256: sha, storageMode: 'managed', relativePath: `assets/${sha.slice(0, 2)}/${sha}`, externalPath: null,
+    originalName: 'a.srt', mime: 'application/x-subrip', size: 9 + extra, availability: 'available', createdAt: now, checkedAt: now,
+  };
+  new SubtitlesRepository(db).attach({
+    itemId, asset, assetIsNew: true, revision: { id: newId(), createdAt: now }, language: null, createdAt: now,
+    cues: texts.map((text, i) => ({ startMs: i * 1000, endMs: i * 1000 + 900, text: text.normalize('NFC') })),
+  });
+  return asset.id;
+}
+
+describe('searchBody with subtitle cues', () => {
+  it('is the union of PDFs with a page and live videos with a cue; a trashed video is left out', async () => {
+    const pdf = item();
+    put(pdf.sha, 0, '칼슘 펌프 형광');
+    const v = item('video');
+    cuesOf(v.itemId, ['칼슘 펌프가 돈다']);
+    const gone = item('video');
+    cuesOf(gone.itemId, ['칼슘 펌프']);
+    expect((await searchBody(db, '칼슘 펌프', live())).itemIds.sort()).toEqual([pdf.itemId, v.itemId, gone.itemId].sort());
+    repo.trash([gone.itemId]);
+    expect((await searchBody(db, '칼슘 펌프', live())).itemIds.sort()).toEqual([pdf.itemId, v.itemId].sort());
+  });
+
+  it('a two-letter scan covers pages and cues, in chunks, under one signal', async () => {
+    const pdf = item();
+    put(pdf.sha, 0, '형광 하나');
+    const v = item('video');
+    cuesOf(v.itemId, ['형광 하나', '둘', '셋', '넷']);
+    const r = await searchBody(db, '형광', live(), 1);
+    expect(r).toEqual({ itemIds: expect.arrayContaining([pdf.itemId, v.itemId]) as string[], searched: true });
+    expect(r.itemIds).toHaveLength(2);
+    const ctl = new AbortController();
+    ctl.abort();
+    await expect(searchBody(db, '형광', ctl.signal, 1)).rejects.toMatchObject({ code: 'CANCELLED' });
+  });
+});
+
+describe('searchMatches', () => {
+  it('gives a PDF its pages as page rows; a trashed one none', () => {
     const a = item();
     put(a.sha, 4, 'later 형광 page');
     put(a.sha, 1, 'earlier 형광 page');
     put(a.sha, 2, 'nothing here');
-    const r = searchPages(db, a.itemId, '형광');
+    const r = searchMatches(db, a.itemId, '형광');
     expect(r.total).toBe(2);
-    expect(r.pages.map((p) => p.pageIndex)).toEqual([1, 4]);
-    expect(r.pages[0]!.snippet).toContain(MARK_START);
-    expect(searchPages(db, a.itemId, 'earlier').pages.map((p) => p.pageIndex)).toEqual([1]);
-    expect(searchPages(db, a.itemId, '형')).toEqual({ pages: [], total: 0 });
-
-    const v = item('video');
-    put(v.sha, 0, '형광');
-    expect(searchPages(db, v.itemId, '형광')).toEqual({ pages: [], total: 0 });
-
+    expect(r.matches.map((m) => (m.kind === 'page' ? m.pageIndex : -1))).toEqual([1, 4]);
+    expect(r.matches[0]!.snippet).toContain(MARK_START);
+    expect(searchMatches(db, a.itemId, 'earlier').matches).toHaveLength(1);
+    expect(searchMatches(db, a.itemId, '형')).toEqual({ matches: [], total: 0 });
     repo.trash([a.itemId]);
-    expect(searchPages(db, a.itemId, '형광')).toEqual({ pages: [], total: 0 });
+    expect(searchMatches(db, a.itemId, '형광')).toEqual({ matches: [], total: 0 });
+  });
+
+  it('gives a video its cues as time rows, with the track set only for two or more tracks', () => {
+    const v = item('video');
+    put(v.sha, 0, '형광'); // a page text of the video file itself is not a match
+    const first = cuesOf(v.itemId, ['앞', '형광 현미경']);
+    expect(searchMatches(db, v.itemId, '현미경')).toEqual({ matches: [{ kind: 'time', startMs: 1000, snippet: expect.stringContaining(MARK_START) as string, track: null }], total: 1 });
+    cuesOf(v.itemId, ['형광 현미경'], 1);
+    const r = searchMatches(db, v.itemId, '현미경');
+    expect(r.total).toBe(2);
+    expect(r.matches.map((m) => m.kind === 'time' && m.track)).toContain(first);
+    repo.trash([v.itemId]);
+    expect(searchMatches(db, v.itemId, '현미경')).toEqual({ matches: [], total: 0 });
   });
 
   it('an item that does not exist is NOT_FOUND', () => {
-    expect(() => searchPages(db, newId(), '형광')).toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
+    expect(() => searchMatches(db, newId(), '형광')).toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
   });
 });

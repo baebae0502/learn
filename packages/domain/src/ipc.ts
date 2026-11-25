@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { COMMAND_IDS, type CommandContextState, type PickedCommand } from './commands';
 import type { BackupInfo } from './backup';
+import type { BodyMatches } from './body-search';
 import type { LearnEventMap, WindowState } from './events';
 import type {
   AppInfo, Collection, DuplicateGroup, EditedCopy, ItemDetail, KeepOneResult, LibraryItem, PurgedRows, SearchText, Tag, TrashView,
@@ -51,7 +52,7 @@ export const emptyInput = z.object({}).strict().optional();
 
 /** Body search: the query as typed (words are split in main); a page list wants a query to look for. */
 export const bodySearchInput = z.object({ query: z.string().normalize('NFC').max(200) }).strict();
-export const bodyPagesInput = z.object({ itemId: z.uuid(), query: z.string().normalize('NFC').min(1).max(200) }).strict();
+export const bodyMatchesInput = z.object({ itemId: z.uuid(), query: z.string().normalize('NFC').min(1).max(200) }).strict();
 
 export const itemIdsInput = z.object({ itemIds: z.array(z.uuid()).min(1).max(5000) });
 /**
@@ -431,8 +432,8 @@ export interface LearnApi {
   search: {
     /** The items with a page that holds every word. A newer request of the window stops the older one: it answers CANCELLED. */
     body(input: z.input<typeof bodySearchInput>): Promise<Result<{ itemIds: string[]; searched: boolean }>>;
-    /** The matching pages of one PDF item in page order, a snippet each (matches between the private-use marks), and how many match in all. */
-    pages(input: z.input<typeof bodyPagesInput>): Promise<Result<{ pages: Array<{ pageIndex: number; snippet: string }>; total: number }>>;
+    /** The matches of one item: a PDF's pages in page order, a video's cues in time order; a snippet each (matches between the private-use marks), and how many match in all. */
+    matches(input: z.input<typeof bodyMatchesInput>): Promise<Result<BodyMatches>>;
     /** How many PDFs outside the trash have been read for their text. */
     progress(): Promise<Result<{ done: number; total: number }>>;
   };

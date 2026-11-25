@@ -18,6 +18,7 @@ import type { FirstIdleReport } from './first-idle';
 import type { AutoOutcome } from './library-check';
 import type { ExtractOutcome, TextExtractor } from './text/extractor';
 import { seedBodyText, type SeedBodyTextInput } from './text/seed-body-text';
+import { seedCues, type SeedCuesInput } from './text/seed-cues';
 import type { TextScheduler, TextSchedulerState } from './text/scheduler';
 import type { ExtractLimits } from './text/messages';
 import type { FakeMode } from './translation/fake';
@@ -533,6 +534,8 @@ export interface LearnTestHooks {
   extractFile(input: { file: string; startPage?: number; limits?: Partial<ExtractLimits> }): Promise<{ outcome: ExtractOutcome; opened: number | null; batches: Array<{ from: number; texts: string[] }> }>;
   /** PDF items with their body text already stored: `docs` × `pages` pages of `chars` characters, finished jobs. */
   seedBodyText(input: SeedBodyTextInput): { itemIds: string[]; sha256: string[] };
+  /** Video items with a subtitle track of `cuesEach` cues each, written to the tables with no files. */
+  seedCues(input: SeedCuesInput): { itemIds: string[] };
   /** The body-text scheduler starts paused under E2E: 'resume' runs it after its usual delay, 'now' without the delay (the startup check is still waited for). */
   textExtraction(mode: 'pause' | 'resume' | 'now'): void;
   /** Resolves when no PDF outside the trash has a queued job and nothing runs. */
@@ -748,6 +751,12 @@ export function installTestHooks(deps: {
     seedBodyText(input) {
       if (!deps.seedFiles) throw new Error('seedBodyText: no library to seed');
       const out = seedBodyText(deps.seedFiles(), input);
+      deps.broadcast('libraryChanged', { reason: 'import' });
+      return out;
+    },
+    seedCues(input) {
+      if (!deps.seedFiles) throw new Error('seedCues: no library to seed');
+      const out = seedCues(deps.seedFiles(), input);
       deps.broadcast('libraryChanged', { reason: 'import' });
       return out;
     },

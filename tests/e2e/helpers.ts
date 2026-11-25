@@ -1916,6 +1916,7 @@ type TextJobRow = { sha256: string; state: string; attempts: number; nextPage: n
 type WithTextSchedulerHooks = {
   __learnTest: {
     seedBodyText(input: SeedBodyTextInput): { itemIds: string[]; sha256: string[] };
+    seedCues(input: { videos: number; cuesEach: number }): { itemIds: string[] };
     textExtraction(mode: 'pause' | 'resume' | 'now'): void;
     textIdle(): Promise<void>;
     pageTextCount(input: { itemId: string } | { sha256: string }): number;
@@ -1928,6 +1929,8 @@ type WithTextSchedulerHooks = {
 };
 /** PDF items with their body text already stored, without waiting for the worker; announces one import. */
 export const seedBodyText = (app: ElectronApplication, input: SeedBodyTextInput) => app.evaluate((_e, arg) => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.seedBodyText(arg), input);
+/** Video items with one subtitle track of `cuesEach` cues each, without files; announces one import. */
+export const seedCues = (app: ElectronApplication, input: { videos: number; cuesEach: number }) => app.evaluate((_e, arg) => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.seedCues(arg), input);
 /** Under E2E the body-text scheduler starts paused: 'now' runs it without the five-second delay (the startup check is still waited for). */
 export const textExtraction = (app: ElectronApplication, mode: 'pause' | 'resume' | 'now') => app.evaluate((_e, arg) => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textExtraction(arg), mode);
 /** textIdle's longest wait unless a test says otherwise: search-perf reads 2,000 pages, 28 s on a Mac runner. */

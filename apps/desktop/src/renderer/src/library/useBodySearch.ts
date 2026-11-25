@@ -139,15 +139,20 @@ export function useQuickBodySearch(): BodySearch {
   return useBodyAnswer(useBodyTarget());
 }
 
-/** What search:pages answers for one item: its first pages that match (twenty at most), a snippet each, and how many match. */
+/** The page rows of what search:matches answers for one item: its first pages that match (twenty at most), a snippet each, and how many match. */
 export interface BodyPages {
   pages: Array<{ pageIndex: number; snippet: string }>;
   total: number;
 }
 
-/** search:pages for one item and query: the app's IPC, or a stub in a test. */
+/** search:matches for one item and query, its page rows only (time rows are the video panel's): the app's IPC, or a stub in a test. */
 export type BodyPagesCall = (itemId: string, query: string) => Promise<BodyPages>;
-const searchPages: BodyPagesCall = (itemId, query) => unwrap(api().search.pages({ itemId, query }));
+const searchPages: BodyPagesCall = async (itemId, query) => {
+  const { matches, total } = await unwrap(api().search.matches({ itemId, query }));
+  const pages: BodyPages['pages'] = [];
+  for (const m of matches) if (m.kind === 'page') pages.push({ pageIndex: m.pageIndex, snippet: m.snippet });
+  return { pages, total };
+};
 
 /**
  * 본문 일치's pages for one item, read as the table reads its body answer (bodyQueryOptions): the entry of `target`, the query

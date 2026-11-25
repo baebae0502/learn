@@ -33,6 +33,7 @@ export const Channels = {
     showShortcuts: 'ui:showShortcuts', openSettings: 'ui:openSettings', themeShown: 'ui:themeShown', reportIdle: 'ui:reportIdle', showColumnMenu: 'ui:showColumnMenu',
     stage: 'ui:stage',
   },
+  subtitles: { list: 'subtitles:list', cues: 'subtitles:cues', pick: 'subtitles:pick', attach: 'subtitles:attach', remove: 'subtitles:remove', restore: 'subtitles:restore' },
   translation: { translate: 'translation:translate', cancel: 'translation:cancel' },
   tutor: {
     consent: 'tutor:consent', agents: 'tutor:agents', chooseAgent: 'tutor:chooseAgent', view: 'tutor:view', warm: 'tutor:warm', ask: 'tutor:ask',

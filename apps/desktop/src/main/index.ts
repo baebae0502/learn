@@ -25,6 +25,7 @@ import { registerAllIpc } from './ipc/all';
 import { revealBackupFolder, revealRestoredFolder } from './ipc/backup';
 import { IMPORT_FILTERS } from './ipc/library';
 import { endPositionNotices } from './ipc/reader';
+import { removeFilesAfter } from './ipc/trash';
 import { createHandle, type IpcDeps } from './ipc/register';
 import { createBackupJob } from './jobs/backup-job';
 import { createRestoreJob } from './jobs/restore-job';
@@ -864,6 +865,10 @@ if (!app.requestSingleInstanceLock()) {
           const c = getContext();
           return { db: c.db, repo: c.repo, layout: c.layout };
         },
+        subtitles: () => {
+          const c = getContext();
+          return { db: c.db, subtitles: c.subtitles, layout: c.layout };
+        },
         stage: () => {
           const win = liveMainWindow();
           const stage = win ? stageControllerOf(win) : undefined;
@@ -887,10 +892,13 @@ if (!app.requestSingleInstanceLock()) {
     // P-18: the library check runs once the window exists, in the background: the first paint never waits for the disk.
     if (ctx) {
       const service = tutor;
+      const opened = ctx;
       void startLibraryCheck(ctx, {
         announce: announceAvailability,
         requestAuto: requestAutoCheck,
         onChecked: () => text?.startupChecked(),
+        // The startup sweep of unlinked subtitle copies: files go after its commit, behind the purges' own.
+        removeFiles: (assets) => removeFilesAfter(opened, assets),
         // Answers a quit cut off become interrupted; the sessions deleted before this run go, with their work folders.
         ...(service ? { tutor: { runStartedAt: RUN_STARTED_AT, purged: (ids: string[]) => void service.removeWorkFolders(ids) } } : {}),
         gate: {

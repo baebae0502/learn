@@ -16,6 +16,7 @@ import { LIBRARY_COLUMN_IDS, LIBRARY_SORT_COLUMNS, type LibraryColumnId } from '
 import { TAG_COLORS, type TagColorId } from './tag-colors';
 import { translationFromSchema, translationToSchema, type TranslationResult } from './translation';
 import type { AgentsReport } from './agents';
+import type { AttachResult, Cue, RemovedTrack, SubtitleTrack } from './subtitles';
 import type {
   RecentSessions, SessionIdInput, SessionsListInput, SessionsRenameInput, SessionSummary, SessionThread, TutorAgentsInput, TutorAskAnswer, TutorAskInput,
   TutorChooseAgentInput, TutorConsentInput, TutorRetryInput, TutorStopInput, TutorViewInput, TutorWarmInput,
@@ -41,6 +42,11 @@ export const importPathsInput = z.object({
   collectionId: importCollectionSchema,
 }).strict();
 export const itemIdInput = z.object({ itemId: z.uuid() });
+/** The subtitles of a video (spec 11): its item, a track by its asset, files to attach (absolute paths, at most 50), and the track to bring back with the place and language it had (P-7). */
+export const subtitlesItemInput = z.object({ itemId: z.uuid() }).strict();
+export const subtitlesTrackInput = z.object({ itemId: z.uuid(), assetId: z.uuid() }).strict();
+export const subtitlesAttachInput = z.object({ itemId: z.uuid(), paths: z.array(absolutePathSchema).min(1).max(50) }).strict();
+export const subtitlesRestoreInput = z.object({ itemId: z.uuid(), assetId: z.uuid(), position: z.number().int().min(0), language: z.string().min(2).max(35).nullable() }).strict();
 export const emptyInput = z.object({}).strict().optional();
 
 /** Body search: the query as typed (words are split in main); a page list wants a query to look for. */
@@ -284,6 +290,10 @@ export type SettingSetInput = z.input<typeof settingSetInput>;
 export type PrefsSetInput = z.input<typeof prefsSetInput>;
 export type ThemeShownInput = z.input<typeof themeShownInput>;
 export type StageInput = z.input<typeof stageInput>;
+export type SubtitlesItemInput = z.input<typeof subtitlesItemInput>;
+export type SubtitlesTrackInput = z.input<typeof subtitlesTrackInput>;
+export type SubtitlesAttachInput = z.input<typeof subtitlesAttachInput>;
+export type SubtitlesRestoreInput = z.input<typeof subtitlesRestoreInput>;
 export type UpdateMetadataInput = z.input<typeof updateMetadataInput>;
 export type CreateCollectionInput = z.input<typeof createCollectionInput>;
 export type SavePositionInput = z.input<typeof savePositionInput>;
@@ -468,6 +478,17 @@ export interface LearnApi {
      * last request winning, and reports the stage in windowState.stage — the page follows that, never this answer.
      */
     stage(input: StageInput): Promise<Result<void>>;
+  };
+  /** A video's subtitle tracks (spec 11): the main window only; a change is announced as subtitles:changed. */
+  subtitles: {
+    list(input: SubtitlesItemInput): Promise<Result<{ tracks: SubtitleTrack[] }>>;
+    cues(input: SubtitlesTrackInput): Promise<Result<{ cues: Cue[] }>>;
+    /** The open panel for .srt and .vtt files, then the attach; a cancelled panel answers empty. */
+    pick(input: SubtitlesItemInput): Promise<Result<AttachResult>>;
+    attach(input: SubtitlesAttachInput): Promise<Result<AttachResult>>;
+    /** Takes the track off the video; the answer carries what restore needs to put it back. */
+    remove(input: SubtitlesTrackInput): Promise<Result<RemovedTrack>>;
+    restore(input: SubtitlesRestoreInput): Promise<Result<SubtitleTrack>>;
   };
   /** The tutor (spec 12): the main window only. Nothing runs before consent; the agent is started by main, never by a page. */
   tutor: {

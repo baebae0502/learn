@@ -4,7 +4,7 @@ import {
   type CheckEntry, type CheckFailure, type CheckFix, type CheckMode, type CheckRow, type CheckRowKind, type ImportReport, type LibraryCheck, type LibraryCheckPayload,
   type SheetAction,
 } from '@learn/domain';
-import type { LibraryRepository } from '@learn/db';
+import type { LibraryRepository, PurgedAsset } from '@learn/db';
 import {
   assetKeyFile, checkLibrary, cleanStaging, cleanUnreferenced, corruptCopies, editedCopyFile, fileTitle, orphanEditedCopies, refreshLinkedAvailability, relinkAsset,
   removeImportedEditedCopy,
@@ -22,7 +22,7 @@ export const AUTO_POLL_MS = 500;
 /** P-26: two names, then 외 N개. */
 export const ENTRY_NAMES = 2;
 
-export type CheckContext = Pick<LibraryContext, 'layout' | 'repo' | 'importer' | 'settings' | 'conversations'> & { check: LibraryCheck | null };
+export type CheckContext = Pick<LibraryContext, 'layout' | 'repo' | 'importer' | 'settings' | 'conversations' | 'subtitles'> & { check: LibraryCheck | null };
 
 const managedState = (repo: LibraryRepository) => new Map(repo.assetsByMode('managed').map((a) => [a.id, a.availability] as const));
 const itemsOf = (repo: LibraryRepository, assetIds: readonly string[]) => [...new Set(assetIds.flatMap((id) => repo.itemIdsForAsset(id)))];
@@ -39,7 +39,7 @@ export interface TutorStartup {
  * found missing or back are announced (libraryChanged{availability}) — the linked ones before the folder is read, so the
  * table is right as soon as it can be. The result is the context's newest check.
  */
-export async function runCheck(ctx: CheckContext, announce: (itemIds: string[]) => void, opts: { startup?: boolean; tutor?: TutorStartup } = {}): Promise<LibraryCheck> {
+export async function runCheck(ctx: CheckContext, announce: (itemIds: string[]) => void, opts: { startup?: boolean; tutor?: TutorStartup; removeFiles?(assets: PurgedAsset[]): void } = {}): Promise<LibraryCheck> {
   // Before any await: the first sessions:get must see answers a quit cut off as failed, even when the disk is slow to stat.
   if (opts.startup && opts.tutor) {
     try {
@@ -47,6 +47,15 @@ export async function runCheck(ctx: CheckContext, announce: (itemIds: string[]) 
       if (purged.length > 0) opts.tutor.purged(purged);
     } catch (e) {
       console.warn(`[check] the tutor's sessions were not repaired: ${toLearnError(e).code}`);
+    }
+  }
+  // Same place and reason: the rows go now, before the first await; the files follow the commit (the caller removes them).
+  if (opts.startup) {
+    try {
+      const orphans = ctx.subtitles.sweepOrphans();
+      if (orphans.length > 0) opts.removeFiles?.(orphans);
+    } catch (e) {
+      console.warn(`[check] the unlinked subtitles were not swept: ${toLearnError(e).code}`);
     }
   }
   const linked = itemsOf(ctx.repo, await refreshLinkedAvailability(ctx.layout, ctx.repo));
@@ -98,6 +107,8 @@ export interface StartCheckDeps {
   onChecked?(): void;
   /** The tutor's startup repair (P-8): runs with the first check only. */
   tutor?: TutorStartup;
+  /** The files of the unlinked subtitle assets the startup sweep removed (after its commit). */
+  removeFiles?(assets: PurgedAsset[]): void;
 }
 
 /**
@@ -109,7 +120,7 @@ export async function startLibraryCheck(ctx: CheckContext, deps: StartCheckDeps)
   markPerf('checkStart');
   let check: LibraryCheck;
   try {
-    check = await runCheck(ctx, deps.announce, { startup: true, ...(deps.tutor ? { tutor: deps.tutor } : {}) });
+    check = await runCheck(ctx, deps.announce, { startup: true, ...(deps.tutor ? { tutor: deps.tutor } : {}), ...(deps.removeFiles ? { removeFiles: deps.removeFiles } : {}) });
   } finally {
     deps.onChecked?.();
   }

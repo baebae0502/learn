@@ -158,6 +158,15 @@ export class Importer {
     return filed && collectionId !== null ? { status: 'imported', path: src, item: saved, collectionId } : { status: 'imported', path: src, item: saved };
   }
 
+  /**
+   * A verified managed copy of a file that is not an item (a subtitle), through the import's staging → hash → rename. The
+   * hash is the one the caller read the bytes with: a file that changed since fails as HASH_MISMATCH. Held on the path's
+   * lock, so a purge committed meanwhile does not remove the copy just placed. Returns the library-relative path.
+   */
+  placeManaged(src: string, sha256: string, signal?: AbortSignal): Promise<string> {
+    return withManagedPath(managedRelativePath(sha256), () => this.place(src, sha256, signal));
+  }
+
   /** Reused managed asset: make sure a verified file sits at the hash-addressed target. */
   private async ensurePlaced(src: string, sha256: string, signal: AbortSignal | undefined): Promise<void> {
     await this.place(src, sha256, signal);

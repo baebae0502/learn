@@ -2128,3 +2128,18 @@ export interface StageState {
 }
 type WithStageHooks = { __learnTest: { stageState(): StageState } };
 export const stageState = (app: ElectronApplication): Promise<StageState> => app.evaluate(() => (globalThis as unknown as WithStageHooks).__learnTest.stageState());
+
+// ---- M8a subtitles (main/test-hooks.ts) -----------------------------------------------------------------------------------
+
+type WithSubtitleHooks = {
+  __learnTest: {
+    cueTextCount(input: { itemId: string } | { sha256: string }): number;
+    subtitleAssets(): Array<{ id: string; sha256: string; links: number; file: boolean }>;
+  };
+};
+/** How many cue texts are stored for an item's subtitle files, or for one file content. */
+export const cueTextCount = (app: ElectronApplication, input: { itemId: string } | { sha256: string }): Promise<number> =>
+  app.evaluate((_e, arg) => (globalThis as unknown as WithSubtitleHooks).__learnTest.cueTextCount(arg), input);
+/** The subtitle assets of the library: how many items link each, and whether its managed copy is on disk. */
+export const subtitleAssets = (app: ElectronApplication): Promise<Array<{ id: string; sha256: string; links: number; file: boolean }>> =>
+  app.evaluate(() => (globalThis as unknown as WithSubtitleHooks).__learnTest.subtitleAssets());

@@ -3,11 +3,11 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import {
-  TEXT_LIMITS, TUTOR_LIMITS, citeToken, newId, nowIso, type ImportQueueState, type JobProgress, type LibraryCheck, type ImportReport, type LearnEventMap, type StorageMode,
+  SUBTITLE_MIMES, TEXT_LIMITS, TUTOR_LIMITS, citeToken, newId, nowIso, type ImportQueueState, type JobProgress, type LibraryCheck, type ImportReport, type LearnEventMap, type StorageMode,
   type AgentId, type TagColorId,
 } from '@learn/domain';
 import {
-  SqliteError, type CollectionsRepository, type ConversationsRepository, type Db, type LibraryRepository, type TagsRepository, type TextRepository, type ToolReadInput,
+  SqliteError, type CollectionsRepository, type ConversationsRepository, type Db, type LibraryRepository, type SubtitlesRepository, type TagsRepository, type TextRepository, type ToolReadInput,
 } from '@learn/db';
 import { fsyncDir, fsyncFile, managedRelativePath, type ImportHooks, type Importer, type LibraryLayout } from '@learn/library';
 import type { BackupJob } from './jobs/backup-job';
@@ -476,6 +476,10 @@ export interface TutorHooksDeps {
 }
 
 export interface LearnTestHooks {
+  /** How many cue texts are stored for an item's subtitle files, or for one file content. */
+  cueTextCount(input: { itemId: string } | { sha256: string }): number;
+  /** The subtitle assets in the library: how many items link each, and whether its managed copy is on disk. */
+  subtitleAssets(): Array<{ id: string; sha256: string; links: number; file: boolean }>;
   /** Returns how many items were added. */
   seedItems(input: SeedItemsInput): number;
   /** Seed-only: the organise fixture over items that exist (E2E, one transaction). */
@@ -637,6 +641,8 @@ export function installTestHooks(deps: {
   tutor?: TutorHooksDeps;
   /** The main window's stage (index.ts); absent in tests that do not use it. */
   stage?: () => StageHookState;
+  /** The open library's subtitles (index.ts); absent in tests that do not use them. */
+  subtitles?: () => { db: Db; subtitles: Pick<SubtitlesRepository, 'cueTextCount'>; layout: LibraryLayout };
 }): void {
   // The IPC call counter (ipc/register.ts countCall): a test reads which channels a change called.
   (globalThis as { __learnIpcCalls?: Record<string, number> }).__learnIpcCalls = {};
@@ -679,11 +685,28 @@ export function installTestHooks(deps: {
     if (!deps.restore) throw new Error('restore hooks: no restore job');
     return deps.restore;
   };
+  const subtitlesOf = (hook: string): NonNullable<ReturnType<NonNullable<typeof deps.subtitles>>> => {
+    if (!deps.subtitles) throw new Error(`${hook}: no subtitles (the library is not open)`);
+    return deps.subtitles();
+  };
   const tutor = (hook: string): TutorHooksDeps => {
     if (!deps.tutor) throw new Error(`${hook}: no tutor (the library is not open)`);
     return deps.tutor;
   };
   (globalThis as { __learnTest?: LearnTestHooks }).__learnTest = {
+    cueTextCount: (input) => subtitlesOf('cueTextCount').subtitles.cueTextCount(input),
+    subtitleAssets() {
+      const { db, layout } = subtitlesOf('subtitleAssets');
+      const rows = db
+        .prepare(
+          `SELECT a.id, a.sha256, a.relative_path AS relativePath,
+                  (SELECT COUNT(*) FROM item_assets ia WHERE ia.asset_id = a.id) AS links
+           FROM assets a WHERE a.mime IN (?, ?) ORDER BY a.created_at, a.id`,
+        )
+        .all(...Object.values(SUBTITLE_MIMES)) as Array<{ id: string; sha256: string; relativePath: string | null; links: number }>;
+      // A linked row has no managed copy; subtitles are always managed, so the path is the library's.
+      return rows.map((r) => ({ id: r.id, sha256: r.sha256, links: r.links, file: r.relativePath !== null && fs.existsSync(path.join(layout.root, ...r.relativePath.split('/'))) }));
+    },
     seedItems(input) {
       const ids = seedItems(deps.repo(), input);
       deps.broadcast('libraryChanged', { reason: 'import' });

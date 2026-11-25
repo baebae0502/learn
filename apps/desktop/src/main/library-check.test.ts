@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CheckAction, ImportReport, LibraryCheck, LibraryCheckPayload, SheetPayload } from '@learn/domain';
-import { managedRelativePath, resolveAssetPath } from '@learn/library';
+import { attachSubtitleFiles, managedRelativePath, resolveAssetPath } from '@learn/library';
 import type { ImportBatch } from './jobs/import-queue';
 import { AUTO_POLL_MS, LAST_SHOWN, autoShowDue, checkPayload, clearToShow, createCheckSheets, importAndWait, runCheck, startLibraryCheck, type AutoGate, type CheckSheetsDeps } from './library-check';
 import { openLibraryContext, type LibraryContext } from './library-context';
@@ -29,6 +29,11 @@ async function library(): Promise<LibraryContext> {
 function pdf(dir: string, name: string, text: string): string {
   const p = path.join(dir, name);
   fs.writeFileSync(p, `%PDF-1.4\n% ${text}\n%%EOF\n`);
+  return p;
+}
+function mp4(dir: string, name: string, seed: string): string {
+  const p = path.join(dir, name);
+  fs.writeFileSync(p, Buffer.concat([Buffer.from([0, 0, 0, 0x18, ...Buffer.from('ftypisom'), 0, 0, 2, 0, ...Buffer.from('isomiso2')]), Buffer.from(seed)]));
   return p;
 }
 async function add(ctx: LibraryContext, src: string, mode: 'managed' | 'linked' = 'managed') {
@@ -243,6 +248,53 @@ describe('the tutor repair at startup (P-8)', () => {
       user: { kind: 'question', text: 'q', sent: { selection: 0, replayedTurns: 0, preamble: true }, attached: null }, now: '2026-11-10T09:00:00.000Z' });
     await runCheck(ctx, () => {}, { startup: true, tutor: { runStartedAt: NOW_RUN, purged: () => {} } });
     expect(ctx.conversations.message(t.tutorMessageId)).toMatchObject({ status: 'failed' });
+  });
+});
+
+describe('the sweep of unlinked subtitle copies at startup (P-8)', () => {
+  /** A video with one subtitle attached, then taken off: its asset is linked to nothing. */
+  async function orphaned(ctx: Awaited<ReturnType<typeof library>>) {
+    const video = await add(ctx, mp4(temp('src'), 'v.mp4', 'v'));
+    const file = path.join(temp('sub'), 'a.ko.srt');
+    fs.writeFileSync(file, '1\n00:00:01,000 --> 00:00:02,000\n안녕\n');
+    const r = await attachSubtitleFiles(ctx, video.id, [file]);
+    const track = r.added[0]!;
+    ctx.subtitles.remove(video.id, track.assetId);
+    return { video, track, asset: ctx.repo.getAsset(track.assetId)! };
+  }
+
+  it('sweeps before it waits for anything, hands the assets to removeFiles, and only at startup', async () => {
+    const ctx = await library();
+    const { asset } = await orphaned(ctx);
+    const calls: string[] = [];
+    const linked = vi.spyOn(ctx.repo, 'assetsByMode').mockImplementation((mode) => { calls.push(`linked ${mode}`); return []; });
+    const removeFiles = vi.fn((assets: Array<{ id: string }>) => void calls.push(`files ${assets.map((a) => a.id).join(',')}`));
+    await runCheck(ctx, () => {}, { removeFiles });
+    expect(removeFiles).not.toHaveBeenCalled();
+    expect(ctx.repo.getAsset(asset.id)).toBeDefined();
+    calls.length = 0;
+    await runCheck(ctx, () => {}, { startup: true, removeFiles });
+    expect(calls.slice(0, 1)).toEqual([`files ${asset.id}`]);
+    expect(calls.some((c) => c.startsWith('linked'))).toBe(true);
+    expect(ctx.repo.getAsset(asset.id)).toBeUndefined();
+    expect(ctx.subtitles.cueTextCount({ sha256: asset.sha256 })).toBe(0);
+    linked.mockRestore();
+  });
+
+  it('leaves a linked subtitle alone, and records only the code when the sweep throws', async () => {
+    const ctx = await library();
+    const { video, track } = await orphaned(ctx);
+    ctx.subtitles.restore(video.id, track.assetId, { position: 0, language: 'ko' }, new Date().toISOString());
+    const removeFiles = vi.fn();
+    await runCheck(ctx, () => {}, { startup: true, removeFiles });
+    expect(removeFiles).not.toHaveBeenCalled();
+    expect(ctx.subtitles.list(video.id)).toHaveLength(1);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fake = { ...ctx, subtitles: { sweepOrphans: () => { throw new Error('secret path /home/x'); } } as never } as typeof ctx;
+    const check = await runCheck(fake, () => {}, { startup: true, removeFiles });
+    expect(check).toBe(fake.check);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('INTERNAL'));
+    expect(warn.mock.calls.flat().join(' ')).not.toContain('secret');
   });
 });
 

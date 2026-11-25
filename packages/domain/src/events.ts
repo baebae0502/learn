@@ -76,4 +76,6 @@ export interface LearnEventMap {
   'tutor:turn': TutorTurnEvent;
   /** Sessions made, renamed, deleted, restored or changed by an answer: every window reads its session lists again. */
   'sessions:changed': SessionsChanged;
+  /** A video's subtitles changed (attached, removed, brought back): the open reader and the item panel read them again. */
+  'subtitles:changed': { itemId: string };
 }

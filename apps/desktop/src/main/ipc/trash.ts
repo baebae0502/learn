@@ -15,7 +15,7 @@ export const purgeFilesSettled = (): Promise<void> => filesSettled;
  * does not wait for them — the trash view has already changed. What cannot be removed stays for the library check;
  * the log has the count only. A closed database (the app quitting) keeps every copy: nothing can be asked again.
  */
-function removeFilesAfter(ctx: LibraryContext, assets: PurgeResult['assets']): void {
+export function removeFilesAfter(ctx: LibraryContext, assets: PurgeResult['assets']): void {
   if (assets.length === 0) return;
   const inUse = (relativePath: string): boolean => !ctx.db.open || ctx.repo.managedPathInUse(relativePath);
   filesSettled = filesSettled

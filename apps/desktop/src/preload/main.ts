@@ -23,11 +23,12 @@ exposeSurface({
     translation: ['translate', 'cancel'],
     tutor: ['consent', 'agents', 'chooseAgent', 'view', 'warm', 'ask', 'stop', 'resend', 'reground'],
     sessions: ['list', 'recent', 'get', 'rename', 'delete', 'restore'],
+    subtitles: ['list', 'cues', 'pick', 'attach', 'remove', 'restore'],
     ui: ['showContextMenu', 'windowState', 'reportContext', 'confirm', 'confirmPurge', 'showShortcuts', 'openSettings', 'themeShown', 'showColumnMenu', 'reportIdle', 'stage'],
   },
   events: [
     'menuCommand', 'libraryChanged', 'windowState', 'settingsChanged', 'prefsChanged', 'nativeMenu', 'demoShortcut', 'import:progress', 'import:finished', 'item:openRequested',
-    'recovery:show', 'job:progress', 'search:progress', 'tutor:turn', 'sessions:changed',
+    'recovery:show', 'job:progress', 'search:progress', 'tutor:turn', 'sessions:changed', 'subtitles:changed',
   ],
   pathForFile: true,
 });

@@ -26,7 +26,7 @@ export const IMPORT_FILTERS: OpenDialogOptions['filters'] = [
  * it is key again (follow-up D: before, the main window kept its rings under its own ⌘O panel). Without a window the
  * panel stands alone, as before.
  */
-async function showOpen(deps: IpcDeps, event: IpcMainInvokeEvent, options: OpenDialogOptions): Promise<string[]> {
+export async function showOpen(deps: IpcDeps, event: IpcMainInvokeEvent, options: OpenDialogOptions): Promise<string[]> {
   const win = BrowserWindow.fromWebContents(event.sender);
   const res = win ? await deps.windows.asSheet(win, () => dialog.showOpenDialog(win, options)) : await dialog.showOpenDialog(options);
   return res.canceled ? [] : res.filePaths;

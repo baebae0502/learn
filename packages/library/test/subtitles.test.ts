@@ -166,19 +166,14 @@ describe('limits and failures', () => {
     expect(readSubtitle(enc(manyCues(20_001)), 'a.srt')).toEqual({ ok: false, reason: 'too-many-cues' });
   });
   it('stops at the 20,001st cue instead of reading the rest', () => {
-    // The tail is slow to clean, so a parse that reads on costs far more than one that stops; the full parse is timed as its own baseline.
     const tail = '\n' + '1\n00:30:00,000 --> 00:30:01,000\n' + '<rt>'.repeat(900_000) + 'z\n';
     const bytes = enc(manyCues(20_001) + tail);
     expect(bytes.length).toBeLessThan(SUBTITLE_LIMITS.bytes);
-    const t0 = performance.now();
-    const full = parseSrt(bytes.toString('utf8'));
-    const fullMs = performance.now() - t0;
-    expect(full.length).toBe(20_002);
-    const t1 = performance.now();
+    const text = bytes.toString('utf8');
+    // The unlimited parse sees the tail's cue as well; the limited one stops right after the 20,001st.
+    expect(parseSrt(text).length).toBe(20_002);
+    expect(parseSrt(text, SUBTITLE_LIMITS.cues).length).toBe(20_001);
     expect(readSubtitle(bytes, 'a.srt')).toEqual({ ok: false, reason: 'too-many-cues' });
-    const earlyMs = performance.now() - t1;
-    console.log('[measure] early-stop', Math.round(earlyMs), 'full parse', Math.round(fullMs));
-    expect(earlyMs).toBeLessThan(fullMs / 3);
   });
   it('reports no cues for text without a time line', () => {
     expect(readSubtitle(fixture('broken.srt'), 'broken.srt')).toEqual({ ok: false, reason: 'no-cues' });

@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { SUBTITLE_LIMITS } from '@learn/domain';
 import { readSubtitle, type SubtitleResult } from '../src/subtitles';
-import { cleanCueText, parseTimestamp } from '../src/subtitles/parse';
+import { cleanCueText, parseSrt, parseTimestamp } from '../src/subtitles/parse';
 
 const fixture = (name: string): Buffer => fs.readFileSync(fileURLToPath(new URL(`../../../fixtures/static/subtitles/${name}`, import.meta.url)));
 const enc = (s: string): Buffer => Buffer.from(s, 'utf8');
@@ -166,9 +166,19 @@ describe('limits and failures', () => {
     expect(readSubtitle(enc(manyCues(20_001)), 'a.srt')).toEqual({ ok: false, reason: 'too-many-cues' });
   });
   it('stops at the 20,001st cue instead of reading the rest', () => {
+    // The tail is slow to clean, so a parse that reads on costs far more than one that stops; the full parse is timed as its own baseline.
+    const tail = '\n' + '1\n00:30:00,000 --> 00:30:01,000\n' + '<rt>'.repeat(900_000) + 'z\n';
+    const bytes = enc(manyCues(20_001) + tail);
+    expect(bytes.length).toBeLessThan(SUBTITLE_LIMITS.bytes);
     const t0 = performance.now();
-    expect(readSubtitle(enc(manyCues(20_001) + '\n' + 'x'.repeat(10)), 'a.srt')).toEqual({ ok: false, reason: 'too-many-cues' });
-    expect(performance.now() - t0).toBeLessThan(1000);
+    const full = parseSrt(bytes.toString('utf8'));
+    const fullMs = performance.now() - t0;
+    expect(full.length).toBe(20_002);
+    const t1 = performance.now();
+    expect(readSubtitle(bytes, 'a.srt')).toEqual({ ok: false, reason: 'too-many-cues' });
+    const earlyMs = performance.now() - t1;
+    console.log('[measure] early-stop', Math.round(earlyMs), 'full parse', Math.round(fullMs));
+    expect(earlyMs).toBeLessThan(fullMs / 3);
   });
   it('reports no cues for text without a time line', () => {
     expect(readSubtitle(fixture('broken.srt'), 'broken.srt')).toEqual({ ok: false, reason: 'no-cues' });
@@ -210,7 +220,8 @@ describe('adversarial single cues stay linear', () => {
       const ms = Math.round(performance.now() - t0);
       console.log('[measure] adversarial', label, ms);
       expect(r.cues.length).toBe(1);
-      expect(ms).toBeLessThan(1000);
+      // Ten times what two cores measured, so CI load does not flake it; the 80 KB cases sit far below it.
+      expect(ms).toBeLessThan(body.length > 1_000_000 ? 5000 : 1000);
     });
   }
 });

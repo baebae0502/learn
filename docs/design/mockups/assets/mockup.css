@@ -958,10 +958,12 @@ h2,
 .table-row.is-hover {
   background: var(--fill-hover);
 }
-.table-row.is-selected {
-  background: var(--fill-selected);
+.table-row.is-selected,
+.table-row.is-selected:nth-child(even of .table-row) {
+  background: var(--fill-selected); /* the zebra stripe (0,3,0) must not win over a selected row */
 }
-.table-row.is-selected.is-focused {
+.table-row.is-selected.is-focused,
+.table-row.is-selected.is-focused:nth-child(even of .table-row) {
   background: var(--accent);
 }
 .table-row.is-selected.is-focused .td,
@@ -1955,8 +1957,8 @@ h2,
 }
 .scrubber .hover-pos {
   position: absolute;
-  top: -4px;
-  bottom: -4px;
+  top: 0;
+  bottom: 0; /* inside the 16 px hit area */
   width: 2px;
   margin-left: -1px;
   border-radius: 1px;
@@ -2028,6 +2030,8 @@ h2,
   background: var(--fill-pressed);
 }
 .speed-btn {
+  min-width: 44px; /* local: holds "1.75×" so the button's left edge stays put when the speed changes */
+  justify-content: center;
   height: 24px;
   padding: 0 var(--space-8);
   border-radius: var(--radius-sm);
@@ -2156,6 +2160,7 @@ h2,
 }
 .cue mark.is-current {
   background: var(--find-match-current);
+  box-shadow: 0 0 0 1.5px var(--accent); /* the current match's accent edge, as the PDF's .find-hit.current */
 }
 .transcript-foot {
   flex: none;
@@ -4647,10 +4652,45 @@ h2,
   position: relative;
   width: 100vw;
   height: 100vh;
-  display: flex;
-  flex-direction: column;
   background: var(--video-stage);
   overflow: hidden;
+}
+.stage-window > .video-stage {
+  position: absolute;
+  inset: 0; /* the stage is the whole window: the video box does not move when the controls hide */
+}
+.stage-window .subtitle {
+  /* The controls lie over the stage's bottom: while they show, the subtitle stands 16 above them; idle it returns to 6 %. */
+  bottom: max(6%, calc(var(--ctl-h) + var(--space-16) - var(--lb)));
+}
+.stage-window .video-controls::before {
+  /* the scrim: the bar's dark fades out upward over the picture */
+  content: '';
+  position: absolute;
+  inset: auto 0 100% 0;
+  height: 48px; /* local: scrim height */
+  background: linear-gradient(to top, oklch(0% 0 0 / 0.5), transparent);
+  pointer-events: none;
+}
+.stage-window.is-idle .subtitle {
+  bottom: 6%;
+}
+.stage-window .video-controls {
+  /* A fixed dark surface over the picture (the stage is dark in both themes), with a scrim: colours are local, not theme tokens. */
+  position: absolute;
+  inset: auto 0 0 0;
+  border-top: 0;
+  background: oklch(0% 0 0 / 0.86);
+  --text-primary: oklch(97% 0 0); /* local: fixed on the dark bar */
+  --text-secondary: oklch(80% 0.006 250); /* local */
+  --text-tertiary: oklch(68% 0.006 250); /* local */
+  --bg-track: oklch(100% 0 0 / 0.22); /* local */
+  --border: oklch(100% 0 0 / 0.3); /* local */
+  --fill-pressed: oklch(100% 0 0 / 0.16); /* local */
+  --bg-window: oklch(14% 0.003 250); /* local: the knob ring */
+  --meter: oklch(72% 0.11 190); /* local: = the dark theme's meter */
+  --focus: var(--image-focus-dark);
+  color: var(--text-primary);
 }
 .stage-window.is-idle {
   cursor: none;
@@ -4663,8 +4703,47 @@ h2,
   width: 360px; /* local: two short lines; the window overlay's 520 holds the two mode cards */
 }
 /* Reader toasts rise above the controls so they do not cover the buttons. */
-.toasts.above-controls {
-  bottom: 96px; /* local: the controls bar (about 76) plus 16 */
+/* The reader's toast stands away from the controls (it stays until closed): over their right side, or in the stage's top right.
+   Both are drawn for the owner's decision (M8a); the recommended one is the stage's top right. */
+.toasts.at-controls {
+  bottom: calc(var(--ctl-h, 69px) + var(--space-16)); /* local: the controls bar's height, 16 above it */
+}
+.toasts.at-stage-top {
+  top: calc(var(--toolbar-height) + var(--pane-header-height) + var(--space-16));
+  bottom: auto;
+}
+.subtitle.is-lifted {
+  bottom: max(6%, calc(var(--lift) - var(--lb, 0px)));
+}
+.sim-note.top {
+  bottom: auto;
+  top: calc(var(--toolbar-height) + var(--space-8));
+}
+.loading.on-stage {
+  color: oklch(85% 0.004 250); /* local: the always-dark stage */
+}
+.loading.on-stage .spinner {
+  border-color: oklch(100% 0 0 / 0.18);
+  border-top-color: oklch(72% 0.11 190);
+  border-right-color: oklch(72% 0.11 190);
+}
+.video-stage.is-focus::after {
+  /* The stage's keyboard ring: the always-dark stage uses the dark-surface ring (--image-focus-dark), all four sides, inside. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 var(--focus-ring-width) var(--image-focus-dark);
+}
+.scrubber.is-focus .knob {
+  box-shadow: 0 0 0 2px var(--bg-window), 0 0 0 4px var(--focus);
+}
+.menu.menu-narrow {
+  min-width: 0; /* the speed menu is 112 wide: seven short rows */
+}
+.drop-overlay.after-sidebar {
+  inset: var(--toolbar-height) 0 0 var(--sidebar-w); /* right of the sidebar, under the tab strip */
 }
 .toast .t-fail {
   display: flex;
@@ -4682,6 +4761,7 @@ h2,
   color: var(--text-primary);
 }
 .toast .t-next {
+  text-wrap: pretty;
   display: block;
   margin-top: var(--space-4);
   color: var(--text-secondary);

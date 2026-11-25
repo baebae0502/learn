@@ -254,7 +254,7 @@ window.Mockup = (() => {
     '.reading-line, .native-note, ' +
     // M7c
     '.match-status, .match-more';
-  const COMPOUNDS = ['쪽 번호', '디스크 공간', '필기와 태그', '지운 것', '새 위치', 'G 단백질', '새 컬렉션', '어느 쪽', '원본 파일'];
+  const COMPOUNDS = ['쪽 번호', '디스크 공간', '필기와 태그', '지운 것', '새 위치', 'G 단백질', '새 컬렉션', '어느 쪽', '원본 파일', '자막 파일', '현재 위치', '본문 일치', '끌어 놓'];
   function copyLint() {
     const issues = [];
     for (const el of document.querySelectorAll(COPY)) {

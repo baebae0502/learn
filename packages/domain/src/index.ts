@@ -25,3 +25,4 @@ export * from './tag-colors';
 export * from './translation';
 export * from './tutor';
 export * from './web-annotation';
+export * from './subtitles';

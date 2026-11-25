@@ -1,0 +1,66 @@
+WEBVTT
+Language: en
+
+NOTE
+Written for this repository; the sentences pair with lecture-60s.ko.srt.
+
+STYLE
+::cue { color: white }
+
+cue-1
+00:00:00.000 --> 00:00:03.500 position:10% align:start
+The cell membrane controls what goes in and out.
+
+00:00:04.000 --> 00:00:08.000
+The phospholipid bilayer has water-loving heads
+and water-avoiding tails.
+
+cue-3
+00:00:07.000 --> 00:00:10.500
+Proteins are embedded in the bilayer or sit on its surface.
+
+00:00:11.000 --> 00:00:15.000
+<i>Diffusion</i> uses no energy &amp; follows the concentration gradient.
+
+cue-5
+00:00:15.500 --> 00:00:18.500
+Glucose enters through a carrier protein.
+
+00:00:19.000 --> 00:00:22.500
+The calcium pump moves calcium ions out of the cell.
+
+cue-7
+00:00:23.000 --> 00:00:26.500
+This process needs ATP.
+
+00:00:27.000 --> 00:00:30.000
+Osmosis is water crossing a semipermeable membrane.
+
+cue-9
+00:00:30.500 --> 00:00:34.000
+If the inside is more concentrated, water flows in.
+
+00:00:34.500 --> 00:00:38.000
+When the calcium pump stops, calcium inside the cell rises.
+
+cue-11
+00:00:38.500 --> 00:00:42.000
+Active transport moves substances against the concentration gradient.
+
+00:00:42.500 --> 00:00:46.000
+Rare syllables should display unchanged on this screen too.
+
+cue-13
+00:00:46.500 --> 00:00:50.000
+A receptor binds a signal molecule.
+
+00:00:50.500 --> 00:00:54.000
+Binding passes the signal on inside the cell.
+
+cue-15
+00:00:54.500 --> 00:00:57.500
+This signal decides how the cell responds.
+
+00:00:58.000 --> 00:01:00.000
+That is all for today's lecture.
+

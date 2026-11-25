@@ -12,3 +12,4 @@ export * from './purge';
 export * from './edited-copies';
 export * from './check';
 export * from './image-size';
+export { readSubtitle, type SubtitleResult } from './subtitles';

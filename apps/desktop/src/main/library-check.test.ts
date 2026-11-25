@@ -290,6 +290,25 @@ describe('the check sheet (spec 7.1–7.2, P-17, P-26)', () => {
     expect(rowOf(p, 'corrupt')).toMatchObject({ count: 1, bytes: 42, entries: [{ itemId: null, label: 'sample', path: null }] });
     expect(rowOf(p, 'orphanEdits')).toMatchObject({ count: 1, bytes: 31, entries: [{ itemId: null, label: EDIT, path: null }] });
   });
+  it('a corrupt copy whose sha is a video\'s subtitle names that video', async () => {
+    const ctx = await library();
+    const sha = 'd'.repeat(64);
+    const now = '2026-11-10T10:00:00.000Z';
+    const base = { storageMode: 'managed', externalPath: null, availability: 'available', createdAt: now, checkedAt: now, size: 9 } as const;
+    ctx.repo.insertImported({
+      item: { id: '11111111-1111-4111-8111-111111111111', type: 'video', title: '강의 영상', createdAt: now },
+      asset: { ...base, id: 'a1', sha256: 'e'.repeat(64), relativePath: `assets/ee/${'e'.repeat(64)}`, originalName: 'v.mp4', mime: 'video/mp4' },
+      assetIsNew: true, revision: { id: 'r1', createdAt: now }, job: null,
+    });
+    ctx.subtitles.attach({
+      itemId: '11111111-1111-4111-8111-111111111111',
+      asset: { ...base, id: 'a2', sha256: sha, relativePath: `assets/dd/${sha}`, originalName: 'v.ko.srt', mime: 'application/x-subrip' },
+      assetIsNew: true, revision: { id: 'r2', createdAt: now }, language: 'ko', cues: [{ startMs: 0, endMs: 500, text: '안녕' }], createdAt: now,
+    });
+    put(path.join(ctx.layout.stagingDir, `corrupt-${sha}-44444444-4444-4444-8444-444444444444`), 42);
+    const p = await shown(sheets(ctx));
+    expect(rowOf(p, 'corrupt')).toMatchObject({ count: 1, entries: [{ itemId: null, label: '강의 영상', path: null }] });
+  });
   it('임시 파일 정리: the .part files go — not one an import is writing, not .DS_Store, not a corrupt copy — and the row turns ok in place', async () => {
     const ctx = await library();
     const corrupt = `corrupt-${'c'.repeat(64)}-1`;

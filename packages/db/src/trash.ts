@@ -145,7 +145,7 @@ interface AssetFacts { id: string; sha256: string; storage_mode: StorageMode; re
  * both hang off a revision), revisions and rows go, and with the last asset of a sha its jobs. A managed path that another
  * asset row still holds keeps its file (relativePath null).
  */
-function removeUnusedAssets(db: Db, assetIds: ReadonlySet<string>): PurgedAsset[] {
+export function removeUnusedAssets(db: Db, assetIds: ReadonlySet<string>): PurgedAsset[] {
   const inUse = db.prepare('SELECT 1 FROM item_assets WHERE asset_id = ? LIMIT 1');
   const factsOf = db.prepare('SELECT id, sha256, storage_mode, relative_path, size FROM assets WHERE id = ?');
   const delAnnotations = db.prepare(`DELETE FROM annotations WHERE anchor_id IN
@@ -172,6 +172,7 @@ function removeUnusedAssets(db: Db, assetIds: ReadonlySet<string>): PurgedAsset[
     const json = JSON.stringify(shas);
     db.prepare(`DELETE FROM jobs WHERE substr(dedupe_key, instr(dedupe_key, ':') + 1, 64) IN (SELECT value FROM json_each(?))`).run(json);
     db.prepare('DELETE FROM page_texts WHERE sha256 IN (SELECT value FROM json_each(?))').run(json); // its triggers drop the index rows
+    db.prepare('DELETE FROM cue_texts WHERE sha256 IN (SELECT value FROM json_each(?))').run(json);
   }
   const paths = gone.flatMap((a) => (a.storage_mode === 'managed' && a.relative_path !== null ? [a.relative_path] : []));
   const held = new Set(

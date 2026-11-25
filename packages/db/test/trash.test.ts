@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { newId } from '@learn/domain';
-import { CollectionsRepository, LibraryRepository, TagsRepository, TextRepository, readOrganizeSnapshot, trashCount, type Db } from '../src/index';
+import { CollectionsRepository, LibraryRepository, SubtitlesRepository, TagsRepository, TextRepository, readOrganizeSnapshot, trashCount, type Db } from '../src/index';
 import { freshDb, seedItem } from './fixtures';
 
 let db: Db;
@@ -266,5 +266,29 @@ describe('page texts at a purge', () => {
     expect(pageCount('a'.repeat(64))).toBe(0);
     expect(count(`SELECT count(*) AS n FROM page_texts_fts WHERE page_texts_fts MATCH '"현미경"'`)).toBe(0);
     expect(new TextRepository(db).pageCount('a'.repeat(64))).toBe(0);
+  });
+});
+
+describe('cue texts at a purge', () => {
+  it('removes the cue texts and their index rows with the last asset of a sha only', () => {
+    const subs = new SubtitlesRepository(db);
+    const v1 = seedItem(db, { type: 'video' });
+    const v2 = seedItem(db, { type: 'video' });
+    const now = '2026-10-31T01:00:00.000Z';
+    const sha = 'c'.repeat(64);
+    const asset = { id: newId(), sha256: sha, storageMode: 'managed', relativePath: `assets/cc/${sha}`, externalPath: null, originalName: 's.srt', mime: 'application/x-subrip', size: 5, availability: 'available', createdAt: now, checkedAt: now } as const;
+    const cue = [{ startMs: 0, endMs: 900, text: '현미경 사진' }];
+    subs.attach({ itemId: v1.itemId, asset, assetIsNew: true, revision: { id: newId(), createdAt: now }, language: null, cues: cue, createdAt: now });
+    subs.attach({ itemId: v2.itemId, asset, assetIsNew: false, revision: null, language: null, cues: cue, createdAt: now });
+    const fts = () => count(`SELECT count(*) AS n FROM cue_texts_fts WHERE cue_texts_fts MATCH '"현미경"'`);
+    expect(fts()).toBe(1); // positive control
+
+    repo.trash([v1.itemId]);
+    repo.purge({ itemIds: [v1.itemId], collectionIds: [] });
+    expect(subs.hasCues(sha)).toBe(true);
+    repo.trash([v2.itemId]);
+    repo.purge({ itemIds: [v2.itemId], collectionIds: [] });
+    expect(subs.hasCues(sha)).toBe(false);
+    expect(fts()).toBe(0);
   });
 });

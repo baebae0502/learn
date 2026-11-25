@@ -115,7 +115,7 @@ export class Importer {
     const { repo } = this.deps;
     const hooks = this.hooks;
     const existing = repo.findAssetsBySha(sha256);
-    const existingItemId = existing.map((a) => repo.itemIdsForAsset(a.id)[0]).find((id) => id !== undefined);
+    const existingItemId = existing.map((a) => repo.itemIdsForAsset(a.id, 'original')[0]).find((id) => id !== undefined);
     if (existingItemId && !opts.allowDuplicate) return { status: 'duplicate', path: src, existingItemId };
 
     // The size is read before the commit from the first MiB only; a file it cannot read is imported without one.

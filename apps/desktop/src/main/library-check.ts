@@ -145,7 +145,7 @@ function itemEntries(repo: LibraryRepository, itemIds: readonly string[], withPa
 function corruptEntries(repo: LibraryRepository, files: readonly string[]): CheckEntry[] {
   const sha = /^corrupt-([0-9a-f]{64})-/.exec(files[0] ?? '')?.[1];
   if (sha === undefined) return [];
-  const itemId = repo.findAssetsBySha(sha).flatMap((a) => repo.itemIdsForAsset(a.id))[0];
+  const itemId = repo.findAssetsBySha(sha).flatMap((a) => [...repo.itemIdsForAsset(a.id, 'original'), ...repo.itemIdsForAsset(a.id, 'subtitle')])[0];
   const title = itemId === undefined ? undefined : repo.getItem(itemId)?.title;
   return title === undefined ? [] : [{ itemId: null, label: title, path: null }];
 }

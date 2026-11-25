@@ -49,3 +49,25 @@ export function languageTail(stem: string): { base: string; language: string | n
   const region = rest.map((r) => (/^[A-Za-z]{2}$/.test(r) ? r.toUpperCase() : r));
   return { base: stem.slice(0, dot), language: [lang, ...region].join('-') };
 }
+
+export interface SubtitleTrack {
+  assetId: string;
+  language: string | null;
+  position: number;
+  originalName: string;
+  cueCount: number;
+}
+export interface RemovedTrack {
+  position: number;
+  language: string | null;
+}
+export type AttachFailureReason = SubtitleFailure | 'not-subtitle' | 'unpaired' | 'video-failed' | 'io';
+export interface AttachFailure {
+  name: string;
+  reason: AttachFailureReason;
+}
+export interface AttachResult {
+  added: SubtitleTrack[];
+  already: string[];
+  failed: AttachFailure[];
+}

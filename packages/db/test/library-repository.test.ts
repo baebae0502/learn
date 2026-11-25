@@ -392,7 +392,7 @@ describe('LibraryRepository: organize fields, metadata, trash, duplicates', () =
     cols.addItems(cols.create({ name: 'c' }).id, [itemId]);
     new ReadingRepository(db).save({ itemId, revisionId, locator: { kind: 'pdf', pageIndex: 0 }, progress: null });
     expect(repo.counts()).toEqual({
-      items: 1, assets: 1, revisions: 1, collections: 1, collectionItems: 1, tags: 1, itemTags: 1, readingPositions: 1, trashedItems: 0, trashedCollections: 0, conversations: 0, messages: 0, messageSources: 0,
+      items: 1, assets: 1, revisions: 1, collections: 1, collectionItems: 1, tags: 1, itemTags: 1, readingPositions: 1, trashedItems: 0, trashedCollections: 0, conversations: 0, messages: 0, messageSources: 0, subtitleTracks: 0,
     });
   });
 

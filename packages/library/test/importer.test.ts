@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CollectionsRepository, LibraryRepository, migrate, openDatabase, type Db } from '@learn/db';
+import { CollectionsRepository, LibraryRepository, SubtitlesRepository, migrate, openDatabase, type Db } from '@learn/db';
 import { Importer, ensureLayout, libraryLayout, managedRelativePath, resolveAssetPath, sha256File, type ImportHooks, type LibraryLayout } from '../src/index';
 import { cleanupTemp, tempDir, writeMp4, writePdf } from './helpers';
 import { ftyp, png } from './image-bytes';
@@ -184,6 +184,30 @@ describe('duplicates (AC02)', () => {
     const again = await importer.importOne(src, { mode: 'managed', allowDuplicate: true });
     expect(again.status).toBe('imported');
     expect(repo.counts()).toMatchObject({ items: 2, assets: 1, revisions: 1 });
+  });
+
+  it('a sha that only a subtitle link uses is not a duplicate of a new original', async () => {
+    const { repo, db, importer } = setup();
+    const dir = tempDir('src');
+    const src = writePdf(dir, 'same bytes.pdf', 'also a subtitle');
+    const sha = await sha256File(src);
+    const now = new Date().toISOString();
+    const base = { storageMode: 'managed', externalPath: null, availability: 'available', createdAt: now, checkedAt: now, size: 9 } as const;
+    repo.insertImported({
+      item: { id: 'v1', type: 'video', title: 'lecture', createdAt: now },
+      asset: { ...base, id: 'va', sha256: 'f'.repeat(64), relativePath: `assets/ff/${'f'.repeat(64)}`, originalName: 'v.mp4', mime: 'video/mp4' },
+      assetIsNew: true, revision: { id: 'vr', createdAt: now }, job: null,
+    });
+    new SubtitlesRepository(db).attach({
+      itemId: 'v1',
+      asset: { ...base, id: 'sa', sha256: sha, relativePath: managedRelativePath(sha), originalName: 'x.srt', mime: 'application/x-subrip' },
+      assetIsNew: true, revision: { id: 'sr', createdAt: now }, language: null, cues: [{ startMs: 0, endMs: 1, text: 'a' }], createdAt: now,
+    });
+    // Positive control: a second original of the same bytes is a duplicate only once an original link exists.
+    const out = await importer.importOne(src, { mode: 'managed' });
+    expect(out.status).toBe('imported');
+    expect((await importer.importOne(src, { mode: 'managed' })).status).toBe('duplicate');
+    expect(repo.counts().items).toBe(2);
   });
 
   it('detects duplicates by content even under a different name', async () => {

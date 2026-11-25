@@ -148,6 +148,7 @@ const BackupManifestSchema = z.object({
     conversations: z.number().int().nonnegative().optional(),
     messages: z.number().int().nonnegative().optional(),
     messageSources: z.number().int().nonnegative().optional(),
+    subtitleTracks: z.number().int().nonnegative().optional(),
   }),
   databaseSha256: z.string().regex(/^[0-9a-f]{64}$/).optional(),
   assets: z.array(BackupAssetEntrySchema),

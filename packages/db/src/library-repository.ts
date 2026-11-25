@@ -55,6 +55,7 @@ export interface LibraryCounts {
   conversations: number;
   messages: number;
   messageSources: number;
+  subtitleTracks: number;
 }
 
 /** An item whose original file is a given asset (a restore names the items its problems touch, spec 9.3). */
@@ -167,11 +168,12 @@ export class LibraryRepository {
     return (this.db.prepare('SELECT * FROM assets WHERE storage_mode = ? ORDER BY created_at, rowid').all(mode) as AssetDbRow[]).map(toAsset);
   }
 
-  itemIdsForAsset(assetId: string): string[] {
+  /** `role` narrows to one kind of link: a duplicate check asks for 'original' so a subtitle file's sha is not a duplicate. */
+  itemIdsForAsset(assetId: string, role?: 'original' | 'subtitle' | 'derived'): string[] {
     const rows = this.db
       .prepare(`SELECT i.id FROM items i JOIN item_assets ia ON ia.item_id = i.id
-                WHERE ia.asset_id = ? AND i.deleted_at IS NULL ORDER BY i.created_at, i.rowid`)
-      .all(assetId) as { id: string }[];
+                WHERE ia.asset_id = ? AND i.deleted_at IS NULL AND (? IS NULL OR ia.role = ?) ORDER BY i.created_at, i.rowid`)
+      .all(assetId, role ?? null, role ?? null) as { id: string }[];
     return rows.map((r) => r.id);
   }
 
@@ -502,6 +504,7 @@ export class LibraryRepository {
       messages: n('SELECT COUNT(*) AS n FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE deleted_at IS NULL)'),
       messageSources: n(`SELECT COUNT(*) AS n FROM message_sources WHERE message_id IN
         (SELECT m.id FROM messages m JOIN conversations c ON c.id = m.conversation_id WHERE c.deleted_at IS NULL)`),
+      subtitleTracks: n('SELECT COUNT(*) AS n FROM subtitle_tracks'),
     };
   }
 }

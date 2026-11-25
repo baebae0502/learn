@@ -40,7 +40,7 @@ describe('migrate', () => {
   it('creates the latest schema on an empty database', () => {
     const { db, file } = tempDb();
     expect(migrate(db, { dbFile: file })).toEqual({ from: 0, to: LATEST_SCHEMA_VERSION, backupFile: null });
-    expect(LATEST_SCHEMA_VERSION).toBe(5);
+    expect(LATEST_SCHEMA_VERSION).toBe(6);
     expect(tables(db)).toContain('page_texts');
     expect(tables(db)).toContain('reading_positions');
     expect(tables(db)).toContain('translation_cache');
@@ -373,6 +373,7 @@ describe('migration v4 (images-text)', () => {
 
 describe('migration v5 (tutor)', () => {
   const v4 = MIGRATIONS.filter((m) => m.version <= 4);
+  const v5 = MIGRATIONS.filter((m) => m.version <= 5);
   const rows = (db: Db, table: string) => db.prepare(`SELECT rowid AS _rowid, * FROM ${table} ORDER BY rowid`).all() as Record<string, unknown>[];
   const KEPT = ['items', 'assets', 'item_assets', 'source_revisions', 'collections', 'collection_items', 'tags', 'item_tags', 'reading_positions', 'anchors', 'annotations', 'jobs', 'page_texts'];
   const TUTOR_TABLES = ['conversations', 'messages', 'message_sources', 'conversation_context', 'tool_reads'];
@@ -401,7 +402,7 @@ describe('migration v5 (tutor)', () => {
     migrate(db, { dbFile: file, migrations: v4 });
     seedV4(db);
     const before = Object.fromEntries(KEPT.map((t) => [t, rows(db, t)]));
-    expect(migrate(db, { dbFile: file })).toEqual({ from: 4, to: 5, backupFile: `${file}.pre-v5.bak` });
+    expect(migrate(db, { dbFile: file, migrations: v5 })).toEqual({ from: 4, to: 5, backupFile: `${file}.pre-v5.bak` });
     for (const t of KEPT) expect(rows(db, t), t).toEqual(before[t]);
     for (const t of TUTOR_TABLES) expect(rows(db, t), t).toEqual([]);
     expect(db.pragma('foreign_key_check')).toEqual([]);
@@ -519,5 +520,158 @@ describe('migration v5 (tutor)', () => {
     console.log('[measure] migrate-005', ms);
     expect(ms).toBeLessThan(1000);
     expect(db.prepare('SELECT COUNT(*) FROM anchors').pluck().get()).toBe(10_000);
+  });
+});
+
+describe('migration v6 (subtitles)', () => {
+  const v5 = MIGRATIONS.filter((m) => m.version <= 5);
+  const snapshotRows = (db: Db, table: string) => db.prepare(`SELECT rowid AS _rowid, * FROM ${table} ORDER BY rowid`).all() as Record<string, unknown>[];
+  const V5_TABLES = (db: Db) => tables(db).filter((t) => !t.startsWith('sqlite_') && !t.startsWith('page_texts_fts') && t !== 'schema_migrations');
+  const SHA = 'c'.repeat(64);
+
+  function attachSubtitle(db: Db, itemId: string, n: number): string {
+    const assetId = newId();
+    const sha = String(n).repeat(64);
+    db.prepare(`INSERT INTO assets (id, sha256, storage_mode, relative_path, external_path, original_name, mime, size, availability, created_at, checked_at)
+                VALUES (?, ?, 'managed', ?, NULL, ?, 'application/x-subrip', 10, 'available', 'now', 'now')`)
+      .run(assetId, sha, `assets/${sha.slice(0, 2)}/${sha}`, `s${n}.srt`);
+    db.prepare(`INSERT INTO item_assets (item_id, asset_id, role) VALUES (?, ?, 'subtitle')`).run(itemId, assetId);
+    return assetId;
+  }
+  function seedV5(db: Db) {
+    const repo = new LibraryRepository(db);
+    const pdf = seedItem(repo, 1);
+    const video = seedItem(repo, 2);
+    db.prepare(`UPDATE items SET type = 'video' WHERE id = ?`).run(video.itemId);
+    const image = seedItem(repo, 3);
+    db.prepare(`UPDATE items SET type = 'image' WHERE id = ?`).run(image.itemId);
+    const trashed = seedItem(repo, 4);
+    db.prepare(`UPDATE items SET deleted_at = '2026-11-01T00:00:00.000Z' WHERE id = ?`).run(trashed.itemId);
+    db.prepare(`INSERT INTO page_texts (sha256, page_index, text) VALUES (?, 0, '현미경 관찰 기록')`).run('1'.repeat(64));
+    const anchor = db.prepare(`INSERT INTO anchors (id, revision_id, kind, locator_json, quote, schema_version, precision, text_json) VALUES (?, ?, 'pdf', ?, 'q', 2, ?, NULL)`);
+    for (const [id, p] of [['a1', 0], ['a2', 1]] as const) {
+      anchor.run(id, pdf.revisionId, JSON.stringify({ kind: 'pdf', revisionId: pdf.revisionId, precision: 'page', pageIndex: p }), 'page');
+    }
+    db.prepare(`INSERT INTO conversations (id, item_id, agent, created_at, updated_at) VALUES ('c1', ?, 'claude', 'now', 'now')`).run(pdf.itemId);
+    db.prepare(`INSERT INTO messages (id, conversation_id, seq, role, kind, text, status, agent, created_at) VALUES ('m1', 'c1', 0, 'tutor', 'answer', 't', 'complete', 'claude', 'now')`).run();
+    db.prepare(`INSERT INTO message_sources (message_id, role, ordinal, anchor_id, page_index, label) VALUES ('m1', 'cited', 0, 'a1', 0, '1쪽')`).run();
+    db.prepare(`INSERT INTO conversation_context (conversation_id, anchor_id, role, created_at) VALUES ('c1', 'a2', 'opened_from', 'now')`).run();
+    db.prepare(`INSERT INTO tool_reads (message_id, seq, tool, outcome, revision_id, page_from, page_to, ms, created_at) VALUES ('m1', 0, 'read_pages', 'ok', ?, 0, 0, 1, 'now')`).run(pdf.revisionId);
+    const subtitleAsset = attachSubtitle(db, video.itemId, 5);
+    return { pdf, video, subtitleAsset };
+  }
+
+  it('upgrades a real v5 library: every row and rowid kept, foreign keys whole and on, the subtitle tables empty, a v5 snapshot', () => {
+    const { db, file } = tempDb();
+    migrate(db, { dbFile: file, migrations: v5 });
+    seedV5(db);
+    const names = V5_TABLES(db);
+    const before = Object.fromEntries(names.map((t) => [t, snapshotRows(db, t)]));
+    expect(migrate(db, { dbFile: file })).toEqual({ from: 5, to: 6, backupFile: `${file}.pre-v6.bak` });
+    for (const t of names) expect(snapshotRows(db, t), t).toEqual(before[t]);
+    expect(before.item_assets).toHaveLength(5);
+    expect(before.conversations).toHaveLength(1);
+    expect(db.pragma('foreign_key_check')).toEqual([]);
+    expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
+    expect(tables(db)).toEqual(expect.arrayContaining(['subtitle_tracks', 'cue_texts', 'cue_texts_fts']));
+    expect(rows(db, 'subtitle_tracks', 'cue_texts')).toEqual([0, 0]);
+    const indexes = db.prepare(`SELECT name FROM sqlite_master WHERE type = 'index'`).pluck().all() as string[];
+    expect(indexes).toEqual(expect.arrayContaining(['subtitle_tracks_asset', 'cue_texts_time']));
+    const triggers = db.prepare(`SELECT name FROM sqlite_master WHERE type = 'trigger'`).pluck().all() as string[];
+    expect(triggers).toEqual(expect.arrayContaining(['cue_texts_ai', 'cue_texts_ad', 'cue_texts_au']));
+    const snap = openDatabase(`${file}.pre-v6.bak`);
+    dbs.push(snap);
+    expect(currentVersion(snap)).toBe(5);
+  });
+
+  it('the cue triggers index, update and delete', () => {
+    const { db } = tempDb();
+    migrate(db, { dbFile: null });
+    // The trigram index needs three characters or more per term, so the queries are phrases.
+    const hits = (q: string) => db.prepare('SELECT rowid FROM cue_texts_fts WHERE cue_texts_fts MATCH ?').all(`"${q}"`);
+    db.prepare(`INSERT INTO cue_texts (sha256, cue_index, start_ms, end_ms, text) VALUES (?, 0, 0, 1000, '칼슘 이온 농도')`).run(SHA);
+    expect(hits('칼슘 이온')).toHaveLength(1);
+    db.prepare('UPDATE cue_texts SET text = ?').run('나트륨 이온 농도');
+    expect(hits('칼슘 이온')).toHaveLength(0);
+    expect(hits('나트륨 이')).toHaveLength(1);
+    db.prepare('DELETE FROM cue_texts').run();
+    expect(hits('나트륨 이')).toHaveLength(0);
+  });
+
+  it('a track follows its subtitle link, and only a subtitle link can hold one', () => {
+    const { db } = tempDb();
+    migrate(db, { dbFile: null });
+    const repo = new LibraryRepository(db);
+    const track = db.prepare(`INSERT INTO subtitle_tracks (item_id, asset_id, language, position, created_at) VALUES (?, ?, ?, 0, 'now')`);
+    const a = seedItem(repo, 1);
+    const subA = attachSubtitle(db, a.itemId, 5);
+    track.run(a.itemId, subA, 'ko'); // positive control before the rejections
+    const originalAsset = db.prepare(`SELECT asset_id FROM item_assets WHERE item_id = ? AND role = 'original'`).pluck().get(a.itemId) as string;
+    expect(() => track.run(a.itemId, originalAsset, 'ko')).toThrow(/FOREIGN KEY/);
+    expect(rows(db, 'subtitle_tracks')).toEqual([1]);
+
+    db.prepare(`DELETE FROM item_assets WHERE item_id = ? AND asset_id = ?`).run(a.itemId, subA);
+    expect(rows(db, 'subtitle_tracks')).toEqual([0]);
+
+    const b = seedItem(repo, 2);
+    track.run(b.itemId, attachSubtitle(db, b.itemId, 6), null);
+    expect(rows(db, 'subtitle_tracks')).toEqual([1]);
+    db.prepare('DELETE FROM items WHERE id = ?').run(b.itemId);
+    expect(rows(db, 'subtitle_tracks')).toEqual([0]);
+  });
+
+  it('the tables hold their rules', () => {
+    const { db } = tempDb();
+    migrate(db, { dbFile: null });
+    const repo = new LibraryRepository(db);
+    const a = seedItem(repo, 1);
+    const sub = attachSubtitle(db, a.itemId, 5);
+    const track = (role: string, language: string | null, position = 0) =>
+      db.prepare(`INSERT INTO subtitle_tracks (item_id, asset_id, role, language, position, created_at) VALUES (?, ?, ?, ?, ?, 'now')`).run(a.itemId, sub, role, language, position);
+    expect(() => track('original', 'ko')).toThrow(/CHECK/);
+    expect(() => track('subtitle', 'k')).toThrow(/CHECK/);
+    expect(() => track('subtitle', 'k'.repeat(36))).toThrow(/CHECK/);
+    expect(() => track('subtitle', 'ko', -1)).toThrow(/CHECK/);
+    track('subtitle', 'k'.repeat(35)); // the longest language the check allows
+    expect(() => track('subtitle', 'ko')).toThrow(/UNIQUE/);
+    const cue = (sha: string, i: number, start: number, end: number) =>
+      db.prepare(`INSERT INTO cue_texts (sha256, cue_index, start_ms, end_ms, text) VALUES (?, ?, ?, ?, 't')`).run(sha, i, start, end);
+    cue(SHA, 0, 0, 1);
+    expect(() => cue(SHA, 1, 5, 5)).toThrow(/CHECK/);
+    expect(() => cue(SHA, 1, 5, 4)).toThrow(/CHECK/);
+    expect(() => cue(SHA, 1, -1, 4)).toThrow(/CHECK/);
+    expect(() => cue(SHA, -1, 0, 4)).toThrow(/CHECK/);
+    expect(() => cue('c'.repeat(63), 0, 0, 4)).toThrow(/CHECK/);
+    expect(() => cue(SHA, 0, 0, 9)).toThrow(/UNIQUE/);
+    cue('d'.repeat(64), 0, 0, 9); // the same index under another sha is fine
+  });
+
+  it('a failing 006 leaves v5 and a v5 snapshot', () => {
+    const { db, file } = tempDb();
+    migrate(db, { dbFile: file, migrations: v5 });
+    seedItem(new LibraryRepository(db), 1);
+    const broken = [...v5, { version: 6, name: 'bad', sql: 'CREATE TABLE subtitle_tracks(x); CREATE TABLE subtitle_tracks(y);' }];
+    expect(() => migrate(db, { dbFile: file, migrations: broken })).toThrow(/^v6 업데이트에 실패했습니다\. 데이터베이스는 v5 상태입니다\./);
+    expect(currentVersion(db)).toBe(5);
+    expect(tables(db)).not.toContain('subtitle_tracks');
+    expect(db.prepare('SELECT COUNT(*) FROM items').pluck().get()).toBe(1);
+  });
+
+  it('10,000 items migrate within a second', () => {
+    const { db } = tempDb();
+    migrate(db, { dbFile: null, migrations: v5 });
+    const repo = new LibraryRepository(db);
+    const { itemId, revisionId } = seedItem(repo, 1);
+    const assetId = db.prepare('SELECT asset_id FROM item_assets WHERE item_id = ?').pluck().get(itemId) as string;
+    const now = nowIso();
+    repo.insertItemsForAsset(Array.from({ length: 10_000 }, (_, i) => ({
+      id: newId(), type: 'pdf' as const, title: `n${i}`, createdAt: now, metadataJson: '{}', assetId, revisionId,
+    })));
+    const t0 = performance.now();
+    migrate(db, { dbFile: null });
+    const ms = performance.now() - t0;
+    console.log('[measure] migrate-006', ms);
+    expect(ms).toBeLessThan(1000);
+    expect(db.prepare('SELECT COUNT(*) FROM items').pluck().get()).toBe(10_001);
   });
 });

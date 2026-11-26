@@ -1,5 +1,7 @@
 export const toast = {
   imported: (n: number) => `자료 ${n}개를 가져왔습니다`,
+  /** Appended to the success sentence: the subtitles that came in with the videos. */
+  withSubtitles: (n: number) => ` · 자막 ${n}개`,
   linked: (n: number) => `자료 ${n}개를 연결했습니다`,
   failedTitle: (n: number) => `파일 ${n}개를 가져오지 못했습니다`,
   more: (n: number) => `외 ${n}개`,

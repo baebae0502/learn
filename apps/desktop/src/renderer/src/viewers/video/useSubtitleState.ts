@@ -6,11 +6,12 @@ import { t } from '../../strings';
 import { showActionFailed, showToast, showUndoToast } from '../../ui/toasts';
 import type { PositionHandle } from '../usePosition';
 import { pickTrack } from './defaultTrack';
+import { splitDroppedPaths } from '../../shell/subtitleDrop';
 import { attachToasts } from './subtitleToasts';
 import { useTracks } from './useSubtitles';
 import type { VideoHandle, VideoStore } from './videoStore';
 
-type SubtitleHandle = Pick<VideoHandle, 'toggleCaptions' | 'selectTrack' | 'captionsOff' | 'addSubtitles' | 'removeTrack'>;
+type SubtitleHandle = Pick<VideoHandle, 'toggleCaptions' | 'selectTrack' | 'captionsOff' | 'addSubtitles' | 'attachPaths' | 'removeTrack'>;
 
 /**
  * Which track the video shows and whether it is on (spec 4.4, 5.5, 6.5). The tracks come from main; the remembered choice is the saved
@@ -81,6 +82,14 @@ export function useSubtitleState(item: LibraryItem, store: StoreApi<VideoStore>,
           const result = await unwrap(api().subtitles.pick({ itemId }));
           for (const toast of attachToasts(result)) showToast(toast);
           const first = result.added[0];
+          if (first) select(first.assetId);
+        }),
+      attachPaths: (paths) =>
+        guarded(async () => {
+          const { subtitles, rejected } = splitDroppedPaths(paths);
+          const attached = subtitles.length > 0 ? await unwrap(api().subtitles.attach({ itemId, paths: subtitles })) : { added: [], already: [], failed: [] };
+          for (const toast of attachToasts({ ...attached, failed: [...rejected, ...attached.failed] })) showToast(toast);
+          const first = attached.added[0];
           if (first) select(first.assetId);
         }),
       removeTrack: (name) =>

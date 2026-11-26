@@ -128,9 +128,9 @@ export function createImportRunner(d: ImportRunnerDeps): ImportRunner {
         await d.screenSettled();
         const name = report.collectionId === null ? null : d.collectionName(report.collectionId);
         d.toast.settle(key, importToast(report, name === null ? null : { name }));
-        if (report.failed.length > 0) {
-          const { lines, hints } = failureLines(report.failed);
-          d.showToast({ kind: 'error', title: t.toast.failedTitle(report.failed.length), lines, body: hints.join(' ') || undefined, testId: 'import-failures' });
+        if (report.failed.length + report.subtitles.failed.length > 0) {
+          const { lines, hints } = failureLines(report.failed, 3, report.subtitles.failed);
+          d.showToast({ kind: 'error', title: t.toast.failedTitle(report.failed.length + report.subtitles.failed.length), lines, body: hints.join(' ') || undefined, testId: 'import-failures' });
         }
       } finally {
         d.mark('import:end');

@@ -22,6 +22,8 @@ export interface VideoHandle {
   captionsOff(): void;
   /** 자막 파일 추가…: the open panel, then the toasts and the new track on. */
   addSubtitles(): void;
+  /** Files dropped on the tab: the ones that are no subtitle are failure rows, the rest are attached as the panel's pick is. */
+  attachPaths(paths: readonly string[]): void;
   /** 이 자막 제거: takes the shown track off, with a toast that brings it back. `name` is how the screen calls it. */
   removeTrack(name: string): void;
 }

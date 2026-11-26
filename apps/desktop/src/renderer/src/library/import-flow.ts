@@ -1,5 +1,6 @@
 import type { ImportReport } from '@learn/domain';
 import { t } from '../strings';
+import { attachNextSteps } from '../viewers/video/subtitleToasts';
 import type { ToastData } from '../ui/toasts';
 
 /**
@@ -24,6 +25,9 @@ export function importToast(report: ImportReport, into: { name: string } | null)
     const filedInto = into !== null && report.filed === report.imported ? into : null;
     title = filedInto ? (linked ? t.toast.linkedInto : t.toast.importedInto)(filedInto.name, report.imported) : (linked ? t.toast.linked : t.toast.imported)(report.imported);
   }
+  // The subtitles that came in with the videos: said next to the count of the items (spec 5.2).
+  const attached = report.subtitles.attached;
+  if (attached > 0) title = title === null ? t.video.attached(attached) : `${title}${t.toast.withSubtitles(attached)}`;
   if (title === null && existing === null) return null;
   // Stopped with nothing in: said plainly, not as a success (Q-4j).
   const kind = report.cancelled && report.imported === 0 ? 'info' : 'success';
@@ -46,10 +50,16 @@ export interface FailureLine {
  * Failure toast body: one name + cause row per file (at most `max`, then the plain line "외 N개"), and the next steps
  * once each after the list, so five files with the same cause do not repeat the same advice five times.
  */
-export function failureLines(failed: ImportReport['failed'], max = 3): { lines: Array<FailureLine | string>; hints: string[] } {
-  const lines: Array<FailureLine | string> = failed.slice(0, max).map((f) => ({ name: f.name, cause: splitMessage(f.message)[0] }));
-  if (failed.length > max) lines.push(t.toast.more(failed.length - max));
+export function failureLines(failed: ImportReport['failed'], max = 3, subtitleFailed: ImportReport['subtitles']['failed'] = []): { lines: Array<FailureLine | string>; hints: string[] } {
+  const rows: FailureLine[] = [
+    ...failed.map((f) => ({ name: f.name, cause: splitMessage(f.message)[0] })),
+    ...subtitleFailed.map((f) => ({ name: f.name, cause: t.video.attachFailed[f.reason] })),
+  ];
+  const lines: Array<FailureLine | string> = rows.slice(0, max);
+  if (rows.length > max) lines.push(t.toast.more(rows.length - max));
   const hints = [...new Set(failed.map((f) => splitMessage(f.message)[1]).filter(Boolean))];
+  const subtitleHint = attachNextSteps(new Set(subtitleFailed.map((f) => f.reason)));
+  if (subtitleHint !== undefined) hints.push(subtitleHint);
   return { lines, hints };
 }
 

@@ -47,6 +47,7 @@ import { askInSheet } from '../ui/sheetAsk';
 import { useApplyTheme } from '../settings/theme';
 import { useApplyPrefs } from '../settings/useApplyPrefs';
 import { DemoOverlay } from '../shell/DemoOverlay';
+import { SubtitleDropOverlay } from '../shell/SubtitleDropOverlay';
 import { DropOverlay } from '../shell/DropOverlay';
 import { Launcher } from '../shell/Launcher';
 import { focusPane } from '../shell/panes';
@@ -730,6 +731,12 @@ export function MainWindow(_props: { info: AppInfo }) {
   // nothing holds the window. The overlay, the rows, the chips and the sidebar all follow it.
   const dndOpen = view.kind === 'library' && !blocked && !held;
   useEffect(() => setDndGate(dndOpen), [dndOpen]);
+  // The second gate (spec 5.3): subtitle files on a shown, playable video tab. PDF and picture tabs take no drop.
+  const subsDropOpen = view.kind === 'reader' && videoReady && !blocked && !held;
+  const onSubtitleDrop = useCallback((paths: string[], unresolved: number) => {
+    if (unresolved > 0) showToast({ kind: 'error', title: t.toast.dropNoPathTitle(unresolved), body: t.toast.dropNoPathBody(commandMention(commandById('file.importManaged'), currentPlatform())), testId: 'drop-failed' });
+    if (paths.length > 0) useVideo.getState().handle?.attachPaths(paths);
+  }, []);
   useEffect(() => installDndEvents(), []);
   const libraryBar = (place: 'toolbar' | 'head') => (
     <LibraryToolbar
@@ -789,6 +796,7 @@ export function MainWindow(_props: { info: AppInfo }) {
             <Palette />
             {/* Finder → window while the library shows and nothing holds the window; a file drag closes the palette. */}
             <DropOverlay enabled={dndOpen} onDrop={onDrop} intoName={intoRef.current?.name} />
+            <SubtitleDropOverlay enabled={subsDropOpen} onDrop={onSubtitleDrop} />
             <Toasts />
             {/* Demo recordings only (main sets demo=1 for LEARN_DEMO_OVERLAY=1 in an unpackaged build). */}
             {readWindowParams(location.search).demo && <DemoOverlay />}

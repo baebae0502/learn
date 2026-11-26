@@ -234,6 +234,12 @@ test('no overlay while reading; the drag gets the no-drop cursor and a drop ther
     await twoFrames(page);
     await expect(page.getByTestId('drop-overlay')).toHaveCount(0);
     await expect(page.getByTestId('drop-failed')).toHaveCount(0);
+    // A PDF tab takes no subtitle either: the video tab's gate is not open (spec 5.3).
+    const subtitle: Array<[string, string]> = [['a.vtt', 'text/vtt']];
+    await drag(page, 'dragenter', subtitle);
+    expect(await drag(page, 'dragover', subtitle)).toBe('none');
+    await twoFrames(page);
+    await expect(page.getByTestId('subtitle-drop-overlay')).toHaveCount(0);
   } finally {
     await app.close();
   }

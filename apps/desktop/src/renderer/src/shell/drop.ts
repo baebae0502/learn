@@ -6,6 +6,8 @@ export interface DropSummary {
   pdf: number;
   video: number;
   image: number;
+  /** Only the MIME types that can only be subtitles (text/plain and the empty type are named 기타: the drag does not know the file). */
+  subtitles: number;
   other: number;
 }
 
@@ -14,13 +16,14 @@ const IMAGE_TYPES: ReadonlySet<string> = new Set(['image/png', 'image/jpeg', 'im
 
 /** DataTransferItem kinds/types during dragenter (Finder gives the MIME type from the extension). */
 export function summarizeDrop(items: ReadonlyArray<{ kind: string; type: string }>): DropSummary {
-  const s: DropSummary = { files: 0, pdf: 0, video: 0, image: 0, other: 0 };
+  const s: DropSummary = { files: 0, pdf: 0, video: 0, image: 0, subtitles: 0, other: 0 };
   for (const i of items) {
     if (i.kind !== 'file') continue;
     s.files++;
     if (i.type === 'application/pdf') s.pdf++;
     else if (i.type.startsWith('video/')) s.video++;
     else if (IMAGE_TYPES.has(i.type)) s.image++;
+    else if (i.type === 'text/vtt' || i.type === 'application/x-subrip') s.subtitles++;
     else s.other++;
   }
   return s;
@@ -28,8 +31,8 @@ export function summarizeDrop(items: ReadonlyArray<{ kind: string; type: string 
 
 /** "파일 3개(PDF 2 · 동영상 1 · 이미지 3)"; other files are named only next to a known kind (alone they are just "파일 N개"). */
 export function dropSummaryText(s: DropSummary): string {
-  const known = s.pdf + s.video + s.image > 0;
-  const parts = [s.pdf ? `${t.drop.pdf} ${s.pdf}` : '', s.video ? `${t.drop.video} ${s.video}` : '', s.image ? `${t.drop.image} ${s.image}` : '', known && s.other ? `${t.drop.other} ${s.other}` : ''].filter(Boolean);
+  const known = s.pdf + s.video + s.image + s.subtitles > 0;
+  const parts = [s.pdf ? `${t.drop.pdf} ${s.pdf}` : '', s.video ? `${t.drop.video} ${s.video}` : '', s.image ? `${t.drop.image} ${s.image}` : '', s.subtitles ? `${t.drop.subtitles} ${s.subtitles}` : '', known && s.other ? `${t.drop.other} ${s.other}` : ''].filter(Boolean);
   return parts.length ? `${t.drop.files(s.files)}(${parts.join(' · ')})` : t.drop.files(s.files);
 }
 

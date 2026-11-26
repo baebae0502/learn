@@ -153,6 +153,7 @@ export function VideoReader({ item }: { item: LibraryItem }) {
       selectTrack: (assetId) => subtitleHandle.current.selectTrack(assetId),
       captionsOff: () => subtitleHandle.current.captionsOff(),
       addSubtitles: () => subtitleHandle.current.addSubtitles(),
+      attachPaths: (paths) => subtitleHandle.current.attachPaths(paths),
       removeTrack: (name) => subtitleHandle.current.removeTrack(name),
     };
     store.getState().setHandle(handle);

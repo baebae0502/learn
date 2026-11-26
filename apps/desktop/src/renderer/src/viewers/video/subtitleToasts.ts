@@ -6,7 +6,7 @@ import type { ToastData } from '../../ui/toasts';
 const WRONG_PLACE: ReadonlySet<AttachFailureReason> = new Set(['not-subtitle', 'unpaired']);
 
 /** The next action under the failure rows, by what failed (spec 12); none for a failure that has no step of the person's. */
-function nextSteps(reasons: ReadonlySet<AttachFailureReason>): string | undefined {
+export function attachNextSteps(reasons: ReadonlySet<AttachFailureReason>): string | undefined {
   const unreadable = reasons.has('unreadable');
   const noCues = reasons.has('no-cues');
   const steps: string[] = [];
@@ -23,7 +23,7 @@ export function attachToasts(result: AttachResult): ToastData[] {
   if (result.added.length > 0) toasts.push({ kind: 'success', title: t.video.attached(result.added.length), testId: 'subtitle-attached' });
   if (result.already.length > 0) toasts.push({ kind: 'info', title: t.video.alreadyAttached, testId: 'subtitle-already' });
   if (result.failed.length > 0) {
-    const body = nextSteps(new Set(result.failed.map((f) => f.reason)));
+    const body = attachNextSteps(new Set(result.failed.map((f) => f.reason)));
     toasts.push({
       kind: 'error',
       title: t.video.attachFailedTitle(result.failed.length),

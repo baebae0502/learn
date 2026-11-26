@@ -44,6 +44,31 @@ describe('importToast: the result of a run, from main\'s report (spec 3.3, 3.7)'
   });
 });
 
+describe('importToast: subtitles that came in with the videos (spec 5.2)', () => {
+  it('adds " · 자막 N개" to the success sentence when subtitles were attached', () => {
+    expect(importToast(report({ imported: 2, requested: 2, subtitles: { attached: 3, failed: [] } }), null)).toEqual({ kind: 'success', title: '자료 2개를 가져왔습니다 · 자막 3개', testId: 'import-done' });
+    expect(importToast(report({ imported: 1, filed: 1, requested: 1, subtitles: { attached: 2, failed: [] } }), into)?.title).toBe('‘학회 준비’\u2060에 자료 1개를 가져왔습니다 · 자막 2개');
+  });
+  it('says nothing about subtitles when none were attached', () => {
+    expect(importToast(report({ imported: 1, requested: 1 }), null)?.title).toBe('자료 1개를 가져왔습니다');
+  });
+});
+
+describe('failureLines with subtitle failures', () => {
+  const sub = (name: string, reason: 'unpaired' | 'not-subtitle' | 'no-cues') => ({ name, reason });
+  it('puts a subtitle failure in as a name + reason row, after the files', () => {
+    expect(failureLines([{ name: 'a.txt', message: '지원하지 않는 형식입니다.' }], 3, [sub('notes.ko.srt', 'unpaired')]).lines).toEqual([
+      { name: 'a.txt', cause: '지원하지 않는 형식입니다.' },
+      { name: 'notes.ko.srt', cause: '자막\u00a0파일은 동영상에 붙입니다' },
+    ]);
+  });
+  it('gives the common hint once for unpaired and not-subtitle files', () => {
+    const hint = '동영상 탭에 끌어\u00a0놓거나 자막 메뉴의 ‘자막\u00a0파일\u00a0추가…’\u2060로 붙이세요.';
+    expect(failureLines([], 3, [sub('a.srt', 'unpaired'), sub('b.srt', 'unpaired'), sub('c.pdf', 'not-subtitle')]).hints).toEqual([hint]);
+    expect(failureLines([], 3, [sub('a.srt', 'no-cues')]).hints).toEqual(['SRT\u00a0· VTT 형식인지 확인하세요.']);
+  });
+});
+
 describe('failureLines', () => {
   it('lists up to three files as name + cause (the name may be cut, the cause stays) and counts the rest', () => {
     const f = ['a', 'b', 'c', 'd', 'e'].map((n) => ({ name: `${n}.txt`, message: '지원하지 않는 형식입니다.' }));

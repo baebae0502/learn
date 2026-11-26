@@ -2,8 +2,8 @@ import type { AttachFailureReason, AttachResult } from '@learn/domain';
 import { t } from '../../strings';
 import type { ToastData } from '../../ui/toasts';
 
-/** What tells a person to try elsewhere: a file that is no subtitle or has no video beside it. */
-const WRONG_PLACE: ReadonlySet<AttachFailureReason> = new Set(['not-subtitle', 'unpaired']);
+/** What tells a person to try elsewhere: a subtitle with no video beside it. A file that is no subtitle only shows up where the person is already at a video (a drop or the picker), so its row's reason is the whole advice. */
+const WRONG_PLACE: ReadonlySet<AttachFailureReason> = new Set(['unpaired']);
 
 /** The next action under the failure rows, by what failed (spec 12); none for a failure that has no step of the person's. */
 export function attachNextSteps(reasons: ReadonlySet<AttachFailureReason>): string | undefined {

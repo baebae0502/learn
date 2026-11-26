@@ -28,7 +28,8 @@ describe('attachToasts (spec 5.4, 12)', () => {
     const body = (reason: AttachResult['failed'][number]['reason']) => attachToasts(result({ failed: [{ name: 'a.srt', reason }] }))[0]!.body;
     expect(body('unreadable')).toBe('UTF-8로 저장한 뒤 다시 붙이세요.');
     expect(body('no-cues')).toBe('SRT · VTT 형식인지 확인하세요.');
-    expect(body('not-subtitle')).toContain('자막 메뉴');
+    // Already at a video (a drop or the picker): the row's reason is the advice, and "drop it on a video tab" would be no news.
+    expect(body('not-subtitle')).toBeUndefined();
     expect(body('unpaired')).toContain('자막 메뉴');
     expect(body('io')).toBeUndefined();
     expect(body('too-large')).toBeUndefined();

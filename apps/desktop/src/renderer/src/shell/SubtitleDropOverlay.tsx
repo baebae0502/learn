@@ -6,7 +6,7 @@ import { useShell } from '../state/shell-store';
 import { t } from '../strings';
 import { Icon } from '../ui/Icon';
 import { windowDropTarget, type FileDrag } from './drop';
-import { inSidebar, sidebarRight } from './DropOverlay';
+import { sidebarRight } from './DropOverlay';
 import { acceptsSubtitleDrag } from './subtitleDrop';
 
 /**
@@ -41,9 +41,9 @@ export function SubtitleDropOverlay({ enabled, onDrop }: { enabled: boolean; onD
       drop: (paths, _mode, unresolved) => onDropRef.current(paths, unresolved),
       pathForFile: (f) => api().pathForFile(f),
     });
-    /** The drag as the target reads it: never ⌥ (no link for subtitles); null when the drag is not one this gate takes. */
+    /** The drag as the target reads it: never ⌥ (no link for subtitles); null when the drag is not one this gate takes. The video tab's sidebar takes it too (its transcript pane has no drop targets of its own). */
     const taken = (e: DragEvent): FileDrag | null => {
-      if (inSidebar(e) || !e.dataTransfer || !acceptsSubtitleDrag(Array.from(e.dataTransfer.items))) return null;
+      if (!e.dataTransfer || !acceptsSubtitleDrag(Array.from(e.dataTransfer.items))) return null;
       return { altKey: false, target: e.target, dataTransfer: e.dataTransfer, preventDefault: () => e.preventDefault() };
     };
     const on = (fn: (d: FileDrag) => void) => (e: DragEvent) => {

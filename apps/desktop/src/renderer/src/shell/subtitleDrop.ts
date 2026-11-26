@@ -1,4 +1,4 @@
-import { subtitleFormatOf, type AttachFailure } from '@learn/domain';
+import { subtitleFormatOf, type AttachFailure, type AttachResult } from '@learn/domain';
 
 /**
  * What a dragover tells of a file is its MIME only (the name is hidden until the drop). `.srt` is reported as an empty type,
@@ -22,4 +22,19 @@ export function splitDroppedPaths(paths: readonly string[]): { subtitles: string
     else rejected.push({ name: nameOf(p), reason: 'not-subtitle' });
   }
   return { subtitles, rejected };
+}
+
+/** The attach IPC takes at most this many paths per call (ipc.ts subtitlesAttachInput). */
+export const ATTACH_CHUNK = 50;
+
+/** Attaches in calls of at most ATTACH_CHUNK paths and merges the results, so one big drop is one result (and its rows survive). */
+export async function attachInChunks(paths: readonly string[], attach: (chunk: string[]) => Promise<AttachResult>): Promise<AttachResult> {
+  const merged: AttachResult = { added: [], already: [], failed: [] };
+  for (let i = 0; i < paths.length; i += ATTACH_CHUNK) {
+    const r = await attach(paths.slice(i, i + ATTACH_CHUNK));
+    merged.added.push(...r.added);
+    merged.already.push(...r.already);
+    merged.failed.push(...r.failed);
+  }
+  return merged;
 }

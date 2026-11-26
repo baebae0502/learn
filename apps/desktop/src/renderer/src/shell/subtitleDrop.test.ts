@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { acceptsSubtitleDrag, splitDroppedPaths } from './subtitleDrop';
+import type { AttachResult } from '@learn/domain';
+import { acceptsSubtitleDrag, attachInChunks, splitDroppedPaths } from './subtitleDrop';
 
 const file = (type: string) => ({ kind: 'file', type });
 
@@ -26,5 +27,22 @@ describe('splitDroppedPaths: the drop filters by extension again', () => {
         { name: 'z', reason: 'not-subtitle' },
       ],
     });
+  });
+});
+
+describe('attachInChunks: the attach call takes 50 paths at most', () => {
+  it('splits 60 paths into 50 + 10 and merges the results', async () => {
+    const paths = Array.from({ length: 60 }, (_, i) => `/a/${i}.srt`);
+    const sizes: number[] = [];
+    const merged = await attachInChunks(paths, async (chunk) => {
+      sizes.push(chunk.length);
+      return { added: chunk.map((p) => ({ assetId: p }) as unknown as AttachResult['added'][number]), already: [], failed: chunk.length === 10 ? [{ name: 'x', reason: 'io' }] : [] };
+    });
+    expect(sizes).toEqual([50, 10]);
+    expect(merged.added).toHaveLength(60);
+    expect(merged.failed).toEqual([{ name: 'x', reason: 'io' }]);
+  });
+  it('makes no call for no paths', async () => {
+    expect(await attachInChunks([], () => Promise.reject(new Error('called')))).toEqual({ added: [], already: [], failed: [] });
   });
 });

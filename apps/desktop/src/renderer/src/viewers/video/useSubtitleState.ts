@@ -6,7 +6,7 @@ import { t } from '../../strings';
 import { showActionFailed, showToast, showUndoToast } from '../../ui/toasts';
 import type { PositionHandle } from '../usePosition';
 import { pickTrack } from './defaultTrack';
-import { splitDroppedPaths } from '../../shell/subtitleDrop';
+import { attachInChunks, splitDroppedPaths } from '../../shell/subtitleDrop';
 import { attachToasts } from './subtitleToasts';
 import { useTracks } from './useSubtitles';
 import type { VideoHandle, VideoStore } from './videoStore';
@@ -87,7 +87,7 @@ export function useSubtitleState(item: LibraryItem, store: StoreApi<VideoStore>,
       attachPaths: (paths) =>
         guarded(async () => {
           const { subtitles, rejected } = splitDroppedPaths(paths);
-          const attached = subtitles.length > 0 ? await unwrap(api().subtitles.attach({ itemId, paths: subtitles })) : { added: [], already: [], failed: [] };
+          const attached = await attachInChunks(subtitles, (chunk) => unwrap(api().subtitles.attach({ itemId, paths: chunk })));
           for (const toast of attachToasts({ ...attached, failed: [...rejected, ...attached.failed] })) showToast(toast);
           const first = attached.added[0];
           if (first) select(first.assetId);

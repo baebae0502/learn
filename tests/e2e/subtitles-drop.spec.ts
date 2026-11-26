@@ -1,6 +1,7 @@
 // Subtitle files dropped on a video tab (M8a spec 5.3), through the second drop gate; and in a library drop, the summary that names
 // subtitles and the import toast that counts them (5.2, 12). Drags are synthetic (helpers' `drag`): the names are hidden while a real drag
 // is over the window, so the tuples below are what the OS reports, and the real files of #drop-source carry the paths of the drop.
+import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { FIXTURES, drag, dropSource, importPaths, launch, openItem, videoReady } from './helpers';
@@ -133,6 +134,81 @@ test('a subtitle file alone in a library drop: the failure toast names it with t
     // The hint comes once, whatever the number of files it covers.
     expect(((await toast.textContent()) ?? '').split('동영상 탭에 끌어').length).toBe(2);
     await expect(page.getByTestId('import-done')).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a drop over the transcript sidebar is taken too; the overlay still stands right of it', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const itemId = await openLecture(page);
+    await dropSource(page, [EN]);
+    const side = page.locator('[data-sidebar-area]');
+    const box = (await side.boundingBox())!;
+    await drag(page, 'dragenter', 'source', { at: 'centre' });
+    await expect(overlay(page)).toBeVisible();
+    expect((await overlay(page).boundingBox())!.x).toBeGreaterThanOrEqual(box.x + box.width - 1);
+    // The drag now moves over the sidebar itself: still a copy, and the drop attaches.
+    await page.evaluate((x) => {
+      const target = document.elementFromPoint(x, 300)!;
+      const dt = new DataTransfer();
+      for (const f of Array.from((document.getElementById('drop-source') as HTMLInputElement).files!)) dt.items.add(f);
+      const shim = { types: dt.types, items: dt.items, files: dt.files, effectAllowed: 'copyLink', dropEffect: 'copy' };
+      const fire = (kind: string) => {
+        const e = new DragEvent(kind, { dataTransfer: dt, bubbles: true, cancelable: true });
+        Object.defineProperty(e, 'dataTransfer', { value: shim });
+        target.dispatchEvent(e);
+        return shim.dropEffect;
+      };
+      fire('dragenter');
+      if (fire('dragover') !== 'copy') throw new Error('the sidebar refused the drag');
+      fire('drop');
+    }, box.x + 40);
+    await expect(page.getByTestId('subtitle-attached')).toBeVisible();
+    await expect.poll(() => tracksOf(page, itemId)).toEqual(['en']);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a file that is no subtitle: its row says why, with no advice to drop it on a video tab', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await openLecture(page);
+    const txt = testInfo.outputPath('notes.txt');
+    fs.writeFileSync(txt, 'not a subtitle');
+    await dropSource(page, [txt]);
+    await drag(page, 'dragenter', 'source');
+    await expect(overlay(page)).toBeVisible();
+    await drag(page, 'drop', 'source');
+    const toast = page.getByTestId('subtitle-failed');
+    await expect(toast).toContainText('notes.txt');
+    await expect(toast).toContainText('자막 파일(SRT · VTT)만 붙일 수 있습니다');
+    await expect(toast).not.toContainText('동영상 탭에 끌어');
+  } finally {
+    await app.close();
+  }
+});
+
+test('a drop of 60 subtitle files attaches in calls of 50 and reports every file', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const itemId = await openLecture(page);
+    const dir = testInfo.outputPath('many');
+    fs.mkdirSync(dir, { recursive: true });
+    const paths: string[] = [];
+    for (let i = 0; i < 60; i++) {
+      const p = path.join(dir, `part-${String(i).padStart(2, '0')}.vtt`);
+      fs.writeFileSync(p, `WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nline ${i}\n`);
+      paths.push(p);
+    }
+    await dropSource(page, paths);
+    await drag(page, 'dragenter', 'source');
+    await drag(page, 'drop', 'source');
+    await expect(page.getByTestId('subtitle-attached')).toBeVisible();
+    await expect.poll(async () => (await tracksOf(page, itemId))?.length).toBe(60);
+    await expect(page.getByTestId('action-error')).toHaveCount(0);
   } finally {
     await app.close();
   }

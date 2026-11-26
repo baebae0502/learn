@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState, type SyntheticEvent } from 'react';
-import { PLAYBACK_RATES, RATE_STEP, assetUrl, isPlaybackRate, type LibraryItem, type PlaybackRate } from '@learn/domain';
+import { PLAYBACK_RATES, RATE_STEP, assetUrl, isPlaybackRate, type LibraryItem, type PlaybackRate, type ReadingLocator } from '@learn/domain';
 import { t } from '../../strings';
 import { Spinner } from '../../ui/Spinner';
 import { ratio, restoreVideoSeconds } from '../positionSaver';
@@ -7,6 +7,10 @@ import { CodecNotice } from '../ReaderNotices';
 import { useReaderScope, useReaderShown } from '../readerScope';
 import { usePosition } from '../usePosition';
 import { useVideoStage } from '../../shell/videoStage';
+import { SubtitleOverlay } from './SubtitleOverlay';
+import { useCues } from './useSubtitles';
+import { useStageToasts } from './useStageToasts';
+import { useSubtitleState } from './useSubtitleState';
 import { frameDurationMs } from './frameStep';
 import { useIdleControls } from './useIdleControls';
 import { useVideoSettings } from './useVideoSettings';
@@ -54,23 +58,38 @@ export function VideoReader({ item }: { item: LibraryItem }) {
     if (!shown) videoRef.current?.pause();
   }, [shown]);
 
+  // The saved place carries the subtitle choice (spec 4.4): the track and whether it shows, once the video has tracks.
+  const captionsRef = useRef<() => { assetId: string; on: boolean } | undefined>(() => undefined);
+  const locatorAt = (v: HTMLVideoElement): ReadingLocator => {
+    const captions = captionsRef.current();
+    return { kind: 'video', timeMs: Math.round(v.currentTime * 1000), ...(captions ? { captions } : {}) };
+  };
   const pos = usePosition(item, TIME_SAVE, () => {
     const v = videoRef.current;
     if (!v || !restored.current) return null;
-    return { locator: { kind: 'video', timeMs: Math.round(v.currentTime * 1000) }, progress: ratio(v.currentTime, v.duration) };
+    return { locator: locatorAt(v), progress: ratio(v.currentTime, v.duration) };
   });
 
   const record = (v: HTMLVideoElement, immediate: boolean) => {
     if (!restored.current) return;
-    pos.update({ kind: 'video', timeMs: Math.round(v.currentTime * 1000) }, ratio(v.currentTime, v.duration));
+    pos.update(locatorAt(v), ratio(v.currentTime, v.duration));
     if (immediate) pos.flush();
   };
+  const subtitles = useSubtitleState(item, store, pos, () => {
+    if (videoRef.current) record(videoRef.current, true);
+  });
+  captionsRef.current = subtitles.captions;
+  const subtitleHandle = useRef(subtitles.handle);
+  subtitleHandle.current = subtitles.handle;
+  const trackId = useVideo((s) => s.trackId);
+  const cues = useCues(item.id, trackId);
 
   const tryRestore = (v: HTMLVideoElement) => {
     if (restored.current || !pos.loaded || v.readyState < 1) return;
     const seconds = restoreVideoSeconds(pos.saved?.locator, v.duration);
     if (seconds > 0) v.currentTime = seconds;
-    pos.markRestored({ kind: 'video', timeMs: Math.round(seconds * 1000) });
+    const savedCaptions = pos.saved?.locator.kind === 'video' ? pos.saved.locator.captions : undefined;
+    pos.markRestored({ kind: 'video', timeMs: Math.round(seconds * 1000), ...(savedCaptions ? { captions: savedCaptions } : {}) });
     restored.current = true;
     store.getState().patch({ timeMs: Math.round(seconds * 1000) });
   };
@@ -130,6 +149,11 @@ export function VideoReader({ item }: { item: LibraryItem }) {
       },
       toggleMute: () => settingsRef.current.setMuted(!settingsRef.current.muted),
       setVolume: (v) => settingsRef.current.setVolume(v),
+      toggleCaptions: () => subtitleHandle.current.toggleCaptions(),
+      selectTrack: (assetId) => subtitleHandle.current.selectTrack(assetId),
+      captionsOff: () => subtitleHandle.current.captionsOff(),
+      addSubtitles: () => subtitleHandle.current.addSubtitles(),
+      removeTrack: (name) => subtitleHandle.current.removeTrack(name),
     };
     store.getState().setHandle(handle);
     scope.videoProbe.current = () => {
@@ -142,13 +166,16 @@ export function VideoReader({ item }: { item: LibraryItem }) {
         volume: v ? v.volume : 1,
         muted: v ? v.muted : false,
         frameMs: store.getState().frameMs,
+        trackId: store.getState().trackId,
+        captionsOn: store.getState().captionsOn,
+        cueText: store.getState().cueText,
       };
     };
     return () => {
       store.getState().setHandle(null);
       scope.videoProbe.current = null;
       clearTimeout(metadataAt.current ?? undefined);
-      store.getState().patch({ status: 'opening', playing: false, timeMs: 0, durationMs: 0, bufferedMs: 0 });
+      store.getState().patch({ status: 'opening', playing: false, timeMs: 0, durationMs: 0, bufferedMs: 0, tracks: [], trackId: null, captionsOn: false, cueText: null });
     };
   }, [scope, store]);
 
@@ -197,6 +224,8 @@ export function VideoReader({ item }: { item: LibraryItem }) {
     if (store.getState().status === 'opening') store.getState().patch({ status: 'ready' });
   };
   const final = error !== null;
+  const stageRef = useRef<HTMLDivElement>(null);
+  useStageToasts(stageRef, shown);
   // The sidebar says there is no transcript for a file that cannot be shown (spec 6.7).
   useEffect(() => {
     if (!final) return;
@@ -216,9 +245,11 @@ export function VideoReader({ item }: { item: LibraryItem }) {
     <div ref={readerRef} className="reader video-reader" data-idle={idle ? '' : undefined}>
       {!final && <VideoToolbar disabled={status !== 'ready'} />}
       <div
+        ref={stageRef}
         className="video-stage"
         data-testid="video-stage"
-        {...(final ? {} : { role: 'region', tabIndex: 0, 'aria-label': item.title, 'aria-describedby': hintId })}
+        // F6 lands on the stage, not on the subtitle menu that stands before it in the strip.
+        {...(final ? {} : { role: 'region', tabIndex: 0, 'aria-label': item.title, 'aria-describedby': hintId, 'data-pane-landing': '' })}
         aria-busy={status === 'opening' || undefined}
         onClick={() => {
           if (status === 'ready') store.getState().handle?.togglePlay();
@@ -260,6 +291,7 @@ export function VideoReader({ item }: { item: LibraryItem }) {
             record(e.currentTarget, true);
           }}
         />
+        {!final && <SubtitleOverlay stage={stageRef} video={videoRef} cues={cues} />}
         {!final && <span id={hintId} className="visually-hidden">{t.video.stageHint}</span>}
         {!final && status === 'opening' && slow && (
           <div className="stage-center">

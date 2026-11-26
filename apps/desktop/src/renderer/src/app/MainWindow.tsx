@@ -11,7 +11,7 @@ import { splitTrashSelection, trashSelectionCount, withTrashTargets } from '../t
 import { leaveTrashView, useInTrash, useLeaveEmptyTrash, useTrash } from '../trash/useTrashSource';
 import { useReportContext } from '../commands/useReportContext';
 import { useMenuCommands } from '../commands/useMenuCommands';
-import { keys, useItems, useLibrarySync, usePrefs, useSessionsSync } from '../data/queries';
+import { keys, useItems, useLibrarySync, usePrefs, useSessionsSync, useSubtitlesSync } from '../data/queries';
 import { queryClient } from '../data/query-client';
 import { useBusyScreen } from '../library/busyScreen';
 import { visibleColumns } from '../library/columns';
@@ -126,6 +126,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   useWindowState();
   useLibrarySync();
   useSessionsSync();
+  useSubtitlesSync();
   useBodyProgressSync();
   const scopeReady = useRestoreView();
   usePanePersistence();
@@ -401,6 +402,8 @@ export function MainWindow(_props: { info: AppInfo }) {
   const videoPlaying = useVideo((s) => s.playing);
   const videoMuted = useVideoSettings().muted;
   const videoStage = useVideoStage((s) => s.on);
+  const videoCaptions = useVideo((s) => s.trackId !== null);
+  const videoCaptionsOn = useVideo((s) => s.trackId !== null && s.captionsOn);
   const pdfScroll = useReader((s) => s.pdf?.scroll);
   const historyBack = useReader((s) => canGoBack(s.history));
   const historyForward = useReader((s) => canGoForward(s.history));
@@ -493,7 +496,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     ...(pdfOpen ? { pdfOpen: true } : {}),
     ...(imageDrawn && viewKind === 'reader' ? { imageOpen: true } : {}),
     // Named by the stage too (전체 화면으로 보기 / 끝내기): reported as true or false while a video is open, and as true alone when it is not.
-    ...(videoReady && viewKind === 'reader' ? { videoOpen: true, videoPlaying, videoMuted, videoStage } : videoStage ? { videoStage: true } : {}),
+    ...(videoReady && viewKind === 'reader' ? { videoOpen: true, videoPlaying, videoMuted, videoStage, videoCaptions, videoCaptionsOn } : videoStage ? { videoStage: true } : {}),
     ...(pdfOpen && pdfScroll ? { pdfScroll } : {}),
     ...(pdfOpen && historyBack ? { historyBack: true } : {}),
     ...(pdfOpen && historyForward ? { historyForward: true } : {}),
@@ -645,7 +648,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, pdfOpen, imageDrawn, videoReady, videoPlaying, videoMuted, videoStage, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, inspectorMode, tutorConsented, tutorHasMessages, tutorStreaming, sessionFocused, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAtPage, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, pdfOpen, imageDrawn, videoReady, videoPlaying, videoMuted, videoStage, videoCaptions, videoCaptionsOn, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, inspectorMode, tutorConsented, tutorHasMessages, tutorStreaming, sessionFocused, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAtPage, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
   useStageLeaves(videoStage, videoReady && viewKind === 'reader' ? (view.kind === 'reader' ? view.itemId : null) : null);
   useMenuCommands(env);
   useReportContext(env);

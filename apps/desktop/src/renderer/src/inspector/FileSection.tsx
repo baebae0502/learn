@@ -1,6 +1,8 @@
 import { Copy } from 'lucide-react';
 import type { ItemDetail } from '@learn/domain';
 import { useAppInfo } from '../data/queries';
+import { trackNames } from '../viewers/video/trackNames';
+import { useTracks } from '../viewers/video/useSubtitles';
 import { formatSize, homeRelative } from '../format';
 import { t } from '../strings';
 import { IconButton } from '../ui/Button';
@@ -8,10 +10,11 @@ import { cx } from '../ui/cx';
 import { useCopyFeedback } from '../ui/useCopyFeedback';
 import { bodyLineFor } from './bodyText';
 import { EditedCopies } from './EditedCopies';
+import { subtitleLine } from './subtitleLine';
 import { Section } from './Section';
 
 interface FileRow {
-  field: 'storage' | 'size' | 'originalName' | 'location';
+  field: 'storage' | 'size' | 'originalName' | 'location' | 'subtitles';
   label: string;
   value: string;
   title?: string;
@@ -26,10 +29,15 @@ interface FileRow {
 export function FileSection({ detail, trashed = false, missing = false }: { detail: ItemDetail; trashed?: boolean; missing?: boolean }) {
   const home = useAppInfo().data?.homeDir;
   const f = detail.file;
+  // Only a video can have subtitles: the others do not ask.
+  const tracks = useTracks(detail.item.type === 'video' ? detail.item.id : null);
+  const names = tracks && tracks.length > 0 ? trackNames(tracks) : null;
+  const subtitleNames = tracks && names ? tracks.map((track) => names.get(track.assetId)!) : null;
   const rows: FileRow[] = [
     { field: 'storage', label: t.inspector.file.storage, value: t.inspector.storage[f.storageMode] },
     { field: 'size', label: t.inspector.file.size, value: formatSize(f.size) },
     { field: 'originalName', label: t.inspector.file.originalName, value: f.originalName, title: f.originalName },
+    ...(subtitleNames ? [{ field: 'subtitles' as const, label: t.inspector.file.subtitles, value: subtitleLine(subtitleNames), title: subtitleNames.join(' · ') }] : []),
     ...(f.storageMode === 'linked' && f.externalPath
       ? [{ field: 'location' as const, label: t.inspector.file.location, value: homeRelative(f.externalPath, home), title: f.externalPath, mono: true }]
       : []),

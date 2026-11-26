@@ -49,6 +49,9 @@ export const keys = {
   sessionsList: (itemId: string) => ['sessions', 'list', itemId] as const,
   sessionsRecent: ['sessions', 'recent'] as const,
   sessionThread: (conversationId: string) => ['sessions', 'get', conversationId] as const,
+  /** A video's subtitle tracks, and one track's cues under them: subtitles:changed marks both stale (useSubtitlesSync). */
+  subtitleTracks: (itemId: string) => ['subtitles', itemId] as const,
+  subtitleCues: (itemId: string, assetId: string) => ['subtitles', itemId, assetId, 'cues'] as const,
 };
 
 export const useAppInfo = () => useQuery({ queryKey: keys.info, queryFn: () => unwrap(api().app.info()) });
@@ -148,6 +151,11 @@ export function invalidateSessions(client: QueryClient, e: SessionsChanged): voi
 }
 export function useSessionsSync(): void {
   useLearnEvent('sessions:changed', (e) => invalidateSessions(queryClient, e));
+}
+
+/** subtitles:changed: a track was attached, removed or brought back; the tracks and the cues of that video are read again where they are shown. */
+export function useSubtitlesSync(): void {
+  useLearnEvent('subtitles:changed', (e) => void queryClient.invalidateQueries({ queryKey: keys.subtitleTracks(e.itemId) }));
 }
 
 /** prefsChanged carries the whole new prefs object (any window may have changed them). */

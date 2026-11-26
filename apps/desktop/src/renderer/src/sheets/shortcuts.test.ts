@@ -66,12 +66,12 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
     expect(height()).toBe(height('library'));
     expect(height('library') + 136).toBe(772);
     expect(height('viewer') + 136).toBe(754);
-    // It lists only the keys a video uses (the PDF's and the picture's rows are left out), so there is room for the three more lines
-    // (C, F, esc) that the next tasks add under 동영상.
+    // It lists only the keys a video uses (the PDF's and the picture's rows are left out), so there is room for the one more line
+    // (⌘F, the transcript search) that a later task adds under 리더.
     expect(height('video') + 136).toBe(714);
     for (const view of ['library', 'viewer', 'video'] as const) expect(height(view) + 136, view).toBeLessThanOrEqual(774);
-    const withThree = shortcutGroups('darwin', 'video').map((g) => (g.title === '동영상' ? { ...g, rows: [...g.rows, ...g.rows.slice(0, 3)] } : g));
-    expect(Math.max(...shortcutColumns(withThree).map((c) => c.reduce((h, g, i) => h + 31 + 29 * g.rows.length + (i > 0 ? 16 : 0), 0))) + 136).toBeLessThanOrEqual(774);
+    const withOne = shortcutGroups('darwin', 'video').map((g) => (g.title === '동영상' ? { ...g, rows: [...g.rows, ...g.rows.slice(0, 1)] } : g));
+    expect(Math.max(...shortcutColumns(withOne).map((c) => c.reduce((h, g, i) => h + 31 + 29 * g.rows.length + (i > 0 ? 16 : 0), 0))) + 136).toBeLessThanOrEqual(774);
   });
   it('lists the video keys under 동영상 from a video reader only, a pair to a line, K and the space bar as one', () => {
     const rows = (view?: 'library' | 'viewer' | 'video') => shortcutGroups('darwin', view).find((g) => g.title === '동영상')?.rows;
@@ -85,6 +85,7 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
       { label: '한 프레임 뒤로 / 앞으로', keys: [','], pairKeys: ['.'], spoken: ', / .' },
       { label: '재생 속도 느리게 / 빠르게', keys: ['⇧', ','], pairKeys: ['⇧', '.'], spoken: '⇧, / ⇧.' },
       { label: '음소거', keys: ['M'], spoken: 'M' },
+      { label: '자막 켜기/끄기', keys: ['C'], spoken: 'C' },
       { label: '전체 화면', keys: ['F'], spoken: 'F' },
       { label: '전체 화면 끝내기', keys: ['esc'], spoken: 'esc' },
     ]);

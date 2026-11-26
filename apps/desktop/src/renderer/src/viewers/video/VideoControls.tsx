@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { Maximize, Minimize, Pause, Play, RotateCcw, RotateCw } from 'lucide-react';
+import { Captions, CaptionsOff, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw } from 'lucide-react';
 import { commandById, commandLabel } from '@learn/domain';
 import { useCommands } from '../../commands/CommandProvider';
 import { useVideoStage } from '../../shell/videoStage';
@@ -16,8 +16,8 @@ import { useVideo } from './videoStore';
 
 /**
  * The bar under the picture (spec 6.2): the scrubber and a row of 32 — ten seconds back, play, ten seconds on, the clock, the
- * speed, the volume and the full-screen button. Drawn disabled until the first frame is there. The subtitle button is not drawn: it
- * comes with the task that makes it work. On the stage (spec 6.6) the bar lies over the picture's bottom, dark in both themes.
+ * speed, the subtitle button (turns the shown track on or off; disabled with its reason while there is none), the volume and the full-screen
+ * button. Drawn disabled until the first frame is there. On the stage (spec 6.6) the bar lies over the picture's bottom, dark in both themes.
  */
 export function VideoControls() {
   const status = useVideo((s) => s.status);
@@ -26,12 +26,15 @@ export function VideoControls() {
   const durationMs = useVideo((s) => s.durationMs);
   const handle = useVideo((s) => s.handle);
   const stage = useVideoStage((s) => s.on);
+  const hasTrack = useVideo((s) => s.trackId !== null);
+  const captionsOn = useVideo((s) => s.trackId !== null && s.captionsOn);
   const { run } = useCommands();
   const rowRef = useRef<HTMLDivElement>(null);
   const disabled = status !== 'ready';
   const platform = currentPlatform();
   const playLabel = commandLabel(commandById('video.playPause'), platform, { videoPlaying: playing });
   const stageLabel = commandLabel(commandById('video.toggleFullScreen'), platform, { videoStage: stage });
+  const captionsLabel = commandLabel(commandById('video.toggleCaptions'), platform, { videoCaptionsOn: captionsOn });
   return (
     <div className={cx('video-controls', disabled && 'is-disabled')} role="group" aria-label={t.video.controls} data-testid="video-controls">
       <Scrubber />
@@ -44,6 +47,7 @@ export function VideoControls() {
         </span>
         <span className="spacer" />
         <SpeedMenu isDisabled={disabled} />
+        <IconButton icon={captionsOn ? Captions : CaptionsOff} label={captionsLabel} keys={capsOf('video.toggleCaptions')} tooltipPlacement="top" isOn={captionsOn} isDisabled={disabled || !hasTrack} {...(hasTrack ? {} : { disabledReason: t.video.noCaptions })} onPress={() => run('video.toggleCaptions')} testId="video-captions" />
         <VolumeControl isDisabled={disabled} rowRef={rowRef} />
         <IconButton icon={stage ? Minimize : Maximize} label={stageLabel} keys={capsOf('video.toggleFullScreen')} tooltipPlacement="top" isDisabled={disabled} onPress={() => run('video.toggleFullScreen')} testId="video-fullscreen" />
       </div>

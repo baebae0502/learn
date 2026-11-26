@@ -129,7 +129,9 @@ export type CommandId =
   | 'video.faster'
   | 'video.toggleMute'
   | 'video.toggleFullScreen'
-  | 'video.exitFullScreen';
+  | 'video.exitFullScreen'
+  | 'video.toggleCaptions'
+  | 'video.addSubtitles';
 
 /** The colour of a PDF page (settings 'reader.pageColor'): 자동 follows the app theme. */
 export const PAGE_COLORS = ['auto', 'original', 'sepia', 'dark'] as const;
@@ -683,6 +685,16 @@ export const COMMANDS: readonly CommandSpec[] = [
     stateLabels: { video: { field: 'videoMuted', on: '음소거 해제', off: '음소거' } },
     keywords: ['음소거', '소리', '음량', '영상', '동영상', 'mute', 'sound'],
   },
+  // Subtitles (spec 6.5, 10): C turns the shown track on or off (only while the video has one); the file picker is the palette's and the menu's.
+  {
+    id: 'video.toggleCaptions', label: '자막 켜기/끄기', key: { code: 'KeyC', noRepeat: true }, contexts: ['video'],
+    stateLabels: { video: { field: 'videoCaptionsOn', on: '자막 끄기', off: '자막 켜기' } },
+    keywords: ['자막', '켜기', '끄기', '영상', '동영상', 'subtitles', 'captions', 'cc'],
+  },
+  {
+    id: 'video.addSubtitles', label: '자막\u00a0파일 추가…', contexts: ['video'],
+    keywords: ['자막', '추가', '붙이기', 'srt', 'vtt', '영상', '동영상', 'subtitles', 'captions', 'add'],
+  },
   // The stage (spec 6.6): the window's full screen, asked of main's controller only. esc leaves it, yielding to an open menu's own esc; it is no
   // palette row (the toggle is that), and it is available only on the stage.
   {
@@ -834,6 +846,10 @@ export interface CommandContextState {
   videoMuted?: boolean;
   /** The window is on the video stage (main's state): 전체 화면 is named by it and esc is a command only then. Absent otherwise. */
   videoStage?: boolean;
+  /** The shown video has at least one subtitle track: C needs it. Absent unless a video is open. */
+  videoCaptions?: boolean;
+  /** The shown subtitle track is on: 자막 켜기/끄기 is named by it. Absent unless a video is open. */
+  videoCaptionsOn?: boolean;
   /** How the open PDF scrolls: 펼침 is off while it is 'horizontal'. Absent with no PDF open. */
   pdfScroll?: ScrollModeName;
   /** The open PDF has a place to go back to / forward to (⌘[ ⌘]): absent otherwise. */
@@ -1001,6 +1017,8 @@ const imageOpen = (c: CommandContextState): boolean => c.imageOpen === true;
 const videoOpen: Rule = (c) => c.videoOpen === true;
 /** Esc leaves the stage: on the stage whatever the video does now (one that went unplayable still lets it go). */
 const videoStage: Rule = (c) => c.videoStage === true;
+/** C turns a track on or off: there must be one. */
+const videoCaptions: Rule = (c) => c.videoOpen === true && c.videoCaptions === true;
 /** A frame step is for a paused video: while it plays the key does nothing (and is not taken). */
 const videoPaused: Rule = (c) => c.videoOpen === true && c.videoPlaying !== true;
 /** The zoom, the two fits and the turns act on a drawn picture as on a PDF; the rest of the reader's view is the PDF's. */
@@ -1136,6 +1154,8 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'video.toggleMute': videoOpen,
   'video.toggleFullScreen': videoOpen,
   'video.exitFullScreen': videoStage,
+  'video.toggleCaptions': videoCaptions,
+  'video.addSubtitles': videoOpen,
 };
 
 /**

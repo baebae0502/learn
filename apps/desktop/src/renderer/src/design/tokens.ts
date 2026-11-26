@@ -187,6 +187,9 @@ export const colors = {
   videoChromePressed: { light: 'oklch(100% 0 0 / 0.16)', dark: 'oklch(100% 0 0 / 0.16)' },
   videoChromeGap: { light: 'oklch(14% 0.003 250)', dark: 'oklch(14% 0.003 250)' },
   videoChromeMeter: { light: 'oklch(72% 0.11 190)', dark: 'oklch(72% 0.11 190)' },
+  /** The subtitle on the picture (spec 6.4): white on a dim black, the same in both themes — it lies over the video, not over the app. */
+  subtitleBg: { light: 'oklch(0% 0 0 / 0.72)', dark: 'oklch(0% 0 0 / 0.72)' },
+  subtitleFg: { light: 'oklch(100% 0 0)', dark: 'oklch(100% 0 0)' },
 } as const satisfies Record<string, ThemePair>;
 
 export type ColorToken = keyof typeof colors;

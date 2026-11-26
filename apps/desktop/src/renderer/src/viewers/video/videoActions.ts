@@ -24,6 +24,8 @@ export const videoActions: Pick<CommandEnv, 'video'> = {
       case 'slower': return h.nudgeRate(-1);
       case 'faster': return h.nudgeRate(1);
       case 'toggleMute': return h.toggleMute();
+      case 'toggleCaptions': return h.toggleCaptions();
+      case 'addSubtitles': return h.addSubtitles();
     }
   },
 };

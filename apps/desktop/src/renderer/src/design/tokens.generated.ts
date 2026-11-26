@@ -47,6 +47,7 @@ export const themeHex = {
     videoChromeText3: '#95999c',
     videoChromeGap: '#08090a',
     videoChromeMeter: '#39bab4',
+    subtitleFg: '#ffffff',
   },
   dark: {
     bgWindow: '#242527',
@@ -89,6 +90,7 @@ export const themeHex = {
     videoChromeText3: '#95999c',
     videoChromeGap: '#08090a',
     videoChromeMeter: '#39bab4',
+    subtitleFg: '#ffffff',
   },
 } as const;
 

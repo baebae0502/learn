@@ -28,6 +28,35 @@
     border-right-color: var(--image-focus-dark);
   }
 
+  /* The subtitle (spec 6.4): a box exactly over the drawn picture (SubtitleOverlay measures it), so its 6 % and its size follow the picture and
+     not the black bars. It never takes a press: the stage under it plays and pauses. */
+  .subtitle-box {
+    position: absolute;
+    z-index: 2;
+    container-type: size;
+    --cue-size: clamp(14px, 3.1cqh, 40px); /* local: spec 6.4 — the text is 3.1 % of the picture's height, 14 to 40 px */
+    pointer-events: none;
+    user-select: none;
+  }
+  .subtitle-box .subtitle {
+    position: absolute;
+    left: 50%;
+    bottom: 6%;
+    translate: -50% 0;
+    max-width: 78%;
+    padding: 0.2em 0.6em 0.25em; /* local: the mockup's 4 / 12 / 5 px of a 22 px subtitle, kept in proportion to the text */
+    border-radius: var(--radius-sm);
+    background: var(--subtitle-bg);
+    color: var(--subtitle-fg);
+    font-family: var(--font-ui);
+    font-size: var(--cue-size);
+    font-weight: var(--weight-medium);
+    line-height: 1.45; /* local: spec 6.4 */
+    text-align: center;
+    white-space: pre-line;
+    word-break: keep-all;
+  }
+
   .video-controls {
     flex: none;
     display: flex;
@@ -284,6 +313,11 @@
   :root[data-video-stage] .video-reader :is(.hover-time, .vol-pop) {
     background: var(--video-chrome-bg);
     box-shadow: inset 0 0 0 1px var(--video-chrome-border);
+  }
+  /* While the bar shows the subtitle stands 16 above it (the bar and its scrim lie over the picture's bottom); idle, it comes back to 6 %. The
+     picture never moves. --pic-lb is the black bar under the picture, which already lifts it. */
+  :root[data-video-stage] .video-reader:not([data-idle]) .subtitle-box .subtitle {
+    bottom: max(6%, calc(var(--video-bar-h) + var(--space-16) - var(--pic-lb)));
   }
   /* Idle (a still pointer while it plays): the controls and the pointer go, the picture stays. The bar keeps its place in the tab order. */
   :root[data-video-stage] .video-reader[data-idle] .video-controls {

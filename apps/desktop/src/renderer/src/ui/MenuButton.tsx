@@ -204,7 +204,7 @@ export function MenuButton<K extends string>(props: {
   const [isOpen, setOpen] = useState(false);
   const trigger = (
     <AriaButton className={cx('btn', `btn-${props.variant ?? 'secondary'}`, props.size === 'small' && 'btn-small', props.icon && 'has-icon', props.chevron !== false && 'has-menu', props.triggerClassName)} {...reason.controlProps} aria-label={props.ariaLabel} data-testid={props.testId}>
-      {props.icon && <Icon icon={props.icon} />}
+      {props.icon && <Icon icon={props.icon} size={props.size === 'small' ? 'sm' : 'md'} />}
       {props.label}
       {props.chevron !== false && <Icon icon={ChevronDown} size="xs" />}
     </AriaButton>

@@ -1,5 +1,5 @@
 import { createStore, type StoreApi } from 'zustand/vanilla';
-import type { PlaybackRate } from '@learn/domain';
+import type { PlaybackRate, SubtitleTrack } from '@learn/domain';
 
 /** opening: before the first frame; ready: it plays; unplayable: the engine cannot decode it; failed: it did not open for another reason. */
 export type VideoStatus = 'opening' | 'ready' | 'unplayable' | 'failed';
@@ -14,6 +14,15 @@ export interface VideoHandle {
   nudgeRate(dir: -1 | 1): void;
   toggleMute(): void;
   setVolume(v: number): void;
+  /** C: the shown track on or off (nothing without a track). */
+  toggleCaptions(): void;
+  /** The menu's choice of a track: it is shown from now on, and remembered. */
+  selectTrack(assetId: string): void;
+  captionsOff(): void;
+  /** 자막 파일 추가…: the open panel, then the toasts and the new track on. */
+  addSubtitles(): void;
+  /** 이 자막 제거: takes the shown track off, with a toast that brings it back. `name` is how the screen calls it. */
+  removeTrack(name: string): void;
 }
 
 export interface VideoStore {
@@ -26,6 +35,11 @@ export interface VideoStore {
   frameMs: number;
   /** The volume bar's value while it is being dragged: the sound follows it at once, the setting is written when the drag ends. */
   volumeDraft: number | null;
+  /** The video's subtitle tracks in their order (read by the reader), the one chosen, whether it shows, and the overlay's text (for tests). */
+  tracks: SubtitleTrack[];
+  trackId: string | null;
+  captionsOn: boolean;
+  cueText: string | null;
   handle: VideoHandle | null;
   patch(p: Partial<Omit<VideoStore, 'patch' | 'setHandle'>>): void;
   setHandle(h: VideoHandle | null): void;
@@ -41,6 +55,10 @@ export function createVideoStore(): StoreApi<VideoStore> {
     bufferedMs: 0,
     frameMs: 1000 / 30,
     volumeDraft: null,
+    tracks: [],
+    trackId: null,
+    captionsOn: false,
+    cueText: null,
     handle: null,
     patch: (p) => set(p),
     setHandle: (handle) => set({ handle }),
@@ -59,4 +77,8 @@ export interface VideoProbe {
   volume: number;
   muted: boolean;
   frameMs: number;
+  trackId: string | null;
+  captionsOn: boolean;
+  /** The text the overlay shows (the cues on, one line each), null while it shows nothing. */
+  cueText: string | null;
 }

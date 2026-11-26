@@ -164,7 +164,7 @@ describe('command registry', () => {
       'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.goToPage', 'reader.imageBackgroundChecker', 'reader.imageBackgroundDark', 'reader.imageBackgroundLight', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.scrollHorizontal', 'reader.scrollPage', 'reader.scrollVertical', 'reader.showOutline', 'reader.showSessions', 'reader.showThumbnails', 'reader.spreadEven', 'reader.spreadNone', 'reader.spreadOdd', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
       'session.rename', 'tab.close', 'tab.closeOthers', 'tab.goTo2', 'tab.goTo3', 'tab.goTo4', 'tab.goTo5', 'tab.goTo6', 'tab.goTo7', 'tab.goTo8', 'tab.last', 'tab.moveLeft', 'tab.moveRight', 'tab.next', 'tab.previous', 'tab.reopenClosed', 'tab.revealInLibrary',
       'tag.clearColor', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'tag.delete', 'tag.rename', 'tag.setColor', 'tags.clearFilter', 'translation.translateSelection', 'trash.empty', 'tutor.chooseAgent', 'tutor.newSession', 'tutor.stop',
-      'video.back10', 'video.back5', 'video.exitFullScreen', 'video.faster', 'video.forward10', 'video.forward5', 'video.frameBack', 'video.frameForward', 'video.playPause', 'video.slower', 'video.toggleFullScreen', 'video.toggleMute',
+      'video.addSubtitles', 'video.back10', 'video.back5', 'video.exitFullScreen', 'video.faster', 'video.forward10', 'video.forward5', 'video.frameBack', 'video.frameForward', 'video.playPause', 'video.slower', 'video.toggleCaptions', 'video.toggleFullScreen', 'video.toggleMute',
       'view.inspectorInfo', 'view.inspectorTutor', 'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
     ]);
     expect(commandById('file.importManaged')).toMatchObject({ label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' });
@@ -1080,5 +1080,42 @@ describe('video commands (M8a spec 6.3, 10)', () => {
     expect(keySpecKeys({ code: 'Comma', shift: true }, 'darwin')).toEqual(['⇧', ',']);
     expect(keySpecKeys({ code: 'Period' }, 'linux')).toEqual(['.']);
     expect(keySpecKeys({ code: 'KeyK' }, 'linux')).toEqual(['K']);
+  });
+});
+
+describe('the subtitle commands (M8a spec 6.5, 10)', () => {
+  const OPEN: CommandContextState = { ...VIEWER, videoOpen: true };
+  const WITH_TRACK: CommandContextState = { ...OPEN, videoCaptions: true };
+
+  it('C turns the shown track on or off and has no menu item; the picker has no key', () => {
+    expect(commandById('video.toggleCaptions')).toMatchObject({ label: '자막 켜기/끄기', key: { code: 'KeyC', noRepeat: true }, contexts: ['video'] });
+    expect(commandById('video.addSubtitles')).toMatchObject({ label: '자막\u00a0파일 추가…', contexts: ['video'] });
+    expect(commandById('video.addSubtitles').key).toBeUndefined();
+    for (const id of ['video.toggleCaptions', 'video.addSubtitles'] as const) {
+      expect(commandById(id).menu, id).toBeUndefined();
+      expect(commandById(id).accelerator, id).toBeUndefined();
+      expect(inPalette(commandById(id)), id).toBe(true);
+    }
+  });
+  it('C needs a track, the picker needs only a video', () => {
+    expect(isCommandAvailable('video.toggleCaptions', WITH_TRACK)).toBe(true);
+    expect(isCommandAvailable('video.toggleCaptions', OPEN)).toBe(false);
+    expect(isCommandAvailable('video.toggleCaptions', { ...WITH_TRACK, blocked: true })).toBe(false);
+    expect(isCommandAvailable('video.toggleCaptions', { ...VIEWER, videoCaptions: true })).toBe(false);
+    expect(isCommandAvailable('video.addSubtitles', OPEN)).toBe(true);
+    expect(isCommandAvailable('video.addSubtitles', WITH_TRACK)).toBe(true);
+    expect(isCommandAvailable('video.addSubtitles', VIEWER)).toBe(false);
+    expect(isCommandAvailable('video.addSubtitles', { ...OPEN, blocked: true })).toBe(false);
+  });
+  it('the toggle is named by what it does now', () => {
+    const c = commandById('video.toggleCaptions');
+    expect(commandLabel(c, 'linux', { videoCaptionsOn: true })).toBe('자막 끄기');
+    expect(commandLabel(c, 'linux', { videoCaptionsOn: false })).toBe('자막 켜기');
+    expect(commandLabel(c, 'linux')).toBe('자막 켜기/끄기');
+  });
+  it('carries the two flags like the other flat fields', () => {
+    expect(sameCommandContext({ ...WITH_TRACK, videoCaptionsOn: true }, { ...WITH_TRACK, videoCaptionsOn: true })).toBe(true);
+    expect(sameCommandContext({ ...WITH_TRACK, videoCaptionsOn: true }, { ...WITH_TRACK, videoCaptionsOn: false })).toBe(false);
+    expect(sameCommandContext(WITH_TRACK, OPEN)).toBe(false);
   });
 });

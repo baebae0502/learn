@@ -124,7 +124,7 @@ const M7C_COMMANDS: readonly CommandId[] = ['reader.imageBackgroundLight', 'read
  */
 const M8A_COMMANDS: readonly CommandId[] = [
   'video.playPause', 'video.back10', 'video.forward10', 'video.back5', 'video.forward5', 'video.frameBack', 'video.frameForward', 'video.slower', 'video.faster', 'video.toggleMute',
-  'video.toggleFullScreen', 'video.exitFullScreen',
+  'video.toggleFullScreen', 'video.exitFullScreen', 'video.toggleCaptions', 'video.addSubtitles',
 ] as CommandId[];
 
 /**
@@ -930,6 +930,21 @@ test('every registry command runs without a page error (library and reader menus
       await expect.poll(async () => (await state()).muted).toBe(true);
       await run('음소거 해제', 'video.toggleMute');
       await expect.poll(async () => (await state()).muted).toBe(false);
+      // Subtitles: with no track C is no command (the palette does not list it); the picker attaches one, which then shows, and C turns it off and on
+      // (named by what it does now). The picker's panel is stubbed to a subtitle file.
+      await runMenuCommand(app, 'app.palette');
+      await page.getByTestId('palette-input').fill('자막');
+      await expect(page.locator('[data-testid="palette-item"][data-command-id="video.addSubtitles"]')).toHaveCount(1);
+      await expect(page.locator('[data-testid="palette-item"][data-command-id="video.toggleCaptions"]'), 'no track, no 자막 켜기/끄기').toHaveCount(0);
+      await page.keyboard.press('Escape');
+      await stubOpenDialog(app, [path.join(FIXTURES, 'lecture-60s.ko.srt')]);
+      await run('자막', 'video.addSubtitles');
+      await expect(page.getByTestId('subtitle-attached')).toBeVisible();
+      await expect.poll(async () => (await state()).captionsOn).toBe(true);
+      await run('자막 끄기', 'video.toggleCaptions');
+      await expect.poll(async () => (await state()).captionsOn).toBe(false);
+      await run('자막 켜기', 'video.toggleCaptions');
+      await expect.poll(async () => (await state()).captionsOn).toBe(true);
       // The stage: the palette's 전체 화면으로 보기 puts the window on it (named by what it does now), esc, a key and no palette row, leaves it.
       await run('전체 화면으로 보기', 'video.toggleFullScreen');
       await expect.poll(async () => (await stageState(app)).stage).toBe(true);

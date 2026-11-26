@@ -184,6 +184,9 @@ export const commandContextInput = z
     videoMuted: z.boolean().optional(),
     /** The window is on the video stage: esc leaves it; absent otherwise. */
     videoStage: z.boolean().optional(),
+    /** The shown video has a subtitle track / shows it: C and its name follow; absent unless a video is open. */
+    videoCaptions: z.boolean().optional(),
+    videoCaptionsOn: z.boolean().optional(),
     /** How the open PDF scrolls: the spread commands are off while horizontal; absent otherwise. */
     pdfScroll: z.enum(SCROLL_MODES).optional(),
     /** The open PDF can go back / forward in its history (⌘[ ⌘]); absent otherwise. */

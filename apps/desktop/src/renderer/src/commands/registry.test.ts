@@ -134,6 +134,18 @@ describe('renderer command registry', () => {
     expect(runCommand('video.exitFullScreen', on)).toBe(true);
     expect(on.video).toHaveBeenCalledWith('exitFullScreen');
   });
+  it('reports the subtitle flags only with a video open; both commands go through the video handler', () => {
+    expect(contextOf(env({ view: 'viewer' }))).not.toHaveProperty('videoCaptions');
+    expect(contextOf(env({ view: 'viewer', videoOpen: true }))).toMatchObject({ videoCaptions: false, videoCaptionsOn: false });
+    expect(contextOf(env({ view: 'viewer', videoOpen: true, videoCaptions: true, videoCaptionsOn: true }))).toMatchObject({ videoCaptions: true, videoCaptionsOn: true });
+    const none = env({ view: 'viewer', videoOpen: true });
+    expect(runCommand('video.toggleCaptions', none)).toBe(false); // no track: C is no command
+    expect(runCommand('video.addSubtitles', none)).toBe(true);
+    expect(none.video).toHaveBeenCalledWith('addSubtitles');
+    const some = env({ view: 'viewer', videoOpen: true, videoCaptions: true });
+    expect(runCommand('video.toggleCaptions', some)).toBe(true);
+    expect(some.video).toHaveBeenCalledWith('toggleCaptions');
+  });
   it('reports the library and selection counts and the item panel state, never the selected ids (P-2)', () => {
     const e = env({ inspector: 'shown', libraryCount: 48, selectionCount: 3, selectionAvailable: 2, selectionRelinkable: 1, selection: () => [ID, OTHER] });
     expect(contextOf(e)).toEqual({ view: 'library', blocked: false, textSize: 13, inspector: 'shown', libraryCount: 48, selectionCount: 3, selectionAvailable: 2, selectionRelinkable: 1, ...NO_LIBRARY_VIEW });

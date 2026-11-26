@@ -84,7 +84,10 @@ export const inspector = {
   noInfo: '저자와 연도를 적어 두면 표에서 정렬하고 찾을\u00a0수 있습니다.',
   showMore: '더 보기',
   showLess: '접기',
-  file: { storage: '보관', size: '크기', originalName: '원래 이름', location: '위치' },
+  file: { storage: '보관', size: '크기', originalName: '원래 이름', location: '위치', subtitles: '자막' },
+  /** The 자막 line's parts (spec 6.8): the middot stays with the name before it, and "외 N개" with its number (subtitleLine). */
+  subtitleSeparator: '\u00a0· ',
+  subtitleMore: (n: number) => `\u00a0외\u00a0${n}개`,
   /** 보관 values (design-spec 9: "관리형" → "사본"). */
   storage: { managed: '사본 · 라이브러리 안', linked: '외부 연결' },
   fileSha: 'SHA-256',

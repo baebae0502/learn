@@ -69,6 +69,8 @@
     --video-chrome-pressed: light-dark(oklch(100% 0 0 / 0.16), oklch(100% 0 0 / 0.16));
     --video-chrome-gap: light-dark(oklch(14% 0.003 250), oklch(14% 0.003 250));
     --video-chrome-meter: light-dark(oklch(72% 0.11 190), oklch(72% 0.11 190));
+    --subtitle-bg: light-dark(oklch(0% 0 0 / 0.72), oklch(0% 0 0 / 0.72));
+    --subtitle-fg: light-dark(oklch(100% 0 0), oklch(100% 0 0));
     /* Tag and annotation colours (positions 1–8, same in both themes) */
     --tag-1: #ffd400;
     --tag-2: #ff6666;

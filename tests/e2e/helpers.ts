@@ -26,6 +26,10 @@ export interface VideoProbe {
   volume: number;
   muted: boolean;
   frameMs: number;
+  /** The subtitle track chosen, whether it shows, and the text the overlay draws (the cues on, one line each; null for none). */
+  trackId: string | null;
+  captionsOn: boolean;
+  cueText: string | null;
   itemId: string;
 }
 

@@ -230,13 +230,73 @@
     background: var(--bg-raised);
     box-shadow: var(--shadow-e1);
   }
-  /* The volume is the row's last control: the pop-up ends at its right edge instead of standing out past the reader's. */
-  .volume:last-child .vol-pop {
+  /* The volume is the row's last control but the full-screen button: the pop-up ends at its right edge instead of standing out past the reader's. */
+  .volume:nth-last-child(2) .vol-pop {
     left: auto;
     right: 0;
     translate: none;
   }
   .vol-pop .vtrack-slider {
     width: 80px; /* local: the bar's length in the pop-up */
+  }
+
+  /* ── The stage (spec 6.6) ──────────────────────────────────────────────────────────────────────────────────────────────── */
+  /* The tab strip goes (the sidebar and the item panel fold in the shell; the reader's strip goes below). */
+  :root[data-video-stage] .titlebar,
+  :root[data-video-stage] .video-reader .video-toolbar {
+    display: none;
+  }
+  /* The picture fills the window and never moves: the controls lie over its bottom instead of taking a row of their own. */
+  :root[data-video-stage] .video-reader {
+    position: relative;
+    --video-bar-h: calc(16px + var(--space-4) + 32px + 2 * var(--space-8)); /* local: scrubber, gap, row and padding of the bar; the overlay (spec 7.2) stands this far above the stage's bottom while the bar shows */
+  }
+  :root[data-video-stage] .video-reader .video-controls {
+    position: absolute;
+    inset: auto 0 0 0;
+    z-index: 4;
+    border-top: 0;
+    background: var(--video-chrome-bg);
+    color: var(--video-chrome-text);
+    /* A fixed dark surface in both themes: the controls read these in place of the theme's own. */
+    --text-primary: var(--video-chrome-text);
+    --text-secondary: var(--video-chrome-text-2);
+    --text-tertiary: var(--video-chrome-text-3);
+    --bg-track: var(--video-chrome-track);
+    --border: var(--video-chrome-border);
+    --fill-hover: var(--video-chrome-hover);
+    --fill-pressed: var(--video-chrome-pressed);
+    --bg-window: var(--video-chrome-gap);
+    --meter: var(--video-chrome-meter);
+    --focus: var(--image-focus-dark);
+    transition: opacity var(--duration-base) var(--ease-standard);
+  }
+  /* The scrim: the bar's dark fades out upward over the picture. */
+  :root[data-video-stage] .video-reader .video-controls::before {
+    content: '';
+    position: absolute;
+    inset: auto 0 100% 0;
+    height: 48px; /* local: the scrim's height */
+    background: linear-gradient(to top, var(--video-chrome-scrim), transparent);
+    pointer-events: none;
+  }
+  /* The bubble and the folded volume bar are surfaces of their own: dark like the bar, not the theme's raised surface. */
+  :root[data-video-stage] .video-reader :is(.hover-time, .vol-pop) {
+    background: var(--video-chrome-bg);
+    box-shadow: inset 0 0 0 1px var(--video-chrome-border);
+  }
+  /* Idle (a still pointer while it plays): the controls and the pointer go, the picture stays. The bar keeps its place in the tab order. */
+  :root[data-video-stage] .video-reader[data-idle] .video-controls {
+    opacity: 0;
+    pointer-events: none;
+  }
+  :root[data-video-stage] .video-reader[data-idle],
+  :root[data-video-stage] .video-reader[data-idle] * {
+    cursor: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :root[data-video-stage] .video-reader .video-controls {
+      transition: none;
+    }
   }
 }

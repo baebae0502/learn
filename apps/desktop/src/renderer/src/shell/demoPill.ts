@@ -48,9 +48,10 @@ const WINDOW_KEYS: Readonly<Record<string, string>> = {
 
 /** What a window key does where it was pressed, in the words the app already uses (registry, palette footer). */
 function windowKeyLabel(key: string, shift: boolean, place: KeyPlace): string {
+  // Esc is the registry's too (leaving the video stage), but it is mostly a dialog's close: the pill names it so.
+  if (key === 'Escape') return t.palette.footClose;
   const registry = COMMANDS.find((c) => c.key?.code === key && Boolean(c.key.shift) === shift);
   if (registry) return registry.label; // F6 다음 패널로 이동, ⇧F6 이전 패널로 이동
-  if (key === 'Escape') return t.palette.footClose;
   if (key === 'Enter' && place === 'row') return commandById('item.open').label;
   if (key === 'Enter' && place === 'palette') return t.palette.footRun;
   if ((key === 'ArrowUp' || key === 'ArrowDown') && place === 'palette') return t.palette.footMove;

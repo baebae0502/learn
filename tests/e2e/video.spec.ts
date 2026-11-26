@@ -2,9 +2,10 @@
 // speed and volume, and the unplayable state. lecture-60s.mp4 is 60 s at 30 fps (pnpm fixtures).
 import path from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { FIXTURES, importPaths, launch, mainWindow, openItem, settled, videoReady, videoState } from './helpers';
+import { FIXTURES, importPaths, launch, mainWindow, openItem, runMenuCommand, settled, stageState, videoReady, videoState } from './helpers';
 
 const LECTURE = path.join(FIXTURES, 'lecture-60s.mp4');
+const PDF = path.join(FIXTURES, 'sample.pdf');
 const MPEG4 = path.join(FIXTURES, 'sample-mpeg4part2.mp4');
 const dirs = (testInfo: { outputPath(...p: string[]): string }) => [testInfo.outputPath('library'), testInfo.outputPath('userdata')] as const;
 
@@ -388,6 +389,199 @@ test('a held key does not repeat a toggle (K, Space, M) and does repeat a seek (
     await page.getByTestId('video-stage').focus();
     await page.keyboard.press('k');
     await expect.poll(() => paused(page)).toBe(false);
+  } finally {
+    await app.close();
+  }
+});
+
+// ---- The stage (spec 6.6): the window's full screen through main's controller, the chrome hidden, idle controls hidden -------------
+
+const OFF = { stage: false, fullScreen: false, pending: false };
+const ON = { stage: true, fullScreen: true, pending: false };
+const html = (page: Page) => page.locator('html');
+const stageOn = async (app: Parameters<typeof stageState>[0], page: Page) => {
+  await expect.poll(() => stageState(app)).toEqual(ON);
+  await expect(html(page)).toHaveAttribute('data-video-stage', '');
+};
+const stageOff = async (app: Parameters<typeof stageState>[0], page: Page) => {
+  await expect.poll(() => stageState(app)).toEqual(OFF);
+  await expect(html(page)).not.toHaveAttribute('data-video-stage');
+};
+
+test('F puts the video on the stage, esc takes it off: the tab strip, the sidebar and the strip are hidden meanwhile', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await openLecture(page);
+    await page.getByTestId('video-stage').focus();
+    await expect(page.getByTestId('tab-bar')).toBeVisible();
+    await expect(page.getByTestId('video-toolbar')).toBeVisible();
+    await page.keyboard.press('f');
+    await stageOn(app, page);
+    await expect(page.getByTestId('tab-bar')).toBeHidden();
+    await expect(page.getByTestId('video-toolbar')).toBeHidden();
+    await expect(page.getByTestId('sidebar-top')).toBeHidden();
+    await expect(page.getByTestId('video-controls')).toBeVisible(); // the controls stay: over the picture
+    await page.keyboard.press('Escape');
+    await stageOff(app, page);
+    await expect(page.getByTestId('tab-bar')).toBeVisible();
+    await expect(page.getByTestId('video-toolbar')).toBeVisible();
+    await expect(page.getByTestId('sidebar-top')).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
+test('the full-screen button goes in and out, and names what it does', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await openLecture(page);
+    const button = page.getByTestId('video-fullscreen');
+    await expect(button).toHaveAttribute('aria-label', '전체 화면으로 보기');
+    await button.click();
+    await stageOn(app, page);
+    await expect(button).toHaveAttribute('aria-label', '전체 화면 끝내기');
+    await button.click();
+    await stageOff(app, page);
+    await expect(button).toHaveAttribute('aria-label', '전체 화면으로 보기');
+  } finally {
+    await app.close();
+  }
+});
+
+test('esc with the speed menu open closes only the menu; the next esc leaves the stage', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await openLecture(page);
+    await page.getByTestId('video-fullscreen').click();
+    await stageOn(app, page);
+    await page.getByTestId('video-speed').click();
+    await expect(page.getByTestId('video-speed-1.25')).toBeVisible();
+    await menuHasFocus(page);
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('video-speed-1.25')).toHaveCount(0);
+    await settled(page);
+    expect(await stageState(app)).toEqual(ON);
+    await page.getByTestId('video-stage').focus();
+    await page.keyboard.press('Escape');
+    await stageOff(app, page);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the window leaving full screen by itself ends the stage', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await openLecture(page);
+    await page.getByTestId('video-fullscreen').click();
+    await stageOn(app, page);
+    await (await mainWindow(app)).evaluate((w) => w.setFullScreen(false));
+    await stageOff(app, page);
+    await expect(page.getByTestId('tab-bar')).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
+test('on the stage a still pointer hides the controls and the pointer while it plays; movement, a key or a pause brings them back', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await openLecture(page);
+    const reader = page.locator('.video-reader');
+    // Windowed, nothing hides.
+    await page.getByTestId('video-play').click();
+    await expect.poll(() => paused(page)).toBe(false);
+    await settled(page);
+    await expect(reader).not.toHaveAttribute('data-idle');
+    await page.getByTestId('video-fullscreen').click();
+    await stageOn(app, page);
+    await page.mouse.move(400, 300);
+    await expect(reader).toHaveAttribute('data-idle', '', { timeout: 6_000 });
+    await expect(page.getByTestId('video-controls')).toHaveCSS('opacity', '0');
+    await expect(page.getByTestId('video-stage')).toHaveCSS('cursor', 'none');
+    // The video box does not move while the controls come and go.
+    const box = (await page.getByTestId('video').boundingBox())!;
+    await page.mouse.move(420, 320);
+    await expect(reader).not.toHaveAttribute('data-idle');
+    await expect(page.getByTestId('video-controls')).toHaveCSS('opacity', '1');
+    expect(await page.getByTestId('video').boundingBox()).toEqual(box);
+    await expect(reader).toHaveAttribute('data-idle', '', { timeout: 6_000 });
+    // A key shows them again; a pause keeps them shown.
+    await page.keyboard.press('j');
+    await expect(reader).not.toHaveAttribute('data-idle');
+    await expect(reader).toHaveAttribute('data-idle', '', { timeout: 6_000 });
+    await page.keyboard.press('k');
+    await expect.poll(() => paused(page)).toBe(true);
+    await expect(reader).not.toHaveAttribute('data-idle');
+    await settled(page);
+    await expect(reader).not.toHaveAttribute('data-idle'); // paused: the controls stay
+  } finally {
+    await app.close();
+  }
+});
+
+test('on the stage a switch to another tab ends the stage', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await importPaths(page, [LECTURE, PDF]);
+    await openItem(page, 'lecture-60s');
+    await videoReady(page);
+    await page.locator('[data-testid="tab"][data-item-id="library"]').click();
+    await openItem(page, 'sample');
+    await expect(page.getByTestId('pdf-viewer')).toBeVisible();
+    await runMenuCommand(app, 'tab.next'); // a tab opened from the library stands left of the one opened before: the video is to its right
+    await videoReady(page);
+    await page.getByTestId('video-fullscreen').click();
+    await stageOn(app, page);
+    await runMenuCommand(app, 'tab.previous');
+    await stageOff(app, page);
+    await expect(page.getByTestId('pdf-viewer')).toBeVisible();
+    await expect(page.getByTestId('tab-bar')).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
+test('closing the video on the stage ends the stage', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await openLecture(page);
+    await page.getByTestId('video-fullscreen').click();
+    await stageOn(app, page);
+    await runMenuCommand(app, 'tab.close');
+    await stageOff(app, page);
+    await expect(page.getByTestId('library-table')).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
+test('a page cannot enter HTML full screen: the request never takes and the window stays as it is', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await openLecture(page);
+    // Asked inside a real press (a user gesture), the way a page would: with the permission gone Electron neither enters nor rejects — the promise
+    // stays pending and no fullscreenchange comes, so the proof is that nothing changed once main and the page have both had their turn.
+    await page.evaluate(() => {
+      const w = window as unknown as { __fs: string[] };
+      w.__fs = [];
+      document.addEventListener('fullscreenchange', () => w.__fs.push('change'));
+      addEventListener('click', () => {
+        document.documentElement.requestFullscreen().then(() => w.__fs.push('entered'), (e: Error) => w.__fs.push(`rejected ${e.name}`));
+      }, { once: true });
+    });
+    await page.getByTestId('video-stage').click(); // also plays the video: harmless here
+    await settled(page, 10);
+    const result = await page.evaluate(() => ({ events: (window as unknown as { __fs: string[] }).__fs, element: document.fullscreenElement === null }));
+    expect(result.events).not.toContain('entered');
+    expect(result.events).not.toContain('change');
+    expect(result.element).toBe(true);
+    expect(await (await mainWindow(app)).evaluate((w) => w.isFullScreen())).toBe(false);
+    expect(await stageState(app)).toEqual(OFF);
+    // The control: the window's own full screen still works, through main.
+    await page.getByTestId('video-fullscreen').click();
+    await stageOn(app, page);
+    expect(await page.evaluate(() => document.fullscreenElement === null)).toBe(true); // the window is full screen, the document is not
   } finally {
     await app.close();
   }

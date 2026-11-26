@@ -3,12 +3,14 @@ import type { LearnEventMap } from '@learn/domain';
 import { api } from '../api';
 import { useLearnEvent } from '../events';
 import { setTooltipBlock } from '../ui/tooltipGate';
+import { setVideoStage } from './videoStage';
 
 const apply = ({ fullscreen, focused, main, stage }: LearnEventMap['windowState']) => {
   const root = document.documentElement;
   root.toggleAttribute('data-fullscreen', fullscreen); // no traffic lights → no 84 px inset
   // The video stage (spec 6.6): only main turns it on or off, so the page shows it from main's state alone.
   root.toggleAttribute('data-video-stage', stage);
+  setVideoStage(stage);
   // Not key: no rings or keyboard cursor, neutral selection. Not main as well — no sheet of ours holds it, or another
   // window of ours has the key: the chrome dims (design-spec 2.1).
   root.toggleAttribute('data-window-inactive', !focused);

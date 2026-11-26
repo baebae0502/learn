@@ -164,7 +164,7 @@ describe('command registry', () => {
       'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.goToPage', 'reader.imageBackgroundChecker', 'reader.imageBackgroundDark', 'reader.imageBackgroundLight', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.scrollHorizontal', 'reader.scrollPage', 'reader.scrollVertical', 'reader.showOutline', 'reader.showSessions', 'reader.showThumbnails', 'reader.spreadEven', 'reader.spreadNone', 'reader.spreadOdd', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
       'session.rename', 'tab.close', 'tab.closeOthers', 'tab.goTo2', 'tab.goTo3', 'tab.goTo4', 'tab.goTo5', 'tab.goTo6', 'tab.goTo7', 'tab.goTo8', 'tab.last', 'tab.moveLeft', 'tab.moveRight', 'tab.next', 'tab.previous', 'tab.reopenClosed', 'tab.revealInLibrary',
       'tag.clearColor', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'tag.delete', 'tag.rename', 'tag.setColor', 'tags.clearFilter', 'translation.translateSelection', 'trash.empty', 'tutor.chooseAgent', 'tutor.newSession', 'tutor.stop',
-      'video.back10', 'video.back5', 'video.faster', 'video.forward10', 'video.forward5', 'video.frameBack', 'video.frameForward', 'video.playPause', 'video.slower', 'video.toggleMute',
+      'video.back10', 'video.back5', 'video.exitFullScreen', 'video.faster', 'video.forward10', 'video.forward5', 'video.frameBack', 'video.frameForward', 'video.playPause', 'video.slower', 'video.toggleFullScreen', 'video.toggleMute',
       'view.inspectorInfo', 'view.inspectorTutor', 'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
     ]);
     expect(commandById('file.importManaged')).toMatchObject({ label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' });
@@ -975,6 +975,42 @@ describe('the session list (T1a spec 8.9, 11)', () => {
   });
   it('the reported focus is part of the context and renames the menu bar\'s ⌘⌫ line', () => {
     expect(sameCommandContext(PDF, { ...PDF, sessionFocused: true })).toBe(false);
+  });
+});
+
+describe('the video stage commands (M8a spec 6.6, P-16)', () => {
+  const OPEN: CommandContextState = { ...VIEWER, videoOpen: true };
+  const STAGE: CommandContextState = { ...OPEN, videoStage: true };
+
+  it('F toggles the stage and esc leaves it, esc yielding to an open menu', () => {
+    expect(commandById('video.toggleFullScreen')).toMatchObject({ label: '전체 화면', key: { code: 'KeyF', noRepeat: true }, contexts: ['video'] });
+    expect(commandById('video.exitFullScreen')).toMatchObject({ label: '전체 화면 끝내기', key: { code: 'Escape', yields: true }, contexts: ['video'], palette: false });
+    for (const id of ['video.toggleFullScreen', 'video.exitFullScreen'] as const) {
+      expect(commandById(id).menu, id).toBeUndefined();
+      expect(commandById(id).accelerator, id).toBeUndefined();
+    }
+    expect(inPalette(commandById('video.toggleFullScreen'))).toBe(true);
+    expect(inPalette(commandById('video.exitFullScreen'))).toBe(false);
+  });
+  it('the toggle is on with a playable video (also in the stage), the exit only in the stage', () => {
+    expect(isCommandAvailable('video.toggleFullScreen', OPEN)).toBe(true);
+    expect(isCommandAvailable('video.toggleFullScreen', STAGE)).toBe(true);
+    expect(isCommandAvailable('video.toggleFullScreen', VIEWER)).toBe(false);
+    expect(isCommandAvailable('video.toggleFullScreen', { ...OPEN, blocked: true })).toBe(false);
+    expect(isCommandAvailable('video.exitFullScreen', STAGE)).toBe(true);
+    expect(isCommandAvailable('video.exitFullScreen', OPEN)).toBe(false);
+    expect(isCommandAvailable('video.exitFullScreen', { ...VIEWER, videoStage: true })).toBe(true); // a video that went unplayable still lets the stage go
+    expect(isCommandAvailable('video.exitFullScreen', { ...LIB, videoStage: true })).toBe(false);
+  });
+  it('the toggle is named by what it does now', () => {
+    const c = commandById('video.toggleFullScreen');
+    expect(commandLabel(c, 'linux', { videoStage: true })).toBe('전체 화면 끝내기');
+    expect(commandLabel(c, 'linux', { videoStage: false })).toBe('전체 화면으로 보기');
+    expect(commandLabel(c, 'linux')).toBe('전체 화면');
+  });
+  it('carries the stage like the other flat fields', () => {
+    expect(sameCommandContext(STAGE, { ...OPEN, videoStage: true })).toBe(true);
+    expect(sameCommandContext(STAGE, OPEN)).toBe(false);
   });
 });
 

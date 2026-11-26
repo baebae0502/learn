@@ -10,7 +10,7 @@ import { askViaApi, consentAndChoose, turnEnded } from './tutor-helpers';
 import {
   FIXTURES, assignTag, clickToCloseSheet, closeSheet, confirmCalls, createCollection, enabledMenuCommands, expectWindow, importPause, importPaths, isCloseNoise, importResume, importWaiting, imageState, launch, makeTags,
   libraryTab, menuItemEnabled, menuSnapshot, openDialogCalls, openItem, organizeSnapshot, readerTab, recordedPopups, rowByTitle, runMenuCommand, runPalette, saveDialogCalls, sheetReleased, shellCalls, specialRow, stubConfirm,
-  stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, stubSaveDialog, stubShell, tagChip, trashItems, treeRow, tutorFakeScript, videoState, waitImportIdle,
+  stageState, stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, stubSaveDialog, stubShell, tagChip, trashItems, treeRow, tutorFakeScript, videoState, waitImportIdle,
   type MenuNode,
 } from './helpers';
 
@@ -120,10 +120,11 @@ const M7C_COMMANDS: readonly CommandId[] = ['reader.imageBackgroundLight', 'read
 
 /**
  * The video reader's keys (M8a spec 10): no menu item (a bare letter is never a menu accelerator), so the menu loop never reaches them. A block
- * of their own opens a video and runs each one from the palette, which lists them with their keys; Task 11 and 12 add theirs.
+ * of their own opens a video and runs each one from the palette, which lists them with their keys (esc, 전체 화면 끝내기, is not in the palette: it runs from its key on the stage); Task 12 adds its own.
  */
 const M8A_COMMANDS: readonly CommandId[] = [
   'video.playPause', 'video.back10', 'video.forward10', 'video.back5', 'video.forward5', 'video.frameBack', 'video.frameForward', 'video.slower', 'video.faster', 'video.toggleMute',
+  'video.toggleFullScreen', 'video.exitFullScreen',
 ] as CommandId[];
 
 /**
@@ -929,6 +930,20 @@ test('every registry command runs without a page error (library and reader menus
       await expect.poll(async () => (await state()).muted).toBe(true);
       await run('음소거 해제', 'video.toggleMute');
       await expect.poll(async () => (await state()).muted).toBe(false);
+      // The stage: the palette's 전체 화면으로 보기 puts the window on it (named by what it does now), esc, a key and no palette row, leaves it.
+      await run('전체 화면으로 보기', 'video.toggleFullScreen');
+      await expect.poll(async () => (await stageState(app)).stage).toBe(true);
+      await runMenuCommand(app, 'app.palette');
+      await page.getByTestId('palette-input').fill('전체 화면');
+      await expect(page.locator('[data-testid="palette-item"][data-command-id="video.exitFullScreen"]'), 'esc is not a palette row').toHaveCount(0);
+      await expect(page.locator('[data-testid="palette-item"][data-command-id="video.toggleFullScreen"]')).toHaveCount(1);
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('palette')).toHaveCount(0);
+      expect((await stageState(app)).stage, 'esc closed the palette only').toBe(true);
+      await page.getByTestId('video-stage').focus();
+      await page.keyboard.press('Escape');
+      await expect.poll(async () => (await stageState(app)).stage).toBe(false);
+      ran.add('video.exitFullScreen');
       // Playing, a frame step is off: the palette does not list it.
       await runMenuCommand(app, 'app.palette');
       await page.getByTestId('palette-input').fill('한 프레임');

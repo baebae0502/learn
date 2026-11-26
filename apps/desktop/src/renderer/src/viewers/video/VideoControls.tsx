@@ -1,6 +1,8 @@
 import { useRef } from 'react';
-import { Pause, Play, RotateCcw, RotateCw } from 'lucide-react';
+import { Maximize, Minimize, Pause, Play, RotateCcw, RotateCw } from 'lucide-react';
 import { commandById, commandLabel } from '@learn/domain';
+import { useCommands } from '../../commands/CommandProvider';
+import { useVideoStage } from '../../shell/videoStage';
 import { t } from '../../strings';
 import { IconButton } from '../../ui/Button';
 import { cx } from '../../ui/cx';
@@ -14,8 +16,8 @@ import { useVideo } from './videoStore';
 
 /**
  * The bar under the picture (spec 6.2): the scrubber and a row of 32 — ten seconds back, play, ten seconds on, the clock, the
- * speed and the volume. Drawn disabled until the first frame is there. Slots for the subtitle and full-screen buttons are
- * not drawn: they come with the tasks that make them work.
+ * speed, the volume and the full-screen button. Drawn disabled until the first frame is there. The subtitle button is not drawn: it
+ * comes with the task that makes it work. On the stage (spec 6.6) the bar lies over the picture's bottom, dark in both themes.
  */
 export function VideoControls() {
   const status = useVideo((s) => s.status);
@@ -23,10 +25,13 @@ export function VideoControls() {
   const timeMs = useVideo((s) => s.timeMs);
   const durationMs = useVideo((s) => s.durationMs);
   const handle = useVideo((s) => s.handle);
+  const stage = useVideoStage((s) => s.on);
+  const { run } = useCommands();
   const rowRef = useRef<HTMLDivElement>(null);
   const disabled = status !== 'ready';
   const platform = currentPlatform();
   const playLabel = commandLabel(commandById('video.playPause'), platform, { videoPlaying: playing });
+  const stageLabel = commandLabel(commandById('video.toggleFullScreen'), platform, { videoStage: stage });
   return (
     <div className={cx('video-controls', disabled && 'is-disabled')} role="group" aria-label={t.video.controls} data-testid="video-controls">
       <Scrubber />
@@ -40,6 +45,7 @@ export function VideoControls() {
         <span className="spacer" />
         <SpeedMenu isDisabled={disabled} />
         <VolumeControl isDisabled={disabled} rowRef={rowRef} />
+        <IconButton icon={stage ? Minimize : Maximize} label={stageLabel} keys={capsOf('video.toggleFullScreen')} tooltipPlacement="top" isDisabled={disabled} onPress={() => run('video.toggleFullScreen')} testId="video-fullscreen" />
       </div>
     </div>
   );

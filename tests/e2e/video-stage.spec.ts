@@ -1,9 +1,18 @@
 // The video stage's full screen (spec 6.6, 9.1): main changes the window's full screen one step at a time, the last wish
 // winning, and reports the stage in the window state. No screen draws it yet: the page's window.learn.ui.stage, main's
-// stageState hook, and <html data-video-stage>.
+// stageState hook, and <html data-video-stage>. The window of every test shows a video: the page ends a stage on anything else.
 import { expect, test, type Page } from '@playwright/test';
-import { launch, mainWindow, stageState } from './helpers';
+import path from 'node:path';
+import { FIXTURES, importPaths, launch, mainWindow, openItem, stageState, videoReady } from './helpers';
 
+/** The renderer ends a stage that is not on a playing video (spec 6.6), so the controller is driven with a video shown. */
+async function launchOnVideo(library: string, userdata: string) {
+  const launched = await launch(library, userdata);
+  await importPaths(launched.page, [path.join(FIXTURES, 'lecture-60s.mp4')]);
+  await openItem(launched.page, 'lecture-60s');
+  await videoReady(launched.page);
+  return launched;
+}
 const dirs = (testInfo: { outputPath(...p: string[]): string }) => [testInfo.outputPath('library'), testInfo.outputPath('userdata')] as const;
 const askStage = (page: Page, action: 'toggle' | 'exit') => page.evaluate((action) => window.learn.ui.stage({ action }), action);
 /** What the page reads of the stage when it asks main (ui.windowState). */
@@ -12,7 +21,7 @@ const OFF = { stage: false, fullScreen: false, pending: false };
 const ON = { stage: true, fullScreen: true, pending: false };
 
 test('a toggle puts the window in full screen and the stage on; the page hears it', async ({}, testInfo) => {
-  const { app, page } = await launch(...dirs(testInfo));
+  const { app, page } = await launchOnVideo(...dirs(testInfo));
   try {
     expect(await stageState(app)).toEqual(OFF);
     await expect(page.locator('html')).not.toHaveAttribute('data-video-stage');
@@ -27,7 +36,7 @@ test('a toggle puts the window in full screen and the stage on; the page hears i
 });
 
 test('five toggles 50 ms apart settle on the last wish: the stage and the full screen agree', async ({}, testInfo) => {
-  const { app, page } = await launch(...dirs(testInfo));
+  const { app, page } = await launchOnVideo(...dirs(testInfo));
   try {
     expect(await askStage(page, 'toggle')).toEqual({ ok: true, data: undefined });
     // The first toggle took: its change is in flight or has landed, before "nothing in flight" is waited for below.
@@ -52,7 +61,7 @@ test('five toggles 50 ms apart settle on the last wish: the stage and the full s
 });
 
 test('exit ends the stage and the full screen it brought; with no stage it does nothing', async ({}, testInfo) => {
-  const { app, page } = await launch(...dirs(testInfo));
+  const { app, page } = await launchOnVideo(...dirs(testInfo));
   try {
     await askStage(page, 'toggle');
     await expect.poll(() => stageState(app)).toEqual(ON);
@@ -70,7 +79,7 @@ test('exit ends the stage and the full screen it brought; with no stage it does 
 });
 
 test('the window leaving full screen by itself (the traffic light) ends the stage', async ({}, testInfo) => {
-  const { app, page } = await launch(...dirs(testInfo));
+  const { app, page } = await launchOnVideo(...dirs(testInfo));
   try {
     await askStage(page, 'toggle');
     await expect.poll(() => stageState(app)).toEqual(ON);

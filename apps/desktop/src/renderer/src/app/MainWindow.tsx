@@ -95,6 +95,7 @@ import { readerActions } from '../viewers/pdf/readerActions';
 import { videoActions } from '../viewers/video/videoActions';
 import { useVideoSettings } from '../viewers/video/useVideoSettings';
 import { useVideo } from '../viewers/video/videoStore';
+import { useVideoStage } from '../shell/videoStage';
 import { useReader, type PendingJump } from '../viewers/pdf/readerStore';
 import { canGoBack, canGoForward } from '../viewers/pdf/history';
 import { reopenSelection, useSelection } from '../translation/useSelectionText';
@@ -399,6 +400,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   const videoReady = useVideo((s) => s.status === 'ready');
   const videoPlaying = useVideo((s) => s.playing);
   const videoMuted = useVideoSettings().muted;
+  const videoStage = useVideoStage((s) => s.on);
   const pdfScroll = useReader((s) => s.pdf?.scroll);
   const historyBack = useReader((s) => canGoBack(s.history));
   const historyForward = useReader((s) => canGoForward(s.history));
@@ -490,7 +492,8 @@ export function MainWindow(_props: { info: AppInfo }) {
     held,
     ...(pdfOpen ? { pdfOpen: true } : {}),
     ...(imageDrawn && viewKind === 'reader' ? { imageOpen: true } : {}),
-    ...(videoReady && viewKind === 'reader' ? { videoOpen: true, videoPlaying, videoMuted } : {}),
+    // Named by the stage too (전체 화면으로 보기 / 끝내기): reported as true or false while a video is open, and as true alone when it is not.
+    ...(videoReady && viewKind === 'reader' ? { videoOpen: true, videoPlaying, videoMuted, videoStage } : videoStage ? { videoStage: true } : {}),
     ...(pdfOpen && pdfScroll ? { pdfScroll } : {}),
     ...(pdfOpen && historyBack ? { historyBack: true } : {}),
     ...(pdfOpen && historyForward ? { historyForward: true } : {}),
@@ -642,7 +645,8 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, pdfOpen, imageDrawn, videoReady, videoPlaying, videoMuted, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, inspectorMode, tutorConsented, tutorHasMessages, tutorStreaming, sessionFocused, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAtPage, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, pdfOpen, imageDrawn, videoReady, videoPlaying, videoMuted, videoStage, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, inspectorMode, tutorConsented, tutorHasMessages, tutorStreaming, sessionFocused, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAtPage, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  useStageLeaves(videoStage, videoReady && viewKind === 'reader' ? (view.kind === 'reader' ? view.itemId : null) : null);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);
@@ -817,4 +821,22 @@ function ImportQueueMarker() {
   const sending = useJobProgress((s) => s.sending);
   const settling = useJobProgress((s) => s.settling > 0);
   return <div data-testid="import-queue" data-state={state} data-sending={sending} data-settling={settling ? 'true' : undefined} hidden />;
+}
+
+/**
+ * The stage belongs to the video that was shown when it began: when the shown tab stops being that video (another tab, the library,
+ * the tab closed or trashed) or the video can no longer play, the stage is asked to end. Main answers with the window state, as always.
+ * `shownVideo`: the item of the shown tab while it is a video that plays, else null.
+ */
+function useStageLeaves(stage: boolean, shownVideo: string | null): void {
+  const stageVideo = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (!stage) {
+      stageVideo.current = undefined;
+      return;
+    }
+    if (stageVideo.current === undefined) stageVideo.current = shownVideo;
+    if (shownVideo !== null && shownVideo === stageVideo.current) return;
+    void unwrap(api().ui.stage({ action: 'exit' })).catch((e: unknown) => console.warn('[video] leaving the stage failed', e));
+  }, [stage, shownVideo]);
 }

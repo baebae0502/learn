@@ -127,7 +127,9 @@ export type CommandId =
   | 'video.frameForward'
   | 'video.slower'
   | 'video.faster'
-  | 'video.toggleMute';
+  | 'video.toggleMute'
+  | 'video.toggleFullScreen'
+  | 'video.exitFullScreen';
 
 /** The colour of a PDF page (settings 'reader.pageColor'): 자동 follows the app theme. */
 export const PAGE_COLORS = ['auto', 'original', 'sepia', 'dark'] as const;
@@ -681,6 +683,14 @@ export const COMMANDS: readonly CommandSpec[] = [
     stateLabels: { video: { field: 'videoMuted', on: '음소거 해제', off: '음소거' } },
     keywords: ['음소거', '소리', '음량', '영상', '동영상', 'mute', 'sound'],
   },
+  // The stage (spec 6.6): the window's full screen, asked of main's controller only. esc leaves it, yielding to an open menu's own esc; it is no
+  // palette row (the toggle is that), and it is available only on the stage.
+  {
+    id: 'video.toggleFullScreen', label: '전체 화면', key: { code: 'KeyF', noRepeat: true }, contexts: ['video'],
+    stateLabels: { video: { field: 'videoStage', on: '전체 화면 끝내기', off: '전체 화면으로 보기' } },
+    keywords: ['전체 화면', '전체화면', '무대', '영상', '동영상', 'fullscreen', 'full screen'],
+  },
+  { id: 'video.exitFullScreen', label: '전체 화면 끝내기', key: { code: 'Escape', yields: true }, contexts: ['video'], palette: false },
   // F6 / ⇧F6 (design-spec 8.3): the renderer keymap moves the focus between panes, also out of a text field. No menu
   // item and not in the palette; the ⌘/ sheet lists them under 앱.
   { id: 'view.nextPane', label: '다음 패널로 이동', key: { code: 'F6', inText: true }, contexts: ['app'], palette: false, duringWork: true },
@@ -822,6 +832,8 @@ export interface CommandContextState {
   videoPlaying?: boolean;
   /** The shown video is muted: 음소거 is named by it. Absent unless a video is open. */
   videoMuted?: boolean;
+  /** The window is on the video stage (main's state): 전체 화면 is named by it and esc is a command only then. Absent otherwise. */
+  videoStage?: boolean;
   /** How the open PDF scrolls: 펼침 is off while it is 'horizontal'. Absent with no PDF open. */
   pdfScroll?: ScrollModeName;
   /** The open PDF has a place to go back to / forward to (⌘[ ⌘]): absent otherwise. */
@@ -987,6 +999,8 @@ const pdfOpen: Rule = (c) => c.pdfOpen === true;
 const imageOpen = (c: CommandContextState): boolean => c.imageOpen === true;
 /** The video reader's commands act on a video that can play. */
 const videoOpen: Rule = (c) => c.videoOpen === true;
+/** Esc leaves the stage: on the stage whatever the video does now (one that went unplayable still lets it go). */
+const videoStage: Rule = (c) => c.videoStage === true;
 /** A frame step is for a paused video: while it plays the key does nothing (and is not taken). */
 const videoPaused: Rule = (c) => c.videoOpen === true && c.videoPlaying !== true;
 /** The zoom, the two fits and the turns act on a drawn picture as on a PDF; the rest of the reader's view is the PDF's. */
@@ -1120,6 +1134,8 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'video.slower': videoOpen,
   'video.faster': videoOpen,
   'video.toggleMute': videoOpen,
+  'video.toggleFullScreen': videoOpen,
+  'video.exitFullScreen': videoStage,
 };
 
 /**

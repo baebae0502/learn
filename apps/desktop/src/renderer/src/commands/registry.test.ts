@@ -122,6 +122,18 @@ describe('renderer command registry', () => {
     expect(runCommand('video.frameForward', env({ view: 'viewer', videoOpen: true, videoPlaying: true }))).toBe(false);
     expect(runCommand('video.playPause', env({ view: 'viewer' }))).toBe(false);
   });
+  it('reports the stage only while the window is on it; the stage commands ask main through the video handler', () => {
+    expect(contextOf(env({ view: 'viewer' }))).not.toHaveProperty('videoStage');
+    expect(contextOf(env({ view: 'viewer', videoOpen: true }))).toMatchObject({ videoStage: false });
+    expect(contextOf(env({ view: 'viewer', videoOpen: true, videoStage: true }))).toMatchObject({ videoStage: true });
+    const off = env({ view: 'viewer', videoOpen: true });
+    expect(runCommand('video.toggleFullScreen', off)).toBe(true);
+    expect(off.video).toHaveBeenCalledWith('toggleFullScreen');
+    expect(runCommand('video.exitFullScreen', off)).toBe(false); // esc is a command on the stage only
+    const on = env({ view: 'viewer', videoOpen: true, videoStage: true });
+    expect(runCommand('video.exitFullScreen', on)).toBe(true);
+    expect(on.video).toHaveBeenCalledWith('exitFullScreen');
+  });
   it('reports the library and selection counts and the item panel state, never the selected ids (P-2)', () => {
     const e = env({ inspector: 'shown', libraryCount: 48, selectionCount: 3, selectionAvailable: 2, selectionRelinkable: 1, selection: () => [ID, OTHER] });
     expect(contextOf(e)).toEqual({ view: 'library', blocked: false, textSize: 13, inspector: 'shown', libraryCount: 48, selectionCount: 3, selectionAvailable: 2, selectionRelinkable: 1, ...NO_LIBRARY_VIEW });

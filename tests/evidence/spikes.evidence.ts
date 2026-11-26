@@ -220,7 +220,10 @@ test('extra: HTML video fullscreen enter/exit', TAG, async () => {
     }
     const after = await fullScreenShot('spikeX-fullscreen-after', 'after both fullscreen attempts');
     saveSpike('x-html-fullscreen', {
-      result: attempts.every((a) => (a['exit'] as { outcome: string }).outcome === 'resolved') ? 'exit resolves' : 'exitFullscreen did not resolve (see attempts)',
+      // A historical record (spec 9.1): the `fullscreen` permission is gone since M8a, so the request is now refused and that refusal is the value.
+      result: attempts.every((a) => String((a['enter'] as { outcome: string }).outcome).startsWith('rejected'))
+        ? 'requestFullscreen refused (the permission is removed; the window\'s full screen is the stage mode)'
+        : attempts.every((a) => (a['exit'] as { outcome: string }).outcome === 'resolved') ? 'exit resolves' : 'exitFullscreen did not resolve (see attempts)',
       attempts,
       after: after.file,
     });

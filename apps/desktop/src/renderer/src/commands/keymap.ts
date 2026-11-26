@@ -70,6 +70,8 @@ export function useKeymap(env: CommandEnv, active: boolean): void {
       // An open menu's or list's typeahead is a text entry too: only the keys marked `inText` (F6) go through it.
       const id = keyCommand(e, isEditing(e.target) || inOpenPopup(e.target), COMMANDS, (code) => focusOwnsKey(e.target, code));
       if (id === null) return;
+      // Esc belongs to whatever modal surface is open (a sheet, the palette): a key that is only sometimes a command is not taken for them.
+      if (!activeRef.current && e.code === 'Escape') return;
       noteKey(e);
       setInteractionModality('keyboard');
       // An item command (1–8) acts on the table's selection wherever the focus is (spec 4.2); the others take no target.

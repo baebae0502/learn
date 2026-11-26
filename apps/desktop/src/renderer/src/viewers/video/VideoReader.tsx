@@ -6,7 +6,9 @@ import { ratio, restoreVideoSeconds } from '../positionSaver';
 import { CodecNotice } from '../ReaderNotices';
 import { useReaderScope, useReaderShown } from '../readerScope';
 import { usePosition } from '../usePosition';
+import { useVideoStage } from '../../shell/videoStage';
 import { frameDurationMs } from './frameStep';
+import { useIdleControls } from './useIdleControls';
 import { useVideoSettings } from './useVideoSettings';
 import { VideoControls } from './VideoControls';
 import { VideoToolbar } from './VideoToolbar';
@@ -44,6 +46,7 @@ export function VideoReader({ item }: { item: LibraryItem }) {
   const videoRef = useRef<HTMLVideoElement | null>(null); // kept after unmount so the final time can still be read
   const restored = useRef(false);
   const hintId = useId();
+  const readerRef = useRef<HTMLDivElement>(null);
   const frames = useRef<number[]>([]);
   // A kept tab that is not shown does not play on behind the one that is (the pause also saves the place: onPause).
   const shown = useReaderShown();
@@ -161,6 +164,9 @@ export function VideoReader({ item }: { item: LibraryItem }) {
 
   // While it plays the shown frames say how long a frame is, and the clock follows them smoothly (timeupdate comes four times a second).
   const playing = useVideo((s) => s.playing);
+  const stage = useVideoStage((s) => s.on);
+  // Only the shown tab's reader hides its controls: a kept tab behind it is not on the stage.
+  const idle = useIdleControls(readerRef, stage && playing && shown && status === 'ready');
   useEffect(() => {
     const v = videoRef.current;
     if (!playing || !v || typeof v.requestVideoFrameCallback !== 'function') return;
@@ -207,7 +213,7 @@ export function VideoReader({ item }: { item: LibraryItem }) {
   // The <video> keeps its place (hidden, not unmounted) so the evidence harness can still read video.error; the notice
   // takes the same stage, which never moves (no row is inserted when the error arrives).
   return (
-    <div className="reader video-reader">
+    <div ref={readerRef} className="reader video-reader" data-idle={idle ? '' : undefined}>
       {!final && <VideoToolbar disabled={status !== 'ready'} />}
       <div
         className="video-stage"

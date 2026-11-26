@@ -16,7 +16,8 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
     // The one row that is not a registry command: the system's 전체 화면 (design-spec 7.4), marked as such.
     const system = groups.flatMap((g) => g.rows).filter((r) => r.system);
     expect(system).toEqual([{ label: '전체 화면', keys: ['⌃', '⌘', 'F'], spoken: '⌃⌘F', system: true }]);
-    expect(COMMANDS.some((c) => c.label === '전체 화면')).toBe(false);
+    // The registry's 전체 화면 is the video stage's key F (a video sheet's own line), never the window's ⌃⌘F.
+    expect(COMMANDS.filter((c) => c.label === '전체 화면').map((c) => [c.id, c.accelerator])).toEqual([['video.toggleFullScreen', undefined]]);
   });
   it('lists the tab keys in their own 탭 group as the pair lines of the key map (design-spec 7.4)', () => {
     const tabs = (platform: string) => shortcutGroups(platform).find((g) => g.title === '탭')!.rows;
@@ -84,6 +85,8 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
       { label: '한 프레임 뒤로 / 앞으로', keys: [','], pairKeys: ['.'], spoken: ', / .' },
       { label: '재생 속도 느리게 / 빠르게', keys: ['⇧', ','], pairKeys: ['⇧', '.'], spoken: '⇧, / ⇧.' },
       { label: '음소거', keys: ['M'], spoken: 'M' },
+      { label: '전체 화면', keys: ['F'], spoken: 'F' },
+      { label: '전체 화면 끝내기', keys: ['esc'], spoken: 'esc' },
     ]);
     const titles = shortcutGroups('darwin', 'video').map((g) => g.title);
     expect(titles).toEqual(['앱', '라이브러리', '자료', '정리', '탭', '동영상', '팔레트·대화상자']);

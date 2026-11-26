@@ -4,7 +4,7 @@ import type { TextSize, TextSizeUpdate } from '../settings/textSize';
 import type { PendingJump, ReaderNav, ZoomValue } from '../viewers/pdf/readerStore';
 
 /** What a video command does to the shown video (the video reader's handle runs it). */
-export type VideoAction = 'playPause' | 'back10' | 'forward10' | 'back5' | 'forward5' | 'frameBack' | 'frameForward' | 'slower' | 'faster' | 'toggleMute';
+export type VideoAction = 'playPause' | 'back10' | 'forward10' | 'back5' | 'forward5' | 'frameBack' | 'frameForward' | 'slower' | 'faster' | 'toggleMute' | 'toggleFullScreen' | 'exitFullScreen';
 
 /** What the main window can do now: its command context plus the handlers. Rebuilt every render; later tasks add handlers. */
 export interface CommandEnv extends CommandContextState {
@@ -339,6 +339,8 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'video.slower': (env) => env.video('slower'),
   'video.faster': (env) => env.video('faster'),
   'video.toggleMute': (env) => env.video('toggleMute'),
+  'video.toggleFullScreen': (env) => env.video('toggleFullScreen'),
+  'video.exitFullScreen': (env) => env.video('exitFullScreen'),
   'trash.empty': (env) => env.emptyTrash(),
   'view.nextPane': (env) => env.focusPane(1),
   'view.previousPane': (env) => env.focusPane(-1),
@@ -370,7 +372,7 @@ export function contextOf(env: CommandEnv): CommandContextState {
     trashCount: env.trashCount,
     ...(env.pdfOpen ? { pdfOpen: true } : {}),
     ...(env.imageOpen ? { imageOpen: true } : {}),
-    ...(env.videoOpen ? { videoOpen: true, videoPlaying: env.videoPlaying === true, videoMuted: env.videoMuted === true } : {}),
+    ...(env.videoOpen ? { videoOpen: true, videoPlaying: env.videoPlaying === true, videoMuted: env.videoMuted === true, videoStage: env.videoStage === true } : env.videoStage ? { videoStage: true } : {}),
     ...(env.pdfOpen && env.pdfScroll ? { pdfScroll: env.pdfScroll } : {}),
     ...(env.historyBack ? { historyBack: true } : {}),
     ...(env.historyForward ? { historyForward: true } : {}),

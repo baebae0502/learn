@@ -117,7 +117,17 @@ export type CommandId =
   | 'reader.spreadEven'
   | 'reader.imageBackgroundLight'
   | 'reader.imageBackgroundDark'
-  | 'reader.imageBackgroundChecker';
+  | 'reader.imageBackgroundChecker'
+  | 'video.playPause'
+  | 'video.back10'
+  | 'video.forward10'
+  | 'video.back5'
+  | 'video.forward5'
+  | 'video.frameBack'
+  | 'video.frameForward'
+  | 'video.slower'
+  | 'video.faster'
+  | 'video.toggleMute';
 
 /** The colour of a PDF page (settings 'reader.pageColor'): 자동 follows the app theme. */
 export const PAGE_COLORS = ['auto', 'original', 'sepia', 'dark'] as const;
@@ -134,8 +144,11 @@ export type ReaderNav = (typeof READER_NAVS)[number];
  * target of that kind (judged on the targets handed in; the first of these a command lists decides). `trash` is the trash
  * view's rows (P-10): a command that lists it takes trash rows in the trash view, and its other kind elsewhere (⌘⌫). `session`:
  * a tutor session row of the sidebar — taken first, in any view, when one has the focus or is handed in (its context menu).
+ * `video`: the video reader's own commands — in the viewer view, then the command's rule says whether a playable video is shown.
  */
-export type CommandContext = 'app' | 'library' | 'viewer' | 'item' | 'collection' | 'tag' | 'trash' | 'session';
+export type CommandContext = 'app' | 'library' | 'viewer' | 'item' | 'collection' | 'tag' | 'trash' | 'session' | 'video';
+/** What a video command's name follows (stateLabels.video): the reported state that flips it. */
+export type VideoLabelField = 'videoPlaying' | 'videoMuted' | 'videoStage' | 'videoCaptionsOn';
 /** `app` is the macOS application menu (Linux/Windows put those items at the end of 파일); `help` is 도움말. */
 export type MenuName = 'app' | 'file' | 'edit' | 'view' | 'go' | 'window' | 'help';
 export const CONTEXT_MENU_KINDS = ['item', 'collection', 'tag', 'column', 'trash', 'tab', 'session'] as const;
@@ -204,6 +217,8 @@ export interface CommandSpec {
     view?: Readonly<Record<'library' | 'viewer', string>>;
     /** By what the reader shows: a picture names the fit 창에 맞춤 where a PDF says 한 쪽 전체 보기 (one command keeps one key rule for both). */
     reader?: Readonly<{ image: string }>;
+    /** By the video's state (spec 10): the name says what the command does now — 재생 while paused, 일시정지 while playing. */
+    video?: Readonly<{ field: VideoLabelField; on: string; off: string }>;
   };
   /** Label off macOS when the macOS one names a macOS app (Finder). */
   labelOff?: string;
@@ -222,6 +237,8 @@ export interface CommandSpec {
   accelerator?: string;
   /** Single-key shortcut, matched by physical key in the renderer keymap. */
   key?: KeySpec;
+  /** A second single key for the same command (Space beside K); one key belongs to one command, this one too. */
+  alsoKey?: KeySpec;
   /** `hidden`: a menu item that is not drawn but keeps its key (⌘2…⌘9 in 윈도우); only the 윈도우 menu has such items. */
   menu?: { menu: MenuName; group: number; order: number; hidden?: true };
   /** Native context menus listing this command; separators between groups. */
@@ -644,6 +661,26 @@ export const COMMANDS: readonly CommandSpec[] = [
     id: 'trash.empty', label: '휴지통 비우기…', accelerator: 'Shift+CmdOrCtrl+Backspace', menu: { menu: 'file', group: 4, order: 1 }, contexts: ['library'],
     keywords: ['휴지통', '비우기', '영구 삭제', 'empty trash'],
   },
+  // The video reader's keys (spec 6.3, 10): single keys of the renderer keymap only, no menu item (a bare letter as an accelerator would be
+  // taken even in a text field, J9). Palette and ⌘/ sheet show them; a frame step is off while the video plays.
+  {
+    id: 'video.playPause', label: '재생/일시정지', key: { code: 'KeyK' }, alsoKey: { code: 'Space', yields: true }, contexts: ['video'],
+    stateLabels: { video: { field: 'videoPlaying', on: '일시정지', off: '재생' } },
+    keywords: ['재생', '일시정지', '멈춤', '정지', '영상', '동영상', 'play', 'pause'],
+  },
+  { id: 'video.back10', label: '10초 뒤로', key: { code: 'KeyJ' }, contexts: ['video'], keywords: ['10초', '뒤로', '되감기', '영상', '동영상', 'back', 'rewind'] },
+  { id: 'video.forward10', label: '10초 앞으로', key: { code: 'KeyL' }, contexts: ['video'], keywords: ['10초', '앞으로', '건너뛰기', '영상', '동영상', 'forward', 'skip'] },
+  { id: 'video.back5', label: '5초 뒤로', key: { code: 'ArrowLeft', yields: true }, contexts: ['video'], keywords: ['5초', '뒤로', '되감기', '영상', '동영상', 'back'] },
+  { id: 'video.forward5', label: '5초 앞으로', key: { code: 'ArrowRight', yields: true }, contexts: ['video'], keywords: ['5초', '앞으로', '건너뛰기', '영상', '동영상', 'forward'] },
+  { id: 'video.frameBack', label: '한 프레임 뒤로', key: { code: 'Comma' }, contexts: ['video'], keywords: ['프레임', '한 칸', '뒤로', '영상', '동영상', 'frame', 'back'] },
+  { id: 'video.frameForward', label: '한 프레임 앞으로', key: { code: 'Period' }, contexts: ['video'], keywords: ['프레임', '한 칸', '앞으로', '영상', '동영상', 'frame', 'forward'] },
+  { id: 'video.slower', label: '재생 속도 느리게', key: { code: 'Comma', shift: true }, contexts: ['video'], keywords: ['속도', '느리게', '배속', '영상', '동영상', 'speed', 'slower'] },
+  { id: 'video.faster', label: '재생 속도 빠르게', key: { code: 'Period', shift: true }, contexts: ['video'], keywords: ['속도', '빠르게', '배속', '영상', '동영상', 'speed', 'faster'] },
+  {
+    id: 'video.toggleMute', label: '음소거', key: { code: 'KeyM' }, contexts: ['video'],
+    stateLabels: { video: { field: 'videoMuted', on: '음소거 해제', off: '음소거' } },
+    keywords: ['음소거', '소리', '음량', '영상', '동영상', 'mute', 'sound'],
+  },
   // F6 / ⇧F6 (design-spec 8.3): the renderer keymap moves the focus between panes, also out of a text field. No menu
   // item and not in the palette; the ⌘/ sheet lists them under 앱.
   { id: 'view.nextPane', label: '다음 패널로 이동', key: { code: 'F6', inText: true }, contexts: ['app'], palette: false, duringWork: true },
@@ -682,7 +719,7 @@ export function paletteListed(spec: CommandSpec, ctx: Pick<CommandContextState, 
   return slot === null || hasTagPosition(ctx.tagPositions, slot);
 }
 /** What a state label follows: the pane states and the view's scope, as reported (absent ones name nothing). */
-export type LabelState = Partial<Pick<CommandContextState, 'sidebar' | 'inspector' | 'scope' | 'duplicateGroups' | 'view' | 'selectionCount' | 'imageOpen' | 'sessionFocused'>>;
+export type LabelState = Partial<Pick<CommandContextState, 'sidebar' | 'inspector' | 'scope' | 'duplicateGroups' | 'view' | 'selectionCount' | 'imageOpen' | 'sessionFocused'>> & Partial<Record<VideoLabelField, boolean>>;
 
 /**
  * The label a menu, tooltip or palette shows: the state label when the command has one and the state is known (`state`
@@ -698,6 +735,7 @@ export function commandLabel(c: CommandSpec, platform: string, state: LabelState
   if (scoped !== undefined) return scoped;
   if (labels?.reader && state.imageOpen === true) return labels.reader.image;
   if (labels?.view && state.view) return labels.view[state.view];
+  if (labels?.video && state[labels.video.field] !== undefined) return state[labels.video.field] ? labels.video.on : labels.video.off;
   if (c.countLabel?.selection && state.selectionCount !== undefined && state.selectionCount > 1) return c.countLabel.selection(state.selectionCount);
   if (c.countLabel?.duplicateGroups && state.duplicateGroups !== undefined && state.duplicateGroups > 0) return c.countLabel.duplicateGroups(state.duplicateGroups);
   return platform !== 'darwin' && c.labelOff ? c.labelOff : c.label;
@@ -778,6 +816,12 @@ export interface CommandContextState {
    * Absent in the library, while the picture opens and when it cannot be drawn.
    */
   imageOpen?: boolean;
+  /** A video that can play is shown (first frame decoded, not unplayable): the video commands need it. Absent otherwise. */
+  videoOpen?: boolean;
+  /** The shown video is playing: 재생/일시정지 is named by it and a frame step needs it off. Absent unless a video is open. */
+  videoPlaying?: boolean;
+  /** The shown video is muted: 음소거 is named by it. Absent unless a video is open. */
+  videoMuted?: boolean;
   /** How the open PDF scrolls: 펼침 is off while it is 'horizontal'. Absent with no PDF open. */
   pdfScroll?: ScrollModeName;
   /** The open PDF has a place to go back to / forward to (⌘[ ⌘]): absent otherwise. */
@@ -941,6 +985,10 @@ const colorKey: Rule = (c, t) => c.view === 'library' && t.items.length >= 1;
 const pdfOpen: Rule = (c) => c.pdfOpen === true;
 /** The picture's own commands (its background). */
 const imageOpen = (c: CommandContextState): boolean => c.imageOpen === true;
+/** The video reader's commands act on a video that can play. */
+const videoOpen: Rule = (c) => c.videoOpen === true;
+/** A frame step is for a paused video: while it plays the key does nothing (and is not taken). */
+const videoPaused: Rule = (c) => c.videoOpen === true && c.videoPlaying !== true;
 /** The zoom, the two fits and the turns act on a drawn picture as on a PDF; the rest of the reader's view is the PDF's. */
 const pdfOrImage = (c: CommandContextState): boolean => c.pdfOpen === true || c.imageOpen === true;
 /** A horizontal scroll has no spreads (two pages side by side along a row are hard to read), so the three are off then. */
@@ -1062,6 +1110,16 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'reader.spreadNone': spreadAllowed,
   'reader.spreadOdd': spreadAllowed,
   'reader.spreadEven': spreadAllowed,
+  'video.playPause': videoOpen,
+  'video.back10': videoOpen,
+  'video.forward10': videoOpen,
+  'video.back5': videoOpen,
+  'video.forward5': videoOpen,
+  'video.frameBack': videoPaused,
+  'video.frameForward': videoPaused,
+  'video.slower': videoOpen,
+  'video.faster': videoOpen,
+  'video.toggleMute': videoOpen,
 };
 
 /**
@@ -1093,7 +1151,7 @@ export function commandAvailable(spec: CommandSpec, ctx: CommandContextState, ta
   if ((spec.duringWork && surface !== undefined) ? surface.modal : ctx.blocked) return false;
   const t = targetsByKind(targets);
   const needed = neededTargets(spec, ctx, t);
-  const inContext = needed ? needed.length > 0 : spec.contexts.includes('app') || spec.contexts.includes(ctx.view);
+  const inContext = needed ? needed.length > 0 : spec.contexts.includes('app') || spec.contexts.includes(ctx.view) || (spec.contexts.includes('video') && ctx.view === 'viewer');
   return inContext && (RULES[spec.id]?.(ctx, t) ?? true);
 }
 

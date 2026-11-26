@@ -58,3 +58,26 @@ describe('the colour keys 1–8 of the registry (spec 4.2)', () => {
     expect(keyCommand(digit(1), false)).toBe('tag.color1');
   });
 });
+
+describe('a key that yields to the focused control, and a command with a second key', () => {
+  const V: CommandSpec[] = [
+    { id: 'video.playPause', label: '재생/일시정지', key: { code: 'KeyK' }, alsoKey: { code: 'Space', yields: true }, contexts: ['video'] },
+    { id: 'video.back5', label: '5초 뒤로', key: { code: 'ArrowLeft', yields: true }, contexts: ['video'] },
+  ];
+  const owns = (...codes: string[]) => (code: string) => codes.includes(code);
+  it('finds a command by its second key', () => {
+    expect(keyCommand(k({ code: 'Space', key: ' ' }), false, V)).toBe('video.playPause');
+    expect(keyCommand(k({ code: 'KeyK', key: 'ㅏ' }), false, V)).toBe('video.playPause');
+  });
+  it('leaves a yielding key to the control that uses it, and only that key', () => {
+    expect(keyCommand(k({ code: 'Space', key: ' ' }), false, V, owns('Space'))).toBeNull();
+    expect(keyCommand(k({ code: 'ArrowLeft', key: 'ArrowLeft' }), false, V, owns('ArrowLeft'))).toBeNull();
+    expect(keyCommand(k({ code: 'KeyK', key: 'k' }), false, V, owns('Space', 'KeyK'))).toBe('video.playPause'); // K does not yield
+    expect(keyCommand(k({ code: 'Space', key: ' ' }), false, V, owns('ArrowLeft'))).toBe('video.playPause');
+  });
+  it('still ignores a letter in a text field', () => {
+    expect(keyCommand(k({ code: 'KeyK', key: 'k' }), true, V)).toBeNull();
+    expect(keyCommand(k({ code: 'Space', key: ' ' }), true, V)).toBeNull();
+  });
+});
+

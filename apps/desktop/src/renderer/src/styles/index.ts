@@ -34,6 +34,7 @@ import './screens/restore.css';
 import './screens/reader.css';
 import './screens/pdf-viewer.css';
 import './screens/image-viewer.css';
+import './screens/video.css';
 import './screens/translation.css';
 import './screens/tutor.css';
 import './screens/palette.css';

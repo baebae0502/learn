@@ -9,7 +9,7 @@ import { tooltipsBlocked, useTooltipsBlocked } from './tooltipGate';
  * icon button disabled with a reason, the reason in secondary colour (the shortcut cannot run then). Also drawn by the
  * state board. `note`: a second line under the name, in secondary colour (the attached passage cut to its first page).
  */
-export function TooltipText({ label, accelerator, reason, note }: { label: string; accelerator?: string | undefined; reason?: string | undefined; note?: string | undefined }) {
+export function TooltipText({ label, accelerator, keys, reason, note }: { label: string; accelerator?: string | undefined; keys?: string | undefined; reason?: string | undefined; note?: string | undefined }) {
   return (
     <>
       <span className="tooltip-label">{label}</span>
@@ -18,7 +18,7 @@ export function TooltipText({ label, accelerator, reason, note }: { label: strin
       ) : reason !== undefined ? (
         <span className="tooltip-reason">{reason}</span>
       ) : (
-        accelerator && <span className="tooltip-shortcut">{acceleratorLabel(accelerator, currentPlatform())}</span>
+        (keys ?? accelerator) && <span className="tooltip-shortcut">{keys ?? acceleratorLabel(accelerator!, currentPlatform())}</span>
       )}
     </>
   );
@@ -32,6 +32,7 @@ export function TooltipText({ label, accelerator, reason, note }: { label: strin
 export function Tooltip({
   label,
   accelerator,
+  keys,
   reason,
   note,
   placement = 'bottom',
@@ -42,6 +43,8 @@ export function Tooltip({
 }: {
   label: string;
   accelerator?: string | undefined;
+  /** The shortcut as text when it is a single key or two ("K · 스페이스"), which an accelerator cannot say. */
+  keys?: string | undefined;
   /** Disabled reason shown after the name, in place of the shortcut. */
   reason?: string | undefined;
   /** A second line under the name (the tooltip then stacks). */
@@ -79,7 +82,7 @@ export function Tooltip({
           at m3-10, one of them the sidebar toggle's from an earlier step). */}
       {shown && (
         <AriaTooltip className={note === undefined ? 'tooltip' : 'tooltip has-note'} placement={placement} offset={6} {...(anchorRef ? { triggerRef: anchorRef } : {})}>
-          <TooltipText label={label} accelerator={accelerator} reason={reason} note={note} />
+          <TooltipText label={label} accelerator={accelerator} keys={keys} reason={reason} note={note} />
         </AriaTooltip>
       )}
     </TooltipTrigger>

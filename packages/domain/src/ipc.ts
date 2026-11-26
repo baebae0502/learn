@@ -177,6 +177,11 @@ export const commandContextInput = z
     pdfOpen: z.boolean().optional(),
     /** A reader tab with its picture drawn is shown: the zoom, the two fits and the turns act on it; absent otherwise. */
     imageOpen: z.boolean().optional(),
+    /** A video that can play is shown: the video commands are on; absent otherwise. */
+    videoOpen: z.boolean().optional(),
+    /** The shown video is playing / muted: the toggles' names and the frame steps follow; absent unless a video is open. */
+    videoPlaying: z.boolean().optional(),
+    videoMuted: z.boolean().optional(),
     /** How the open PDF scrolls: the spread commands are off while horizontal; absent otherwise. */
     pdfScroll: z.enum(SCROLL_MODES).optional(),
     /** The open PDF can go back / forward in its history (⌘[ ⌘]); absent otherwise. */

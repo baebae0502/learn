@@ -313,7 +313,8 @@ const recordOpening = (page: Page) =>
       if (!document.querySelector('[data-testid="tab"][aria-selected="true"]:not([data-item-id="library"])')) return; // still the library
       // The shown reader's own panel: a kept tab that is not shown is in the page too, hidden.
       const panel = content.querySelector('[data-testid="tab-panel"][data-active="true"]');
-      const stage = (panel?.firstElementChild ?? null) as HTMLElement | null;
+      // A video reader is its strip, the stage and the controls: the stage is the dark one.
+      const stage = (panel?.querySelector('.video-stage') ?? panel?.firstElementChild ?? null) as HTMLElement | null;
       const video = panel?.querySelector('video') ?? null;
       const canvas = panel?.querySelector('canvas') ?? null;
       w.__opening.push({

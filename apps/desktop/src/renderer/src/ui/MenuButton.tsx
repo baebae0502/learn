@@ -187,16 +187,20 @@ export function MenuButton<K extends string>(props: {
   size?: 'regular' | 'small';
   /** Extra class on the popover, for a menu that needs its own width. */
   popoverClassName?: string;
+  /** Extra class on the button, for one that is drawn as a value (the video's speed). */
+  triggerClassName?: string;
+  /** False: no ▾ after the label (the button names its value and the menu changes it). */
+  chevron?: boolean;
   testId?: string;
 }) {
   const reason = useDisabledReason(props.isDisabled, props.disabledReason);
   // Controlled, so a soft-disabled trigger (focusable, aria-disabled) can never open the menu.
   const [isOpen, setOpen] = useState(false);
   const trigger = (
-    <AriaButton className={cx('btn', `btn-${props.variant ?? 'secondary'}`, props.size === 'small' && 'btn-small', props.icon && 'has-icon', 'has-menu')} {...reason.controlProps} data-testid={props.testId}>
+    <AriaButton className={cx('btn', `btn-${props.variant ?? 'secondary'}`, props.size === 'small' && 'btn-small', props.icon && 'has-icon', props.chevron !== false && 'has-menu', props.triggerClassName)} {...reason.controlProps} data-testid={props.testId}>
       {props.icon && <Icon icon={props.icon} />}
       {props.label}
-      <Icon icon={ChevronDown} size="xs" />
+      {props.chevron !== false && <Icon icon={ChevronDown} size="xs" />}
     </AriaButton>
   );
   return (

@@ -11,7 +11,7 @@ import { useScrollRegion } from './scrollRegion';
 import { useSheetKeys } from './sheetKeys';
 
 /** ⌘/ (design-spec 7.4), generated from the command registry; ↩ or esc closes it. */
-export function ShortcutsSheet({ view }: { view?: 'library' | 'viewer' }) {
+export function ShortcutsSheet({ view }: { view?: 'library' | 'viewer' | 'video' }) {
   const done = () => resolveSheet({ kind: 'shortcuts' });
   const keys = useSheetKeys(done, done);
   // On a short screen (the 768-tall macOS runner) the list scrolls: then the body is a keyboard stop (scrollRegion.ts).

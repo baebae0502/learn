@@ -57,6 +57,7 @@
   }
   .notice .actions {
     display: flex;
+    flex-wrap: wrap; /* the two buttons of a narrow stage (a reader of 440) stay whole */
     gap: var(--space-8);
     margin-top: var(--space-4);
   }

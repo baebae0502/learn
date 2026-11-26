@@ -17,6 +17,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   selection: () => [],
   targetsOf: (target) => (target.itemIds ?? []).map(() => missingLinked),
   importFiles: vi.fn(),
+  video: vi.fn(),
   backup: vi.fn(),
   restoreBackup: vi.fn(),
   checkLibrary: vi.fn(),
@@ -111,6 +112,15 @@ describe('renderer command registry', () => {
   it('reports only the context fields, never the handlers', () => {
     expect(contextOf(env({ view: 'viewer' }))).toEqual({ view: 'viewer', blocked: false, textSize: 13, ...COUNTS });
     expect(contextOf(env({ textSize: 15, sidebar: 'hidden' }))).toEqual({ view: 'library', blocked: false, textSize: 15, sidebar: 'hidden', ...COUNTS });
+  });
+  it('reports the video fields only while a video can play, and runs a video command through its handler', () => {
+    expect(contextOf(env({ view: 'viewer' }))).not.toHaveProperty('videoOpen');
+    expect(contextOf(env({ view: 'viewer', videoOpen: true, videoPlaying: true }))).toMatchObject({ videoOpen: true, videoPlaying: true, videoMuted: false });
+    const e = env({ view: 'viewer', videoOpen: true });
+    expect(runCommand('video.back10', e)).toBe(true);
+    expect(e.video).toHaveBeenCalledWith('back10');
+    expect(runCommand('video.frameForward', env({ view: 'viewer', videoOpen: true, videoPlaying: true }))).toBe(false);
+    expect(runCommand('video.playPause', env({ view: 'viewer' }))).toBe(false);
   });
   it('reports the library and selection counts and the item panel state, never the selected ids (P-2)', () => {
     const e = env({ inspector: 'shown', libraryCount: 48, selectionCount: 3, selectionAvailable: 2, selectionRelinkable: 1, selection: () => [ID, OTHER] });

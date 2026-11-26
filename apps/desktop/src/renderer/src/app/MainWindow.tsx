@@ -92,6 +92,9 @@ import { countRender } from '../ui/renderCount';
 import { Toasts, showToast } from '../ui/toasts';
 import { ReaderSidebar } from '../viewers/pdf/ReaderSidebar';
 import { readerActions } from '../viewers/pdf/readerActions';
+import { videoActions } from '../viewers/video/videoActions';
+import { useVideoSettings } from '../viewers/video/useVideoSettings';
+import { useVideo } from '../viewers/video/videoStore';
 import { useReader, type PendingJump } from '../viewers/pdf/readerStore';
 import { canGoBack, canGoForward } from '../viewers/pdf/history';
 import { reopenSelection, useSelection } from '../translation/useSelectionText';
@@ -391,6 +394,11 @@ export function MainWindow(_props: { info: AppInfo }) {
   const pdfOpen = useReader((s) => s.pdf?.ready === true);
   // A picture drawn in the shown reader tab: its zoom, fits and turns are on only then (the store is the shown tab's).
   const imageDrawn = useReader((s) => s.image?.status === 'shown');
+  // A video with its first frame in the shown reader tab: the video commands (K J L ← → , . ⇧, ⇧. M) are on only then; its play and mute
+  // state name the toggles. The mute is the remembered setting.
+  const videoReady = useVideo((s) => s.status === 'ready');
+  const videoPlaying = useVideo((s) => s.playing);
+  const videoMuted = useVideoSettings().muted;
   const pdfScroll = useReader((s) => s.pdf?.scroll);
   const historyBack = useReader((s) => canGoBack(s.history));
   const historyForward = useReader((s) => canGoForward(s.history));
@@ -482,6 +490,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     held,
     ...(pdfOpen ? { pdfOpen: true } : {}),
     ...(imageDrawn && viewKind === 'reader' ? { imageOpen: true } : {}),
+    ...(videoReady && viewKind === 'reader' ? { videoOpen: true, videoPlaying, videoMuted } : {}),
     ...(pdfOpen && pdfScroll ? { pdfScroll } : {}),
     ...(pdfOpen && historyBack ? { historyBack: true } : {}),
     ...(pdfOpen && historyForward ? { historyForward: true } : {}),
@@ -623,6 +632,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     openSettings: () => void unwrap(api().ui.openSettings()).catch(actionFailed),
     setTextSize,
     ...readerActions,
+    ...videoActions,
     translateSelection: reopenSelection,
     focusPane,
     focusSearch: focusQuickSearch,
@@ -632,7 +642,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, pdfOpen, imageDrawn, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, inspectorMode, tutorConsented, tutorHasMessages, tutorStreaming, sessionFocused, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAtPage, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, pdfOpen, imageDrawn, videoReady, videoPlaying, videoMuted, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, inspectorMode, tutorConsented, tutorHasMessages, tutorStreaming, sessionFocused, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAtPage, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);

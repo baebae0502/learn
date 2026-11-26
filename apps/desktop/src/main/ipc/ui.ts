@@ -165,7 +165,8 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
 
   handle(Channels.ui.showShortcuts, emptyInput, async (_input, event) => {
     const parent = mainWindowOf(event.sender);
-    if (parent) await deps.sheets.open(parent, { kind: 'shortcuts', view: deps.uiContext.current().view });
+    const ctx = deps.uiContext.current();
+    if (parent) await deps.sheets.open(parent, { kind: 'shortcuts', view: ctx.videoOpen === true ? 'video' : ctx.view });
   });
 
   // The main-owned app.settings (⌘,) behind the fatal screen's 설정 열기: it needs no library. The main window only

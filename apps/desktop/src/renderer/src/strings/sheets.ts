@@ -11,7 +11,7 @@ export const sheets = {
   /** The check box under the card while more duplicates wait (spec 3.4, dialogs.html?scene=duplicate). */
   applyToRest: (n: number) => `남은 중복 파일 ${n}개에도 같은 선택 적용`,
   shortcutsTitle: '단축키',
-  groups: { app: '앱', library: '라이브러리', viewer: '리더', item: '자료', organize: '정리', tabs: '탭', dialogs: '팔레트·대화상자' },
+  groups: { app: '앱', library: '라이브러리', viewer: '리더', video: '동영상', item: '자료', organize: '정리', tabs: '탭', dialogs: '팔레트·대화상자' },
   /** The one line for the eight colour keys (spec 4.2), under 정리: "1–8 · 색 태그 붙이기/떼기". */
   colorKeys: { label: '색 태그 붙이기/떼기', spoken: (first: string, last: string) => `${first}부터 ${last}` },
   /** The lines of design-spec 7.4 that name two keys ("A / B"): one row each; `tabNumbersTo` is spoken between ⌘1 and ⌘8. */
@@ -26,6 +26,10 @@ export const sheets = {
     find: '다음 / 이전 찾기',
     rotate: '시계 / 반시계 방향으로 회전',
     nav: '썸네일 / 목차 보기',
+    skip10: '10초 뒤로 / 앞으로',
+    skip5: '5초 뒤로 / 앞으로',
+    frame: '한 프레임 뒤로 / 앞으로',
+    speed: '재생 속도 느리게 / 빠르게',
     history: '뒤로 / 앞으로',
     inspectorModes: '정보 / 튜터 보기',
   },

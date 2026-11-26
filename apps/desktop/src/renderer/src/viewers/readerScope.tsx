@@ -2,6 +2,7 @@ import { createContext, useContext, useSyncExternalStore, type ReactNode } from 
 import { useStore, type StoreApi } from 'zustand';
 import { createFindStore, type FindStore } from './pdf/findStore';
 import { createReaderStore, type ImageState, type ReaderStore } from './pdf/readerStore';
+import { createVideoStore, type VideoProbe, type VideoStore } from './video/videoStore';
 import { readWindowParams } from '../ui/platform';
 import { createSelectionStore, type SelectionStore } from '../translation/useSelectionText';
 import { createTranslationStore, type TranslationStore } from '../translation/store';
@@ -15,6 +16,8 @@ export interface ReaderScope {
   readonly id: string;
   readonly reader: StoreApi<ReaderStore>;
   readonly find: StoreApi<FindStore>;
+  /** The video reader's playback state (a video tab only; the others never touch it). */
+  readonly video: StoreApi<VideoStore>;
   readonly selection: StoreApi<SelectionStore>;
   readonly translation: StoreApi<TranslationStore>;
   /** The tutor panel's own state for this tab (the session it shows, its live answer, the chooser asked for). */
@@ -22,11 +25,13 @@ export interface ReaderScope {
   readonly pageField: { current: HTMLInputElement | null };
   /** The picture point at the image stage's centre (0–1), kept by the image reader as it moves; not state, so a scroll re-renders nothing. */
   readonly imageCentre: { current: { cx: number; cy: number } | null };
+  /** Reads the video element of this tab for E2E (window.__learnVideo); set by the video reader while it is mounted. */
+  readonly videoProbe: { current: (() => VideoProbe) | null };
 }
 
 export function createReaderScope(id: string): ReaderScope {
   return {
-    id, reader: createReaderStore(), find: createFindStore(), selection: createSelectionStore(), translation: createTranslationStore(), tutor: createTutorTabStore(id), pageField: { current: null }, imageCentre: { current: null },
+    id, reader: createReaderStore(), find: createFindStore(), video: createVideoStore(), selection: createSelectionStore(), translation: createTranslationStore(), tutor: createTutorTabStore(id), pageField: { current: null }, imageCentre: { current: null }, videoProbe: { current: null },
   };
 }
 
@@ -131,6 +136,7 @@ function scopedHook<S>(pick: (scope: ReaderScope) => StoreApi<S>): ScopedHook<S>
 
 export const useReader = scopedHook((s) => s.reader);
 export const useFind = scopedHook((s) => s.find);
+export const useVideoScoped = scopedHook((s) => s.video);
 export const useSelection = scopedHook((s) => s.selection);
 export const useTranslation = scopedHook((s) => s.translation);
 
@@ -175,12 +181,25 @@ export function learnImageHook(): { getState(itemId?: string): LearnImageState |
   };
 }
 
+/** E2E only: the video of the active tab, or of the tab `itemId` (a hidden one too); null where no video reader is mounted. */
+export function learnVideoHook(): { state(itemId?: string): (VideoProbe & { itemId: string }) | null } {
+  return {
+    state: (itemId) => {
+      const scope = itemId === undefined ? currentScope() : readerScopes.peek(itemId);
+      const read = scope?.videoProbe.current;
+      return scope && read ? { ...read(), itemId: scope.id } : null;
+    },
+  };
+}
+
 declare global {
   interface Window {
     /** E2E only (the page's address carries e2e=1 in an unpackaged test run): lets tests drive the active reader's handle. */
     __learnReader?: ReturnType<typeof learnReaderHook>;
     /** E2E only: what the image reader shows. */
     __learnImage?: ReturnType<typeof learnImageHook>;
+    /** E2E only: what the video reader shows and plays. */
+    __learnVideo?: ReturnType<typeof learnVideoHook>;
     /** E2E only: whether the active reader holds a selection of its page (the range the translation pop-up and the tutor take). */
     __learnSelection?: { hasRange(): boolean };
   }
@@ -188,5 +207,6 @@ declare global {
 if (typeof window !== 'undefined' && readWindowParams(window.location.search).e2e) {
   window.__learnReader = learnReaderHook();
   window.__learnImage = learnImageHook();
+  window.__learnVideo = learnVideoHook();
   window.__learnSelection = { hasRange: () => currentScope().selection.getState().range !== null };
 }

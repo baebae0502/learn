@@ -1,0 +1,232 @@
+@layer screens {
+  /* The video reader (spec 6): the 44 px strip, the stage (reader.css), and the bar of our own controls under it. */
+  .video-stage {
+    cursor: default;
+  }
+  .video-stage:focus-visible {
+    outline: none;
+  }
+  /* The keyboard ring on the always-dark stage: the dark-surface ring on all four sides, inside, between a 1 px stage-dark line on each
+     side, so it keeps 3:1 against a light slide or the sidebar's edge. */
+  .video-stage:focus-visible::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    box-shadow:
+      inset 0 0 0 1px var(--video-stage),
+      inset 0 0 0 calc(1px + var(--focus-ring-width)) var(--image-focus-dark),
+      inset 0 0 0 calc(2px + var(--focus-ring-width)) var(--video-stage);
+  }
+  .loading.on-stage {
+    color: oklch(85% 0.004 250); /* local: the always-dark stage */
+  }
+  .loading.on-stage .spinner {
+    border-color: oklch(100% 0 0 / 0.18); /* local: the always-dark stage */
+    border-top-color: var(--image-focus-dark);
+    border-right-color: var(--image-focus-dark);
+  }
+
+  .video-controls {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding: var(--space-8) var(--space-16);
+    background: var(--bg-window);
+    border-top: 1px solid var(--separator);
+  }
+  /* Before the first frame the bar is drawn and dimmed, the knob left out (design-spec 6: a passing state keeps its controls). */
+  .video-controls.is-disabled :is(.control-row, .scrubber) {
+    opacity: 0.45;
+  }
+  .video-controls.is-disabled .knob {
+    display: none;
+  }
+
+  .scrubber {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 16px; /* local: the spec's hit area */
+    cursor: default;
+    touch-action: none;
+  }
+  .scrubber:focus-visible {
+    outline: none;
+  }
+  .scrubber .track {
+    position: relative;
+    width: 100%;
+    height: 4px; /* local: the spec's track */
+    border-radius: 2px; /* local: half the track */
+    background: var(--bg-track);
+  }
+  .scrubber .buffered,
+  .scrubber .played {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: inherit;
+  }
+  .scrubber .buffered {
+    background: color-mix(in oklch, var(--text-tertiary) 45%, transparent);
+  }
+  .scrubber .played {
+    background: var(--meter);
+  }
+  .scrubber .hover-pos {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px; /* local: the pointer's hairline */
+    margin-left: -1px; /* local: centres the hairline */
+    border-radius: 1px; /* local: half the hairline */
+    background: var(--text-secondary);
+    pointer-events: none;
+  }
+  .scrubber .knob {
+    position: absolute;
+    z-index: 2;
+    top: 50%;
+    width: 12px; /* local: the spec's knob */
+    height: 12px; /* local: the spec's knob */
+    margin: -6px 0 0 -6px; /* local: centres the knob */
+    border-radius: 50%;
+    background: oklch(100% 0 0); /* local: a white knob on the track in both themes */
+    box-shadow: 0 0 0 0.5px oklch(0% 0 0 / 0.2), 0 1px 3px oklch(0% 0 0 / 0.3); /* local: the knob's own edge */
+  }
+  .scrubber.is-hover .track,
+  .scrubber.is-dragging .track {
+    height: 6px; /* local: the spec's track under the pointer */
+    border-radius: 3px; /* local: half the track */
+  }
+  .scrubber.is-dragging .knob {
+    width: 14px; /* local: the spec's dragged knob */
+    height: 14px; /* local: the spec's dragged knob */
+    margin: -7px 0 0 -7px; /* local: centres the knob */
+  }
+  .scrubber:focus-visible .knob {
+    box-shadow: 0 0 0 2px var(--bg-window), 0 0 0 4px var(--focus); /* local: the knob's ring, two-tone so it reads on the track */
+  }
+  .scrubber .hover-time {
+    position: absolute;
+    bottom: 18px; /* local: just above the 16 px hit area */
+    translate: -50% 0;
+    padding: 2px var(--space-8); /* local: the caption's pad */
+    border-radius: var(--radius-sm);
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-e1);
+    font: var(--type-caption);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  .control-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    height: 32px; /* local: the spec's row */
+  }
+  .control-row .spacer {
+    flex: 1 1 auto;
+  }
+  .control-row .time {
+    margin-left: var(--space-8);
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+  .control-row .time b {
+    color: var(--text-primary);
+    font-weight: var(--weight-medium);
+  }
+  /* The play glyph is the row's own weight: primary text, not the quiet secondary of the skips. */
+  .control-row [data-testid='video-play'] {
+    color: var(--text-primary);
+  }
+
+  .btn.speed-btn {
+    min-width: 44px; /* local: holds "1.75×" so the button's left edge stays put when the speed changes */
+    justify-content: center;
+    height: 24px; /* local: the mockup's speed button */
+    font-weight: var(--weight-semibold);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  .speed-menu .menu {
+    min-width: 0;
+    width: 112px; /* local: seven short rows */
+    font-variant-numeric: tabular-nums;
+  }
+
+  .volume {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+  }
+  .vbar,
+  .vol-pop .vtrack-slider {
+    display: flex;
+    align-items: center;
+  }
+  .vtrack-slider {
+    width: 64px; /* local: the mockup's bar */
+  }
+  .vtrack {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 16px; /* local: the hit area, as the scrubber's */
+  }
+  .vtrack::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 4px; /* local: the bar's track */
+    border-radius: 2px; /* local: half the track */
+    background: var(--bg-track);
+  }
+  .vtrack i {
+    position: absolute;
+    left: 0;
+    height: 4px; /* local: the bar's track */
+    border-radius: 2px; /* local: half the track */
+    background: var(--text-secondary);
+  }
+  .vthumb {
+    top: 50%;
+    width: 12px; /* local: as the scrubber's knob */
+    height: 12px; /* local: as the scrubber's knob */
+    border-radius: 50%;
+    background: oklch(100% 0 0); /* local: a white knob on the track in both themes */
+    box-shadow: 0 0 0 0.5px oklch(0% 0 0 / 0.2), 0 1px 3px oklch(0% 0 0 / 0.3); /* local: the knob's own edge */
+    opacity: 0;
+  }
+  .vtrack:hover .vthumb,
+  .vthumb[data-dragging] {
+    opacity: 1;
+  }
+  .vthumb[data-focus-visible] {
+    opacity: 1;
+    box-shadow: 0 0 0 2px var(--bg-window), 0 0 0 4px var(--focus); /* local: the knob's ring, two-tone so it reads on the track */
+  }
+  /* A folded bar floats over its button while the pointer or the focus is on the group (reader narrower than 560, or a row that would overflow). */
+  .vol-pop {
+    position: absolute;
+    z-index: 5;
+    bottom: calc(100% + var(--space-4));
+    left: 50%;
+    translate: -50% 0;
+    padding: var(--space-12);
+    border-radius: var(--radius-lg);
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-e1);
+  }
+  .vol-pop .vtrack-slider {
+    width: 80px; /* local: the bar's length in the pop-up */
+  }
+}

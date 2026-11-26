@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { setInteractionModality } from 'react-aria-components';
-import { COMMANDS, type CommandId, type CommandSpec } from '@learn/domain';
+import { COMMANDS, type CommandId, type CommandSpec, type KeySpec } from '@learn/domain';
 import { isComposingKey } from '../ui/ime';
 import { noteKey } from '../ui/inputModality';
+import { focusOwnsKey } from './focusOwnsKey';
 import { menuTarget, runCommand, type CommandEnv } from './registry';
 
 export type KeyLike = Pick<KeyboardEvent, 'code' | 'key' | 'shiftKey' | 'altKey' | 'ctrlKey' | 'metaKey' | 'isComposing' | 'keyCode'>;
@@ -10,16 +11,21 @@ export type KeyLike = Pick<KeyboardEvent, 'code' | 'key' | 'shiftKey' | 'altKey'
 /**
  * Single-key and function-key shortcuts from the registry's `key` (ADR-0005 §3): compared by `event.code` so the
  * Korean input source does not matter; never during an IME composition, never with ⌘/⌃/⌥ (the menu owns those),
- * and letters never while a text field has focus (only keys marked `inText`, such as F6).
+ * and letters never while a text field has focus (only keys marked `inText`, such as F6). A key marked `yields` is left to the
+ * focused control when that control uses the key itself (focusOwnsKey).
  */
-export function keyCommand(e: KeyLike, editing: boolean, commands: readonly CommandSpec[] = COMMANDS): CommandId | null {
+export function keyCommand(e: KeyLike, editing: boolean, commands: readonly CommandSpec[] = COMMANDS, owns: (code: string) => boolean = () => false): CommandId | null {
   if (isComposingKey(e)) return null;
   if (e.altKey || e.ctrlKey || e.metaKey) return null;
   // The numeric keypad is the same key as the digit row ("Numpad1" is "Digit1"), so an external keyboard tags too.
   const code = e.code.replace(/^Numpad(\d)$/, 'Digit$1');
-  const hit = commands.find((c) => c.key !== undefined && c.key.code === code && Boolean(c.key.shift) === e.shiftKey);
+  const matches = (k: KeySpec | undefined): k is KeySpec => k !== undefined && k.code === code && Boolean(k.shift) === e.shiftKey;
+  const hit = commands.find((c) => matches(c.key) || matches(c.alsoKey));
   if (!hit) return null;
-  if (editing && !hit.key!.inText) return null;
+  const spec = matches(hit.key) ? hit.key : hit.alsoKey!;
+  if (editing && !spec.inText) return null;
+  // The focused control's own use of the key comes first (Space on a button, the arrows on a slider): the key is left to it.
+  if (spec.yields && owns(code)) return null;
   return hit.id;
 }
 
@@ -54,7 +60,7 @@ export function useKeymap(env: CommandEnv, active: boolean): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
-      const id = keyCommand(e, isEditing(e.target));
+      const id = keyCommand(e, isEditing(e.target), COMMANDS, (code) => focusOwnsKey(e.target, code));
       if (id === null) return;
       noteKey(e);
       setInteractionModality('keyboard');

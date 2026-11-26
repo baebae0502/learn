@@ -1,4 +1,4 @@
-import { FileX, Image, Lock, Trash2 } from 'lucide-react';
+import { CaptionsOff, FileX, Image, Lock, Trash2 } from 'lucide-react';
 import { acceleratorLabel, commandById, type ReaderNav } from '@learn/domain';
 import { saveSetting } from '../../data/saveSetting';
 import { t } from '../../strings';
@@ -18,6 +18,7 @@ const EMPTY: Record<NoPages, { icon: typeof FileX; title: string }> = {
   locked: { icon: Lock, title: t.reader.noPagesLocked },
   none: { icon: FileX, title: t.reader.noPages },
   image: { icon: Image, title: t.reader.noPagesImage },
+  noTranscript: { icon: CaptionsOff, title: t.video.noTranscript },
 };
 
 /**

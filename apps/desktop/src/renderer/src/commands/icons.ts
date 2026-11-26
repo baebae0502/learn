@@ -1,4 +1,4 @@
-import { ArrowDownUp, Bot, MessagesSquare, TextCursorInput, CircleStop, SquarePen, GraduationCap, Info, BookOpen, Square, ArchiveRestore, ArrowLeftRight, AppWindow, ArrowRightFromLine, ListX, Undo2, ChevronsRight, ChevronsLeft, X, ChevronDown, ChevronUp, GalleryVertical, ListTree, TextSearch, ArrowLeft, ArrowRight, ArrowUpDown, ArrowLeftToLine, ArrowRightToLine, CircleX, Command, CopyCheck, CopyMinus, DatabaseBackup, Eraser, Expand, ExternalLink, FileOutput, FilePlus, FilterX, FolderInput, FolderMinus, FolderOpen, FolderPlus, FolderSearch, FolderTree, Hash, History, Keyboard, Languages, LibraryBig, Link, Maximize, MoveHorizontal, PanelLeft, PanelRight, Palette, Pencil, RotateCcw, RotateCw, Search, Settings, Stethoscope, Tag, Trash, Trash2, Type, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
+import { Gauge, Play, StepBack, StepForward, Volume2, ArrowDownUp, Bot, MessagesSquare, TextCursorInput, CircleStop, SquarePen, GraduationCap, Info, BookOpen, Square, ArchiveRestore, ArrowLeftRight, AppWindow, ArrowRightFromLine, ListX, Undo2, ChevronsRight, ChevronsLeft, X, ChevronDown, ChevronUp, GalleryVertical, ListTree, TextSearch, ArrowLeft, ArrowRight, ArrowUpDown, ArrowLeftToLine, ArrowRightToLine, CircleX, Command, CopyCheck, CopyMinus, DatabaseBackup, Eraser, Expand, ExternalLink, FileOutput, FilePlus, FilterX, FolderInput, FolderMinus, FolderOpen, FolderPlus, FolderSearch, FolderTree, Hash, History, Keyboard, Languages, LibraryBig, Link, Maximize, MoveHorizontal, PanelLeft, PanelRight, Palette, Pencil, RotateCcw, RotateCw, Search, Settings, Stethoscope, Tag, Trash, Trash2, Type, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
 import type { CommandId } from '@learn/domain';
 
 /** Palette row icons (design-spec 5: lucide 16 / 1.5). Exhaustive: a new command without an icon fails typecheck. */
@@ -100,6 +100,16 @@ export const COMMAND_ICONS: Record<CommandId, LucideIcon> = {
   'reader.imageBackgroundLight': Palette,
   'reader.imageBackgroundDark': Palette,
   'reader.imageBackgroundChecker': Palette,
+  'video.playPause': Play,
+  'video.back10': RotateCcw,
+  'video.forward10': RotateCw,
+  'video.back5': ArrowLeft,
+  'video.forward5': ArrowRight,
+  'video.frameBack': StepBack,
+  'video.frameForward': StepForward,
+  'video.slower': Gauge,
+  'video.faster': Gauge,
+  'video.toggleMute': Volume2,
   'reader.scrollVertical': ArrowDownUp,
   'reader.scrollHorizontal': MoveHorizontal,
   'reader.scrollPage': Square,

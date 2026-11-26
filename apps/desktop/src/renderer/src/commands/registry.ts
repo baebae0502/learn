@@ -3,6 +3,9 @@ import type { ImageBackground, PageColor, ScrollModeName, SpreadModeName, Storag
 import type { TextSize, TextSizeUpdate } from '../settings/textSize';
 import type { PendingJump, ReaderNav, ZoomValue } from '../viewers/pdf/readerStore';
 
+/** What a video command does to the shown video (the video reader's handle runs it). */
+export type VideoAction = 'playPause' | 'back10' | 'forward10' | 'back5' | 'forward5' | 'frameBack' | 'frameForward' | 'slower' | 'faster' | 'toggleMute';
+
 /** What the main window can do now: its command context plus the handlers. Rebuilt every render; later tasks add handlers. */
 export interface CommandEnv extends CommandContextState {
   /** The availability facts of a target: its items (the library list, the file re-checked), its collections and tags. */
@@ -125,6 +128,8 @@ export interface CommandEnv extends CommandContextState {
   setSpread(mode: SpreadModeName): void;
   /** How the open PDF scrolls (the spread commands are off while it is horizontal). Absent with no PDF open. */
   pdfScroll?: ScrollModeName;
+  /** The video reader's keys and palette rows (K J L ← → , . ⇧, ⇧. M): the shown video does it. */
+  video(action: VideoAction): void;
   /** ⌘[ / ⌘]: the open PDF goes back or forward in its history (where a link, the outline, a thumbnail or the page field took it from). */
   history(direction: 'back' | 'forward'): void;
   /** ⌥⌘G: the page field takes the focus with its number selected. */
@@ -324,6 +329,16 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'reader.spreadNone': (env) => env.setSpread('none'),
   'reader.spreadOdd': (env) => env.setSpread('odd'),
   'reader.spreadEven': (env) => env.setSpread('even'),
+  'video.playPause': (env) => env.video('playPause'),
+  'video.back10': (env) => env.video('back10'),
+  'video.forward10': (env) => env.video('forward10'),
+  'video.back5': (env) => env.video('back5'),
+  'video.forward5': (env) => env.video('forward5'),
+  'video.frameBack': (env) => env.video('frameBack'),
+  'video.frameForward': (env) => env.video('frameForward'),
+  'video.slower': (env) => env.video('slower'),
+  'video.faster': (env) => env.video('faster'),
+  'video.toggleMute': (env) => env.video('toggleMute'),
   'trash.empty': (env) => env.emptyTrash(),
   'view.nextPane': (env) => env.focusPane(1),
   'view.previousPane': (env) => env.focusPane(-1),
@@ -355,6 +370,7 @@ export function contextOf(env: CommandEnv): CommandContextState {
     trashCount: env.trashCount,
     ...(env.pdfOpen ? { pdfOpen: true } : {}),
     ...(env.imageOpen ? { imageOpen: true } : {}),
+    ...(env.videoOpen ? { videoOpen: true, videoPlaying: env.videoPlaying === true, videoMuted: env.videoMuted === true } : {}),
     ...(env.pdfOpen && env.pdfScroll ? { pdfScroll: env.pdfScroll } : {}),
     ...(env.historyBack ? { historyBack: true } : {}),
     ...(env.historyForward ? { historyForward: true } : {}),

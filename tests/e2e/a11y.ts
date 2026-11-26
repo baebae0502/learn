@@ -7,7 +7,7 @@ import { expect, type Page } from '@playwright/test';
  * Two rules are off, and only these (Task 12 ruling):
  * - color-contrast: tokens.test.ts owns contrast in both themes and high contrast; tertiary text is 3:1 by design-spec
  *   3.1/8.3, and axe cannot compute text over the vibrancy material.
- * - video-caption: captions arrive in M8. Every other rule still runs on the <video>.
+ * - video-caption: the subtitles are drawn by Learn over the picture, never as a <track>. Every other rule still runs on the <video>.
  */
 export async function expectNoSeriousA11y(page: Page, label: string): Promise<void> {
   const result = await new AxeBuilder({ page }).setLegacyMode(true).disableRules(['color-contrast', 'video-caption']).analyze();

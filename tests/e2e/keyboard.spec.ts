@@ -953,7 +953,7 @@ test('the settings window is one pane: F6 neither throws nor moves the focus to 
   }
 });
 
-test('the video reader: axe (captions arrive in M8, so video-caption is off) and F6 lands on the player', async ({}, testInfo) => {
+test('the video reader: axe (Learn draws the subtitles itself, so video-caption is off) and F6 lands on the stage', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await importPaths(page, [MP4]);
@@ -961,8 +961,8 @@ test('the video reader: axe (captions arrive in M8, so video-caption is off) and
     await expect(page.getByTestId('video')).toBeVisible();
     await expectNoSeriousA11y(page, 'video reader');
     await page.keyboard.press('F6'); // sidebar
-    await page.keyboard.press('F6'); // content: the player
-    expect(await focusedTestId(page)).toBe('video');
+    await page.keyboard.press('F6'); // content: the stage
+    expect(await focusedTestId(page)).toBe('video-stage');
   } finally {
     await app.close();
   }

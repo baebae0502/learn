@@ -79,8 +79,8 @@ export const keepsPendingJump = (open: 'opening' | 'ready' | 'password' | 'faile
 
 export const INITIAL_PDF: PdfState = { ready: false, sized: false, placed: false, pageNumber: 1, pagesCount: 0, scale: 1, zoom: 'auto', rotation: 0, scroll: 'vertical', spread: 'none' };
 
-/** Why the sidebar has no pages to list: the item is in the trash, asks for a password, has nothing to show, or is a picture. */
-export type NoPages = 'trashed' | 'locked' | 'none' | 'image';
+/** Why the sidebar has no pages to list: the item is in the trash, asks for a password, has nothing to show, is a picture, or is a video (no transcript to show yet). */
+export type NoPages = 'trashed' | 'locked' | 'none' | 'image' | 'noTranscript';
 
 /** The image reader's state: what its toolbar shows and what the commands need (a picture drawn is `shown`). */
 export interface ImageState {

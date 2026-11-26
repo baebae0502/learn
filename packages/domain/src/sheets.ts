@@ -76,8 +76,11 @@ export interface RestoreDoneSheet {
 export type SheetPayload =
   /** `remaining`: the other duplicates of this import still to settle; above 0 the sheet offers one answer for all. */
   | { kind: 'duplicate'; fileName: string; existing: DuplicateCard; remaining: number }
-  /** `view`: the view the list is read in, so ⌘+ ⌘− ⌘0 are named as that view's menu names them (P-9). */
-  | { kind: 'shortcuts'; view?: 'library' | 'viewer' }
+  /**
+   * `view`: the view the list is read in, so ⌘+ ⌘− ⌘0 are named as that view's menu names them (P-9). `video`: the reader of a video that
+   * can play: a viewer's list with the video's keys added.
+   */
+  | { kind: 'shortcuts'; view?: 'library' | 'viewer' | 'video' }
   /**
    * `name`: the one row's title or name when exactly one is chosen; the sheet's title names it. `sessions`: the tutor sessions that go
    * with the items, as main counted them, and `sessionItems` the items they belong to (T1a spec 6.2): the text says so when there are some.

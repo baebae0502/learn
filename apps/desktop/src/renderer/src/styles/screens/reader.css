@@ -52,7 +52,7 @@
     height: 100%;
     object-fit: contain;
   }
-  /* The player shows with its first frame (VideoViewer data-frame): before it, only the dark stage (T13-m6). */
+  /* The player shows with its first frame (VideoReader data-frame): before it, only the dark stage (T13-m6). */
   .video-stage video:not([data-frame]) {
     visibility: hidden;
   }

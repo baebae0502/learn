@@ -10,13 +10,14 @@ import { askViaApi, consentAndChoose, turnEnded } from './tutor-helpers';
 import {
   FIXTURES, assignTag, clickToCloseSheet, closeSheet, confirmCalls, createCollection, enabledMenuCommands, expectWindow, importPause, importPaths, isCloseNoise, importResume, importWaiting, imageState, launch, makeTags,
   libraryTab, menuItemEnabled, menuSnapshot, openDialogCalls, openItem, organizeSnapshot, readerTab, recordedPopups, rowByTitle, runMenuCommand, runPalette, saveDialogCalls, sheetReleased, shellCalls, specialRow, stubConfirm,
-  stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, stubSaveDialog, stubShell, tagChip, trashItems, treeRow, tutorFakeScript, waitImportIdle,
+  stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, stubSaveDialog, stubShell, tagChip, trashItems, treeRow, tutorFakeScript, videoState, waitImportIdle,
   type MenuNode,
 } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const PHOTO = path.join(FIXTURES, 'photo-4032.jpg');
 const MPEG4 = path.join(FIXTURES, 'sample-mpeg4part2.mp4');
+const LECTURE = path.join(FIXTURES, 'lecture-60s.mp4');
 const KO_PDF = path.join(FIXTURES, '한글 경로 (테스트) #1.pdf');
 /** The Korean fixture's title (titleFromFile). */
 const KO = '한글 경로 (테스트) #1';
@@ -116,6 +117,14 @@ const M7B_COMMANDS: readonly CommandId[] = [
  * reaches them; a block of their own runs each from the menu bar on a picture.
  */
 const M7C_COMMANDS: readonly CommandId[] = ['reader.imageBackgroundLight', 'reader.imageBackgroundDark', 'reader.imageBackgroundChecker'] as CommandId[];
+
+/**
+ * The video reader's keys (M8a spec 10): no menu item (a bare letter is never a menu accelerator), so the menu loop never reaches them. A block
+ * of their own opens a video and runs each one from the palette, which lists them with their keys; Task 11 and 12 add theirs.
+ */
+const M8A_COMMANDS: readonly CommandId[] = [
+  'video.playPause', 'video.back10', 'video.forward10', 'video.back5', 'video.forward5', 'video.frameBack', 'video.frameForward', 'video.slower', 'video.faster', 'video.toggleMute',
+] as CommandId[];
 
 /**
  * T1a's commands (the tutor, spec 11): each one is run here — the menu bar's in the reader pass below (세션 보기 among them), 에이전트 고르기…
@@ -881,6 +890,64 @@ test('every registry command runs without a page error (library and reader menus
       await expect.poll(() => menuItemEnabled(app, 'reader.imageBackgroundLight')).toBe(false);
     }
 
+    // The video reader's commands (M8a): not in the menu bar, so each runs from the palette on a playable video, and not on a library view.
+    {
+      await importPaths(page, [LECTURE]);
+      await openItem(page, 'lecture-60s');
+      await expect.poll(async () => (await videoState(page))?.status).toBe('ready');
+      const state = async () => (await videoState(page))!;
+      expect((await enabledMenuCommands(app)).filter((id) => id.startsWith('video.')), 'no video command is in the menu bar').toEqual([]);
+      const run = async (query: string, id: CommandId) => {
+        await runPalette(page, app, query, id);
+        await expect(page.getByTestId('palette')).toHaveCount(0);
+        ran.add(id);
+      };
+      await run('재생', 'video.playPause');
+      await expect.poll(async () => (await state()).paused).toBe(false);
+      await run('일시정지', 'video.playPause'); // named by what it does now
+      await expect.poll(async () => (await state()).paused).toBe(true);
+      await run('10초 앞으로', 'video.forward10');
+      await expect.poll(async () => (await state()).timeMs).toBeGreaterThanOrEqual(10_000);
+      await run('10초 뒤로', 'video.back10');
+      await expect.poll(async () => (await state()).timeMs).toBeLessThan(1_000);
+      await run('5초 앞으로', 'video.forward5');
+      await expect.poll(async () => (await state()).timeMs).toBeGreaterThanOrEqual(4_500);
+      await run('5초 뒤로', 'video.back5');
+      await expect.poll(async () => (await state()).timeMs).toBeLessThan(1_000);
+      await run('5초 앞으로', 'video.forward5'); // a frame is stepped from a place that is not the start
+      const base = (await state()).timeMs;
+      await run('한 프레임 앞으로', 'video.frameForward');
+      await expect.poll(async () => (await state()).timeMs).toBeGreaterThan(base);
+      const stepped = (await state()).timeMs;
+      await run('한 프레임 뒤로', 'video.frameBack');
+      await expect.poll(async () => (await state()).timeMs).toBeLessThan(stepped);
+      await run('속도 빠르게', 'video.faster');
+      await expect.poll(async () => (await state()).rate).toBe(1.25);
+      await run('속도 느리게', 'video.slower');
+      await expect.poll(async () => (await state()).rate).toBe(1);
+      await run('음소거', 'video.toggleMute');
+      await expect.poll(async () => (await state()).muted).toBe(true);
+      await run('음소거 해제', 'video.toggleMute');
+      await expect.poll(async () => (await state()).muted).toBe(false);
+      // Playing, a frame step is off: the palette does not list it.
+      await runMenuCommand(app, 'app.palette');
+      await page.getByTestId('palette-input').fill('한 프레임');
+      await expect(page.locator('[data-testid="palette-item"][data-command-id="video.frameForward"]')).toHaveCount(1);
+      await page.keyboard.press('Escape');
+      await run('재생', 'video.playPause');
+      await expect.poll(async () => (await state()).paused).toBe(false);
+      await runMenuCommand(app, 'app.palette');
+      await page.getByTestId('palette-input').fill('한 프레임');
+      await expect(page.locator('[data-testid="palette-item"][data-command-id="video.frameForward"]')).toHaveCount(0);
+      await page.keyboard.press('Escape');
+      await runMenuCommand(app, 'tab.close');
+      // The library view has no video: the keys are not commands there.
+      await runMenuCommand(app, 'app.palette');
+      await page.getByTestId('palette-input').fill('음소거');
+      await expect(page.locator('[data-testid="palette-item"][data-command-id="video.toggleMute"]')).toHaveCount(0);
+      await page.keyboard.press('Escape');
+    }
+
     // The ledger: every registry command ran here, or is named with the test that runs it. A command added later fails
     // here until it is in one of the two; a ledger entry for a command that is gone fails too.
     const all = COMMANDS.map((c) => c.id);
@@ -901,6 +968,11 @@ test('every registry command runs without a page error (library and reader menus
     expect(M7C_COMMANDS.filter((id) => !all.includes(id)), 'M7c commands gone from the registry').toEqual([]);
     expect(M7C_COMMANDS.filter((id) => !ran.has(id)), 'M7c commands this test did not run itself').toEqual([]);
     expect(Object.keys(COVERED_ELSEWHERE).filter((id) => M7C_COMMANDS.includes(id as CommandId)), 'M7c commands left to another test').toEqual([]);
+    // The M8a commands (the video reader's keys): each ran in the block above, none is left to another test, and every one is in the registry.
+    expect(M8A_COMMANDS.filter((id) => !all.includes(id)), 'M8a commands gone from the registry').toEqual([]);
+    expect(M8A_COMMANDS.filter((id) => !ran.has(id)), 'M8a commands this test did not run itself').toEqual([]);
+    expect(Object.keys(COVERED_ELSEWHERE).filter((id) => M8A_COMMANDS.includes(id as CommandId)), 'M8a commands left to another test').toEqual([]);
+    expect(all.filter((id) => id.startsWith('video.')).sort(), 'the video commands in the registry').toEqual([...M8A_COMMANDS].sort());
     // The T1a commands (the right panel's modes): each ran in the reader pass above, none is left to another test, and every one is in the registry.
     expect(T1A_COMMANDS.filter((id) => !all.includes(id)), 'T1a commands gone from the registry').toEqual([]);
     expect(T1A_COMMANDS.filter((id) => !ran.has(id)), 'T1a commands this test did not run itself').toEqual([]);

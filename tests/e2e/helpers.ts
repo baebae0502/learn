@@ -17,6 +17,18 @@ import { compareShots, isTranslucent, sidebarFallback, type Pixels } from './sho
 import { describeTextState, jobCounts, type TextStateSnapshot } from './text-state';
 
 /** What the image reader shows (viewers/readerScope.tsx learnImageHook): its state, whose it is, and the picture point at the stage's centre. */
+/** What the video reader reports of its element (viewers/video/videoStore.ts VideoProbe, with the tab's item). */
+export interface VideoProbe {
+  status: 'opening' | 'ready' | 'unplayable' | 'failed';
+  timeMs: number;
+  paused: boolean;
+  rate: number;
+  volume: number;
+  muted: boolean;
+  frameMs: number;
+  itemId: string;
+}
+
 export interface ImageReaderState {
   status: 'loading' | 'shown' | 'error';
   zoom: 'fit' | 'width' | number;
@@ -35,6 +47,8 @@ declare global {
     __learnQuietImports?: number;
     /** E2E only: the image reader of the shown tab, or of the tab of `itemId` (a hidden one too). */
     __learnImage?: { getState(itemId?: string): ImageReaderState | null };
+    /** E2E only: the video reader of the shown tab, or of the tab of `itemId`; null where no video reader is mounted. */
+    __learnVideo?: { state(itemId?: string): VideoProbe | null };
   }
 }
 
@@ -1233,6 +1247,15 @@ export async function closeReaderTab(page: Page): Promise<void> {
 
 /** The image reader's state: the shown tab's, or the tab of `itemId` (hidden or not); null where no picture is open. */
 export const imageState = (page: Page, itemId?: string): Promise<ImageReaderState | null> => page.evaluate((id) => window.__learnImage!.getState(id ?? undefined), itemId ?? null);
+
+/** The video reader's state: the shown tab's, or the tab of `itemId`; null where no video reader is mounted. */
+export const videoState = (page: Page, itemId?: string): Promise<VideoProbe | null> => page.evaluate((id) => window.__learnVideo!.state(id ?? undefined), itemId ?? null);
+
+/** Waits for the shown video's first frame (the controls are on) and gives its state. */
+export async function videoReady(page: Page): Promise<VideoProbe> {
+  await expect.poll(async () => (await videoState(page))?.status).toBe('ready');
+  return (await videoState(page))!;
+}
 
 /** The tab strip's first tab: the library (a window with no reader tab has no strip, so none). */
 export const libraryTab = (page: Page): Locator => page.locator('[data-testid="tab"][data-item-id="library"]');

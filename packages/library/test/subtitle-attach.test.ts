@@ -9,7 +9,15 @@ import { Importer, attachSubtitleFiles, ensureLayout, libraryLayout, resolveAsse
 import { cleanupTemp, tempDir, writeMp4, writePdf } from './helpers';
 
 const STATIC = path.resolve(import.meta.dirname, '../../../fixtures/static/subtitles');
-const GENERATED = path.resolve(import.meta.dirname, '../../../fixtures/generated');
+/** `count` cues 100 ms apart and 80 ms long, "문장 {n}" each: the shape fixtures/generate.mjs writes for limit-20000.srt. */
+function srtOf(count: number): string {
+  const p = (n: number, w: number): string => String(n).padStart(w, '0');
+  const t = (ms: number): string =>
+    `${p(Math.floor(ms / 3_600_000), 2)}:${p(Math.floor(ms / 60_000) % 60, 2)}:${p(Math.floor(ms / 1000) % 60, 2)},${p(ms % 1000, 3)}`;
+  const parts: string[] = [];
+  for (let n = 1; n <= count; n++) parts.push(`${n}\n${t((n - 1) * 100)} --> ${t((n - 1) * 100 + 80)}\n문장 ${n}\n`);
+  return parts.join('\n');
+}
 const sub = (name: string): string => path.join(STATIC, name);
 
 const dbs: Db[] = [];
@@ -190,7 +198,7 @@ describe('attachSubtitleFiles', () => {
 
   it('attaches a 20,000-cue file stays within three times the one-second ceiling (the full suite runs it 2x slower than alone)', async () => {
     const { deps, video, subtitles } = await setup();
-    const source = fs.readFileSync(path.join(GENERATED, 'limit-20000.srt'), 'utf8');
+    const source = srtOf(20_000);
     const dir = tempDir('src');
     const wall: number[] = [];
     const cpu: number[] = [];

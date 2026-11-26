@@ -17,7 +17,8 @@ export function useIdleControls(reader: RefObject<HTMLElement | null>, active: b
       clearTimeout(timer);
       timer = setTimeout(() => {
         const bar = reader.current?.querySelector('.video-controls');
-        if (bar?.matches(':hover') || document.querySelector('[role="menu"]')) arm();
+        // A pop-up of the bar is open: a menu, the folded volume bar, or any control of it that says it is expanded.
+        if (bar?.matches(':hover') || bar?.querySelector('.vol-pop, [aria-expanded="true"]') || document.querySelector('[role="menu"], [data-trigger]')) arm();
         else setIdle(true);
       }, VIDEO_TIMING.controlsIdleMs);
     };

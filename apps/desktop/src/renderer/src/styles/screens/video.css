@@ -260,8 +260,8 @@
     color: var(--video-chrome-text);
     /* A fixed dark surface in both themes: the controls read these in place of the theme's own. */
     --text-primary: var(--video-chrome-text);
-    --text-secondary: var(--video-chrome-text-2);
-    --text-tertiary: var(--video-chrome-text-3);
+    --text-secondary: var(--video-chrome-text2);
+    --text-tertiary: var(--video-chrome-text3);
     --bg-track: var(--video-chrome-track);
     --border: var(--video-chrome-border);
     --fill-hover: var(--video-chrome-hover);
@@ -294,8 +294,18 @@
   :root[data-video-stage] .video-reader[data-idle] * {
     cursor: none;
   }
+  /* The stage's ring is drawn over the bar and its scrim so all four sides keep their contrast, and goes with the controls while they rest;
+     any key brings both back (design-spec 8.3, the stage exception). */
+  :root[data-video-stage] .video-stage:focus-visible::after {
+    z-index: 5;
+    transition: opacity var(--duration-base) var(--ease-standard);
+  }
+  :root[data-video-stage] .video-reader[data-idle] .video-stage::after {
+    opacity: 0;
+  }
   @media (prefers-reduced-motion: reduce) {
-    :root[data-video-stage] .video-reader .video-controls {
+    :root[data-video-stage] .video-reader .video-controls,
+    :root[data-video-stage] .video-stage:focus-visible::after {
       transition: none;
     }
   }

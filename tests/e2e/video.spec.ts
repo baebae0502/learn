@@ -556,21 +556,28 @@ test('closing the video on the stage ends the stage', async ({}, testInfo) => {
   }
 });
 
-test('a page cannot enter HTML full screen: the request never takes and the window stays as it is', async ({}, testInfo) => {
+test('a page cannot enter HTML full screen: the request ran and never took, and the window stays as it is', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
   try {
     await openLecture(page);
-    // Asked inside a real press (a user gesture), the way a page would: with the permission gone Electron neither enters nor rejects — the promise
-    // stays pending and no fullscreenchange comes, so the proof is that nothing changed once main and the page have both had their turn.
+    // Positive control first: the window's own full screen works through main, so a window that stays put below is the page's refusal.
+    await page.getByTestId('video-fullscreen').click();
+    await stageOn(app, page);
+    await page.getByTestId('video-fullscreen').click();
+    await stageOff(app, page);
+    // The page asks inside a real press (a user gesture). With the permission gone Electron neither enters nor rejects: the promise stays
+    // pending and no fullscreenchange comes. `asked` proves the request ran; nothing changing afterwards is then the refusal.
     await page.evaluate(() => {
       const w = window as unknown as { __fs: string[] };
       w.__fs = [];
       document.addEventListener('fullscreenchange', () => w.__fs.push('change'));
       addEventListener('click', () => {
+        w.__fs.push('asked');
         document.documentElement.requestFullscreen().then(() => w.__fs.push('entered'), (e: Error) => w.__fs.push(`rejected ${e.name}`));
       }, { once: true });
     });
     await page.getByTestId('video-stage').click(); // also plays the video: harmless here
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __fs: string[] }).__fs.includes('asked'))).toBe(true);
     await settled(page, 10);
     const result = await page.evaluate(() => ({ events: (window as unknown as { __fs: string[] }).__fs, element: document.fullscreenElement === null }));
     expect(result.events).not.toContain('entered');
@@ -578,10 +585,6 @@ test('a page cannot enter HTML full screen: the request never takes and the wind
     expect(result.element).toBe(true);
     expect(await (await mainWindow(app)).evaluate((w) => w.isFullScreen())).toBe(false);
     expect(await stageState(app)).toEqual(OFF);
-    // The control: the window's own full screen still works, through main.
-    await page.getByTestId('video-fullscreen').click();
-    await stageOn(app, page);
-    expect(await page.evaluate(() => document.fullscreenElement === null)).toBe(true); // the window is full screen, the document is not
   } finally {
     await app.close();
   }

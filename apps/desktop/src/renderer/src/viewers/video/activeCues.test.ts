@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Cue } from '@learn/domain';
-import { activeCues, cueIndexAt, indexCues } from './activeCues';
+import { activeCues, cueIndexAt, cueLines, indexCues } from './activeCues';
 
 const cue = (startMs: number, endMs: number, text = `${startMs}`): Cue => ({ startMs, endMs, text });
 
@@ -52,6 +52,17 @@ describe('cueIndexAt', () => {
     expect(cueIndexAt(ix, 3000)).toBe(0);
     expect(cueIndexAt(ix, 5000)).toBe(2);
     expect(cueIndexAt(ix, 99_999)).toBe(2);
+  });
+});
+
+describe('cueLines', () => {
+  it('reads the texts of the cues on, in order', () => {
+    expect(cueLines(indexCues([cue(0, 5000, 'a'), cue(1000, 2000, 'b')]), [0, 1])).toEqual(['a', 'b']);
+  });
+  it('never reads past the track: indices of a longer track switched away from give nothing, not a crash', () => {
+    const shorter = indexCues([cue(0, 5000, 'only')]);
+    expect(cueLines(shorter, [3, 7])).toEqual([]);
+    expect(cueLines(shorter, [0, 7])).toEqual(['only']);
   });
 });
 

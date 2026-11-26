@@ -1911,9 +1911,12 @@ h2,
 }
 .subtitle {
   position: absolute;
-  left: 50%;
+  /* centred with auto margins, not left: 50% + translate: that box could grow only to the remaining half, so max-width never reached 78 % */
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  width: fit-content;
   bottom: 6%;
-  translate: -50% 0;
   max-width: 78%;
   padding: 0.2em 0.6em 0.25em; /* local: the 4 / 12 / 5 px of the 22 px subtitle, kept in proportion to the text */
   border-radius: var(--radius-sm);

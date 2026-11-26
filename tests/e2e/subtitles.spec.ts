@@ -1,6 +1,7 @@
 // Subtitles on screen (M8a spec 5.1, 5.4, 5.5, 6.4, 6.5, 6.8): the file picker of 자막 ▾, the overlay over the drawn picture, the menu's tracks and
 // off, C, remove with its undo, the choice remembered per video, the toasts at the stage's top right, and the item panel's 자막 line.
 // lecture-60s.mp4 is 60 s; its ko/en cue files are fixtures (pnpm fixtures).
+import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import type { Cue, SubtitleTrack } from '../../packages/domain/src/subtitles';
@@ -136,6 +137,19 @@ test('the overlay follows the playhead inside the drawn picture; the menu change
     await expect.poll(async () => (await state(page)).cueText).toBe(en[0]!.text);
     await expect(overlay).toHaveText(en[0]!.text);
 
+    // Back to the Korean track, whose cues are cached by now, then English again: each switch shows that track's sentence, never an old one's index.
+    for (const [name, cues] of [['한국어', ko], ['영어', en], ['한국어', ko]] as const) {
+      await openMenu(page);
+      await page.getByRole('menuitemradio', { name }).click();
+      await expect(menuButton(page)).toHaveText(name);
+      await expect.poll(async () => (await state(page)).cueText).toBe(cues[0]!.text);
+      await expect(overlay).toHaveText(cues[0]!.text);
+    }
+    await openMenu(page);
+    await page.getByRole('menuitemradio', { name: '영어' }).click();
+    await expect(menuButton(page)).toHaveText('영어');
+    await expect.poll(async () => (await state(page)).cueText).toBe(en[0]!.text);
+
     // C turns it off (nothing is drawn, the button says 자막 끔) and on again.
     await page.getByTestId('video-stage').focus();
     await page.keyboard.press('c');
@@ -178,6 +192,10 @@ test('remove takes the shown track off with a toast; 실행 취소 brings it bac
     await expect(menuButton(page)).toHaveText('영어');
     await expect.poll(async () => (await state(page)).trackId).toBe(tracks[1]!.assetId);
 
+    // Off before the undo (the positive control: the undo is what turns a track on).
+    await page.getByTestId('video-stage').focus();
+    await page.keyboard.press('c');
+    await expect.poll(async () => (await state(page)).captionsOn).toBe(false);
     await toast.getByTestId('undo-action').click();
     await expect.poll(async () => (await tracksOf(page, item.id)).map((t) => [t.language, t.assetId])).toEqual([['ko', tracks[0]!.assetId], ['en', tracks[1]!.assetId]]);
     await expect(menuButton(page)).toHaveText('한국어');
@@ -265,6 +283,29 @@ test('on the stage the subtitle stands above the bar while it shows and comes ba
     await expect(page.locator('.video-reader')).toHaveAttribute('data-idle', '', { timeout: 8_000 });
     await expect.poll(async () => ((await lift()) ?? Number.POSITIVE_INFINITY) < 300, { message: 'the subtitle is down while the bar is hidden (a cue in the gap between two cues is polled again)' }).toBe(true);
     expect(await page.getByTestId('video').boundingBox()).toEqual(shownBox);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a long cue wraps within 78 % of the picture, not half of it', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await openLecture(page);
+    const long = testInfo.outputPath('long.ko.srt');
+    const line = '세포막은 인지질 이중층으로 이루어져 있고 그 사이에 박혀 있는 단백질이 물질의 출입을 조절하며 신호를 받아들이는 일도 맡습니다 그래서 막의 성질을 알면 세포가 살아가는 방식을 많이 설명할 수 있습니다';
+    fs.writeFileSync(long, `1\n00:00:00,000 --> 00:00:09,000\n${line}\n`);
+    await addFromMenu(page, app, [long]);
+    await expect(page.getByTestId('subtitle-attached')).toBeVisible();
+    await seek(page, 2000);
+    const overlay = page.getByTestId('subtitle-overlay');
+    await expect(overlay).toBeVisible();
+    const box = (await page.getByTestId('subtitle-box').boundingBox())!;
+    const text = (await overlay.boundingBox())!;
+    // One line of this length is wider than the picture: it fills the 78 %, within a pixel.
+    expect(text.width / box.width).toBeGreaterThan(0.5);
+    expect(text.width / box.width).toBeLessThanOrEqual(0.78 + 1 / box.width);
+    expect(Math.abs(text.x + text.width / 2 - (box.x + box.width / 2))).toBeLessThanOrEqual(1);
   } finally {
     await app.close();
   }

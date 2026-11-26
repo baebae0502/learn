@@ -50,3 +50,8 @@ export function activeCues(ix: CueIndex, ms: number, max = 3): number[] {
   }
   return found.reverse();
 }
+
+/** The texts of the cues at `active` in this index; an index past the track's end (kept from another track) is left out, never read. */
+export function cueLines(ix: CueIndex, active: readonly number[]): string[] {
+  return active.flatMap((i) => ix.cues[i]?.text ?? []);
+}

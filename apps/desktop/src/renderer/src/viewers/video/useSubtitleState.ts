@@ -48,6 +48,8 @@ export function useSubtitleState(item: LibraryItem, store: StoreApi<VideoStore>,
   const handle = useRef<SubtitleHandle | null>(null);
   handle.current ??= (() => {
     const select = (assetId: string): void => {
+      // A reader that has gone (its handle is cleared on unmount) has no choice to make: an undo after it is a no-op here.
+      if (store.getState().handle === null) return;
       store.getState().patch({ trackId: assetId, captionsOn: true });
       saveRef.current();
     };

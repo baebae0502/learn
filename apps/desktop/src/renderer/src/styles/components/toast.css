@@ -23,6 +23,16 @@
     bottom: auto;
     max-width: calc(100vw - var(--toast-stage-right, var(--space-16)) - var(--space-16));
   }
+  /* At the top the toast comes down from its edge, not up from it. */
+  @keyframes drop-in {
+    from {
+      opacity: 0;
+      translate: 0 calc(var(--toast-distance) * -1);
+    }
+  }
+  :root[data-video-toasts] .toast {
+    animation-name: drop-in;
+  }
   .toast {
     display: grid;
     grid-template-columns: 20px minmax(0, 1fr) auto;

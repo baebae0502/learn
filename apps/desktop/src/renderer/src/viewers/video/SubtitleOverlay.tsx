@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useState, type CSSProperties, type RefObject } from 'react';
 import type { Cue } from '@learn/domain';
 import { useReaderScope } from '../readerScope';
-import { activeCues, indexCues } from './activeCues';
+import { activeCues, cueLines, indexCues, type CueIndex } from './activeCues';
 import { pictureRect, type Rect } from './pictureRect';
 import { useVideo } from './videoStore';
 
+/** The cues on, with the index they were found in: a new track's index never reads another track's list. */
+interface Active {
+  index: CueIndex | null;
+  list: readonly number[];
+}
 const NONE: readonly number[] = [];
 const sameList = (a: readonly number[], b: readonly number[]): boolean => a.length === b.length && a.every((v, i) => v === b[i]);
 
@@ -45,22 +50,24 @@ export function SubtitleOverlay({ stage, video, cues }: { stage: RefObject<HTMLE
   const on = useVideo((s) => s.trackId !== null && s.captionsOn);
   const index = useMemo(() => (cues ? indexCues(cues) : null), [cues]);
   const drawn = usePictureRect(stage, video);
-  const [active, setActive] = useState<readonly number[]>(NONE);
+  const [found, setFound] = useState<Active>({ index: null, list: NONE });
 
   useEffect(() => {
     if (!index || !on) {
-      setActive(NONE);
+      setFound({ index, list: NONE });
       return;
     }
     const sync = () => {
       const next = activeCues(index, store.getState().timeMs);
-      setActive((prev) => (sameList(prev, next) ? prev : next));
+      setFound((prev) => (prev.index === index && sameList(prev.list, next) ? prev : { index, list: next }));
     };
     sync();
     return store.subscribe(sync);
   }, [index, on, store]);
 
-  const lines = index ? active.map((i) => index.cues[i]!.text) : [];
+  // What was found in an older index (one render behind a track switch) is not read through the new one.
+  const active = found.index === index ? found.list : NONE;
+  const lines = index ? cueLines(index, active) : [];
   const text = lines.length > 0 ? lines.join('\n') : null;
   useEffect(() => {
     store.getState().patch({ cueText: text });
@@ -74,7 +81,7 @@ export function SubtitleOverlay({ stage, video, cues }: { stage: RefObject<HTMLE
       {lines.length > 0 && (
         <div className="subtitle" data-testid="subtitle-overlay">
           {lines.map((line, i) => (
-            <div key={active[i]} className="sub-line">
+            <div key={i} className="sub-line">
               {line}
             </div>
           ))}

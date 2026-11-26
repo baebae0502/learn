@@ -19,6 +19,10 @@
       inset 0 0 0 calc(1px + var(--focus-ring-width)) var(--image-focus-dark),
       inset 0 0 0 calc(2px + var(--focus-ring-width)) var(--video-stage);
   }
+  /* The reader toolbar's one menu is as wide as the others' (design-spec 7.3). */
+  .subtitles-menu .menu {
+    min-width: 232px; /* local: the reader menus' width (design-spec 7.3 mockup) */
+  }
   .loading.on-stage {
     color: oklch(85% 0.004 250); /* local: the always-dark stage */
   }
@@ -40,9 +44,12 @@
   }
   .subtitle-box .subtitle {
     position: absolute;
-    left: 50%;
+    /* Auto margins centre it: with left: 50% the box could grow only to the remaining half, and the 78 % never applied. */
+    left: 0;
+    right: 0;
+    margin-inline: auto;
+    width: fit-content;
     bottom: 6%;
-    translate: -50% 0;
     max-width: 78%;
     padding: 0.2em 0.6em 0.25em; /* local: the mockup's 4 / 12 / 5 px of a 22 px subtitle, kept in proportion to the text */
     border-radius: var(--radius-sm);

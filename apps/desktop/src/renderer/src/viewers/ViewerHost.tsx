@@ -91,7 +91,7 @@ function Viewer({ itemId }: { itemId: string }) {
   const tabKind = useTabKind(itemId);
   const kind = item.data?.type ?? cachedType ?? tabKind;
   // What the reader's sidebar says about the pages: a picture has none, in every state of its tab (ahead of the trash); else gone with the
-  // trash, then a video's lack of a transcript (every state of it, a lost or missing file too), or nothing to show here (a lost or missing file).
+  // trash, then a video that is lost or missing (a playable one has its transcript pane; the reader says when the file cannot be played), or nothing to show here (a lost or missing file).
   const noPages: NoPages | null =
     kind === 'image'
       ? 'image'
@@ -100,7 +100,7 @@ function Viewer({ itemId }: { itemId: string }) {
         : kind === 'video'
           ? item.isFetchedAfterMount && (readerLost(item) || !item.data || item.data.availability === 'missing')
             ? 'noVideo'
-            : 'noTranscript'
+            : null
           : !item.isFetchedAfterMount
             ? null
             : readerLost(item) || !item.data || item.data.availability === 'missing' || item.data.type !== 'pdf'

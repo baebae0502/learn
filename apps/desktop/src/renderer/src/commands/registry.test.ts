@@ -484,6 +484,12 @@ describe('renderer command registry', () => {
     for (const off of [env({ view: 'viewer' }), env({ view: 'viewer', pdfOpen: true, blocked: true })]) expect(runCommand('library.find', off)).toBe(false);
     expect(runCommand('reader.findNext', env({ libraryCount: 3 }))).toBe(false);
   });
+  it('⌘F in a video with a track runs the same find handler (the reader\'s action takes it to the transcript search); with no track it is off', () => {
+    const e = env({ view: 'viewer', videoOpen: true, videoCaptions: true });
+    expect(runCommand('library.find', e)).toBe(true);
+    expect(e.openFind).toHaveBeenCalledTimes(1);
+    expect(runCommand('library.find', env({ view: 'viewer', videoOpen: true }))).toBe(false);
+  });
   it('item commands use the targets of the given items', () => {
     const e = env();
     expect(isCommandEnabled('item.relink', e, { itemIds: [ID] })).toBe(true);

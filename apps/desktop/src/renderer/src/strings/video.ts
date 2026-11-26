@@ -1,6 +1,8 @@
+import { iGa } from './josa';
+
 /** The video reader's words (spec 6.2, 12): control names and tooltips, the speed menu, the states. 합니다체, U+00A0 where a unit sticks to its number. */
 export const video = {
-  /** The reader's sidebar while there is no transcript to show (an unplayable video, a file that did not open, until the transcript pane arrives). */
+  /** The reader's sidebar while there is no transcript to show (an unplayable video, a file that did not open, an original that is missing). */
   noTranscript: '표시할 대본이 없습니다',
   /** Read after the stage's name when it has the focus. */
   stageHint: '스페이스로 재생',
@@ -54,4 +56,18 @@ export const video = {
   nextWhere: '동영상 탭에 끌어\u00a0놓거나 자막 메뉴의 ‘자막\u00a0파일\u00a0추가…’\u2060로 붙이세요.',
   /** ‘한국어’ 자막을 제거했습니다 (+ 실행 취소). */
   removed: (name: string) => `‘${name}’ 자막을 제거했습니다`,
+  /** 대본 칸 (spec 7, 12). */
+  transcript: '대본',
+  transcriptSearch: '대본에서 찾기',
+  transcriptSearchLabel: '대본 검색',
+  /** The head's count: the sentences the query is in. */
+  transcriptCount: (n: number) => `${n}개`,
+  /** The switch under the list: the list keeps the sentence that is on in view. */
+  follow: '현재\u00a0위치\u00a0따라가기',
+  /** No sentence has the query: the word joiner keeps the particle with the closing quote. */
+  noMatchTitle: (query: string) => `‘${query}’\u2060${iGa(query)} 나오는 문장이 없습니다`,
+  noMatchText: '자막\u00a0파일의 글자에서만 찾습니다. 다른\u00a0낱말로 찾아보세요.',
+  /** 자막 없음 (the sidebar's empty state, with 자막 파일 추가…). */
+  noSubtitlesTitle: '자막이 없습니다',
+  noSubtitlesText: 'SRT나 VTT 자막\u00a0파일을 추가하면 대본이 여기에 표시되고, 문장을 눌러 그\u00a0시간으로 이동할 수 있습니다.',
 } as const;

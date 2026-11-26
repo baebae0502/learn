@@ -778,7 +778,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     <CommandProvider env={env}>
       <ScopeViewProvider view={scopeView}>
       <Shell
-        sidebar={view.kind === 'reader' ? <ReaderSidebar key={view.itemId} /> : <LibrarySidebar onFilesDrop={onDrop} />}
+        sidebar={view.kind === 'reader' ? <ReaderSidebar key={view.itemId} video={readerKind === 'video'} /> : <LibrarySidebar onFilesDrop={onDrop} />}
         sidebarFoot={showsTable ? <TagSelector /> : undefined}
         launcher={<Launcher />}
         toolbar={toolbar}

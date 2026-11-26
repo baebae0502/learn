@@ -350,4 +350,123 @@
       transition: none;
     }
   }
+
+  /* The transcript pane (spec 7, mockup .transcript): the head is one line of the headline role, the same place as the PDF tab's segment,
+     so the search field below does not move between the two. */
+  .nav-title {
+    display: flex;
+    align-items: center;
+    height: 28px; /* local: the segment's height, which this head stands in for */
+    padding: 0 var(--space-4);
+    font: var(--type-headline);
+  }
+  /* Secondary, not the mockup's tertiary: 12 px text keeps 4.5:1, as the find bar's count does. */
+  /* The pane changes its content while the video opens (the placeholder, then the list or the empty state); on a layer of its own that
+     repaint cannot reach the sidebar's top, whose launcher corners would otherwise be drawn over twice (layout B's pixel identity). */
+  .reader-sidebar.is-transcript {
+    will-change: transform;
+  }
+  .nav-search .find-count {
+    flex: none;
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .transcript {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-gutter: stable both-edges; /* a classic bar's room on both sides, as the thumbnail list keeps */
+    position: relative;
+    outline: none;
+  }
+  .transcript-rows {
+    position: relative;
+    width: 100%;
+  }
+  .transcript-slot {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 0 var(--space-8);
+  }
+  .transcript.is-placeholder {
+    overflow: hidden;
+    padding: var(--space-4) var(--space-8) var(--space-8);
+  }
+  .cue {
+    /* Stacked: the time above the text, so the text has the sidebar's full width. */
+    display: flex;
+    flex-direction: column;
+    gap: 2px; /* local: the time sits close over its sentence */
+    padding: var(--space-8);
+    border-radius: var(--radius-md);
+    font: var(--type-paragraph);
+    cursor: default;
+    outline: none;
+  }
+  .cue .ts {
+    color: var(--text-tertiary);
+    font: var(--type-footnote);
+    font-variant-numeric: tabular-nums;
+  }
+  .cue .tx {
+    overflow-wrap: anywhere;
+    white-space: pre-line; /* a cue's own line breaks */
+  }
+  .cue.is-past .tx {
+    color: var(--text-secondary);
+  }
+  .cue.is-current {
+    background: var(--accent-soft);
+  }
+  .cue.is-current .ts {
+    color: var(--accent-text);
+    font-weight: var(--weight-semibold);
+  }
+  .cue mark {
+    background: var(--find-match);
+    color: inherit;
+    border-radius: 2px; /* local: a mark's hairline corner */
+  }
+  .cue mark.is-current {
+    background: var(--find-match-current);
+    box-shadow: 0 0 0 1.5px var(--accent); /* local: the current match's accent edge, as the PDF's current hit */
+  }
+  /* The keyboard cursor: a 2 px inset ring, on a filled row too (the accent fill alone would not tell it). */
+  .cue:focus-visible,
+  .cue.is-cursor {
+    box-shadow: inset 0 0 0 2px var(--focus);
+  }
+  .cue.ph {
+    gap: var(--space-6);
+  }
+  .cue.ph .ts,
+  .cue.ph .tx {
+    display: block;
+    height: 10px; /* local: a bar the height of a footnote's x-height */
+    border-radius: var(--radius-xs);
+    background: var(--bg-track);
+  }
+  .cue.ph .ts {
+    width: 36px; /* local: a time's width */
+  }
+  .cue.ph .tx {
+    width: 88%;
+    height: 12px; /* local: a bar the height of a paragraph's x-height */
+  }
+  .transcript-foot {
+    flex: none;
+    display: flex;
+    align-items: center;
+    height: 40px; /* local: the bar under the list */
+    padding: 0 var(--space-16) 0 var(--space-24);
+    border-top: 1px solid var(--separator);
+  }
+  .transcript-foot.is-disabled {
+    opacity: 0.45;
+  }
 }

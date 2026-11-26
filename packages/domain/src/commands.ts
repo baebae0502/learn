@@ -1028,7 +1028,8 @@ const spreadAllowed: Rule = (c) => c.pdfOpen === true && c.pdfScroll !== 'horizo
 /** Tab number `n` (1 is the library) exists: reader tabs are numbered from 2. */
 const hasTab = (n: number): Rule => (c) => (c.tabCount ?? 0) >= n - 1;
 const RULES: Partial<Record<CommandId, Rule>> = {
-  'library.find': (c) => (c.view === 'viewer' ? c.pdfOpen === true : c.libraryCount > 0),
+  // A video's ⌘F goes to its transcript search, which exists once the video has a subtitle track.
+  'library.find': (c) => (c.view === 'viewer' ? c.pdfOpen === true || (c.videoOpen === true && c.videoCaptions === true) : c.libraryCount > 0),
   'reader.findNext': pdfOpen,
   'reader.findPrevious': pdfOpen,
   'reader.findSelection': pdfOpen,

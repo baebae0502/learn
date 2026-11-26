@@ -16,7 +16,7 @@ import { useIdleControls } from './useIdleControls';
 import { useVideoSettings } from './useVideoSettings';
 import { VideoControls } from './VideoControls';
 import { VideoToolbar } from './VideoToolbar';
-import { useVideo, type VideoHandle } from './videoStore';
+import { INITIAL_TRANSCRIPT, useVideo, type VideoHandle } from './videoStore';
 
 const TIME_SAVE = { kind: 'throttle', ms: 2000 } as const;
 /** A first frame later than this shows the spinner: a quick open never flashes it (design-spec 6, 잠시 지나가는 상태). */
@@ -175,7 +175,7 @@ export function VideoReader({ item }: { item: LibraryItem }) {
       store.getState().setHandle(null);
       scope.videoProbe.current = null;
       clearTimeout(metadataAt.current ?? undefined);
-      store.getState().patch({ status: 'opening', playing: false, timeMs: 0, durationMs: 0, bufferedMs: 0, tracks: [], trackId: null, captionsOn: false, cueText: null });
+      store.getState().patch({ status: 'opening', playing: false, timeMs: 0, durationMs: 0, bufferedMs: 0, tracks: [], trackId: null, captionsOn: false, cueText: null, transcript: INITIAL_TRANSCRIPT });
     };
   }, [scope, store]);
 

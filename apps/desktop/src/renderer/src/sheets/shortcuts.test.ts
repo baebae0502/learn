@@ -66,12 +66,10 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
     expect(height()).toBe(height('library'));
     expect(height('library') + 136).toBe(772);
     expect(height('viewer') + 136).toBe(754);
-    // It lists only the keys a video uses (the PDF's and the picture's rows are left out), so there is room for the one more line
-    // (⌘F, the transcript search) that a later task adds under 리더.
-    expect(height('video') + 136).toBe(714);
+    // It lists only the keys a video uses (the PDF's and the picture's rows are left out); ⌘F, the transcript search, opens its 리더 group
+    // (a header and a line), which leaves two pixels of the room: a later video row must make room first.
+    expect(height('video') + 136).toBe(772);
     for (const view of ['library', 'viewer', 'video'] as const) expect(height(view) + 136, view).toBeLessThanOrEqual(774);
-    const withOne = shortcutGroups('darwin', 'video').map((g) => (g.title === '동영상' ? { ...g, rows: [...g.rows, ...g.rows.slice(0, 1)] } : g));
-    expect(Math.max(...shortcutColumns(withOne).map((c) => c.reduce((h, g, i) => h + 31 + 29 * g.rows.length + (i > 0 ? 16 : 0), 0))) + 136).toBeLessThanOrEqual(774);
   });
   it('lists the video keys under 동영상 from a video reader only, a pair to a line, K and the space bar as one', () => {
     const rows = (view?: 'library' | 'viewer' | 'video') => shortcutGroups('darwin', view).find((g) => g.title === '동영상')?.rows;
@@ -90,7 +88,9 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
       { label: '전체 화면 끝내기', keys: ['esc'], spoken: 'esc' },
     ]);
     const titles = shortcutGroups('darwin', 'video').map((g) => g.title);
-    expect(titles).toEqual(['앱', '라이브러리', '자료', '정리', '탭', '동영상', '팔레트·대화상자']);
+    expect(titles).toEqual(['앱', '라이브러리', '자료', '정리', '탭', '리더', '동영상', '팔레트·대화상자']);
+    // The reader group of a video's sheet is ⌘F alone: the transcript's search (the PDF's find bar is not its).
+    expect(shortcutGroups('darwin', 'video').find((g) => g.title === '리더')!.rows).toEqual([{ label: '찾기', keys: ['⌘', 'F'], spoken: '⌘F' }]);
   });
   it('lists the keys of the reader it was opened from: a video\'s sheet leaves the PDF\'s and the picture\'s rows out, theirs leave 동영상 out', () => {
     const rows = (view: 'library' | 'viewer' | 'video') => shortcutGroups('darwin', view).flatMap((g) => g.rows.map((r) => r.spoken));

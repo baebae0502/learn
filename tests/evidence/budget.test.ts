@@ -1,6 +1,6 @@
 // V/budget.test.ts
 import { describe, expect, it } from 'vitest';
-import { limitFailures } from './budget';
+import { limitFailures, videoLimits } from './budget';
 
 describe('the Linux CI limit is twice the budget', () => {
   it('passes at the limit and fails above it, naming the measurement, its value and both numbers', () => {
@@ -27,5 +27,18 @@ describe('the Linux CI limit is twice the budget', () => {
       'notices in one second: 21 /s against the Linux CI limit 20 /s (budget 10 /s)',
     ]);
     expect(limitFailures([{ what: 'notices in one second', value: 20, budget: 10, unit: '/s' }])).toEqual([]);
+  });
+});
+
+describe('the video lines (M8a spec 14)', () => {
+  const ok = { transcriptScrollP95: 16.7, playingFollowP95: 16.8, cueSwitchP95: 10, transcriptSearchP95: 30 };
+  it('names each measurement and fails only beyond twice its budget', () => {
+    expect(videoLimits(ok).map((l) => l.budget)).toEqual([16.7, 16.7, 16.7, 50]);
+    expect(limitFailures(videoLimits(ok))).toEqual([]);
+    expect(limitFailures(videoLimits({ ...ok, transcriptScrollP95: 33.5, transcriptSearchP95: 101 })).map((f) => f.split(':')[0])).toEqual([
+      'transcript scroll frame gap p95 (2,000 cues, follow off)',
+      'transcript search → matches painted p95 (2,000 cues)',
+    ]);
+    expect(limitFailures(videoLimits({ ...ok, transcriptSearchP95: 100 }))).toEqual([]);
   });
 });

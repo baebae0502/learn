@@ -1,11 +1,12 @@
 // Subtitles on screen (M8a spec 5.1, 5.4, 5.5, 6.4, 6.5, 6.8): the file picker of 자막 ▾, the overlay over the drawn picture, the menu's tracks and
-// off, C, remove with its undo, the choice remembered per video, the toasts at the stage's top right, and the item panel's 자막 line.
+// off, C, remove with its undo, the choice remembered per video, the toasts at the stage's top right, and the item panel's 자막 line; and the
+// transcript pane of the sidebar (spec 7): the list that seeks, follows the current sentence, searches the track, and its end states.
 // lecture-60s.mp4 is 60 s; its ko/en cue files are fixtures (pnpm fixtures).
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import type { Cue, SubtitleTrack } from '../../packages/domain/src/subtitles';
-import { FIXTURES, importPaths, launch, libraryTab, openItem, rowByTitle, stageState, stubOpenDialog, videoReady, videoState } from './helpers';
+import { FIXTURES, importPaths, launch, libraryTab, menuItemEnabled, openItem, rowByTitle, runMenuCommand, stageState, stubOpenDialog, videoReady, videoState } from './helpers';
 
 const fixture = (name: string): string => path.join(FIXTURES, name);
 const KO = fixture('lecture-60s.ko.srt');
@@ -306,6 +307,274 @@ test('a long cue wraps within 78 % of the picture, not half of it', async ({}, t
     expect(text.width / box.width).toBeGreaterThan(0.5);
     expect(text.width / box.width).toBeLessThanOrEqual(0.78 + 1 / box.width);
     expect(Math.abs(text.x + text.width / 2 - (box.x + box.width / 2))).toBeLessThanOrEqual(1);
+  } finally {
+    await app.close();
+  }
+});
+
+
+// ---- the transcript pane (spec 7) -------------------------------------------------------------------------------------------
+
+const row = (page: Page, i: number): Locator => page.locator(`[data-testid="cue-row"][data-index="${i}"]`);
+const list = (page: Page): Locator => page.getByTestId('transcript');
+const searchInput = (page: Page): Locator => page.getByTestId('transcript-search').getByRole('searchbox');
+const countText = (page: Page): Locator => page.getByTestId('transcript-count');
+const follow = (page: Page): Locator => page.getByTestId('transcript-follow');
+const heldRow = (page: Page) => page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset['index'] ?? null);
+/** The rows that are on at the playhead, by index. */
+const currentRows = (page: Page): Promise<number[]> => page.locator('[data-testid="cue-row"][data-current]').evaluateAll((els) => els.map((e) => Number((e as HTMLElement).dataset['index'])));
+/** Whether row `i` is drawn inside the list's box (a row the list has not drawn is not in it). */
+async function rowInView(page: Page, i: number): Promise<boolean> {
+  const box = await list(page).boundingBox();
+  const r = (await row(page, i).count()) > 0 ? await row(page, i).boundingBox() : null;
+  return !!box && !!r && r.y >= box.y - 1 && r.y + r.height <= box.y + box.height + 1;
+}
+
+test('the transcript lists the track\'s sentences with their times; a press seeks and keeps a paused video paused; ↩ on a row keeps a playing one playing', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const { ko } = await withTracks(page, app);
+    await expect(list(page)).toBeVisible();
+    await expect(page.getByTestId('transcript-empty')).toHaveCount(0);
+    // Time over the sentence, as text nodes: the cue's own text, no markup.
+    await expect(row(page, 4)).toContainText(ko[4]!.text);
+    await expect(row(page, 4).locator('.ts')).toHaveText('0:15');
+    expect(await row(page, 4).evaluate((el) => [...el.querySelectorAll('*')].map((c) => c.className))).toEqual(['ts num', 'tx']);
+    // The head, the field with its placeholder, and the switch (on when a tab opens) under the list.
+    await expect(page.locator('.nav-title')).toHaveText('대본');
+    await expect(searchInput(page)).toHaveAttribute('placeholder', '대본에서 찾기');
+    await expect(follow(page)).toHaveAttribute('data-selected');
+    await expect(follow(page)).toHaveText('현재 위치 따라가기');
+
+    // A press on the fifth sentence: the video goes to its start and stays paused.
+    expect((await state(page)).paused).toBe(true);
+    await row(page, 4).click();
+    await expect.poll(async () => Math.abs((await state(page)).timeMs - ko[4]!.startMs)).toBeLessThanOrEqual(80);
+    expect((await state(page)).paused).toBe(true);
+    await expect(row(page, 4)).toHaveAttribute('data-current', 'true');
+    await expect(row(page, 3)).toHaveClass(/is-past/);
+    await expect(row(page, 5)).not.toHaveClass(/is-past|is-current/);
+
+    // Two cues overlap at 7.5 s (4–8 and 7–10.5): both rows are current.
+    await seek(page, 7500);
+    await expect.poll(() => currentRows(page)).toEqual([1, 2]);
+
+    // Playing: ↩ on a row goes there and the video goes on playing, and a video key still works with the row focused.
+    await seek(page, 1000);
+    await page.getByTestId('video-stage').focus();
+    await page.keyboard.press('k');
+    await expect.poll(async () => (await state(page)).paused).toBe(false);
+    await row(page, 6).focus();
+    await expect(row(page, 6)).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect.poll(async () => (await state(page)).timeMs).toBeGreaterThanOrEqual(ko[6]!.startMs - 80);
+    expect((await state(page)).timeMs).toBeLessThan(ko[6]!.startMs + 4000);
+    expect((await state(page)).paused).toBe(false);
+    // While it plays, the row that is on is drawn inside the list (a gap between two sentences has none, so it is polled).
+    await expect.poll(async () => {
+      const on = await currentRows(page);
+      return on.length > 0 && (await rowInView(page, on[0]!));
+    }).toBe(true);
+    await page.keyboard.press('k');
+    await expect.poll(async () => (await state(page)).paused).toBe(true);
+    await expect(row(page, 6)).toBeFocused();
+  } finally {
+    await app.close();
+  }
+});
+
+test('the list is a list box: ↑↓ Home End PageUp PageDown move the cursor row, which keeps the focus, and ←/→ still seek', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const { ko } = await withTracks(page, app);
+    await expect(list(page)).toHaveAttribute('role', 'listbox');
+    await expect(row(page, 0)).toHaveAttribute('role', 'option');
+    await row(page, 2).focus();
+    await expect(row(page, 2)).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(() => heldRow(page)).toBe('3');
+    await page.keyboard.press('ArrowUp');
+    await page.keyboard.press('ArrowUp');
+    await expect.poll(() => heldRow(page)).toBe('1');
+    await page.keyboard.press('End');
+    await expect.poll(() => heldRow(page)).toBe(String(ko.length - 1));
+    await expect.poll(() => rowInView(page, ko.length - 1)).toBe(true);
+    await page.keyboard.press('Home');
+    await expect.poll(() => heldRow(page)).toBe('0');
+    await page.keyboard.press('PageDown');
+    await expect.poll(async () => Number(await heldRow(page))).toBeGreaterThan(1);
+    // The arrows moved the cursor, not the video; ←/→ are the video's and go on seeking from the list.
+    expect((await state(page)).timeMs).toBe(0);
+    await seek(page, 20_000);
+    await expect.poll(async () => (await state(page)).timeMs).toBe(20_000);
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(async () => (await state(page)).timeMs).toBe(25_000);
+    await expect(page.locator('[data-testid="cue-row"]:focus')).toHaveCount(1);
+  } finally {
+    await app.close();
+  }
+});
+
+test('searching the track: the count, ↩ and ⇧↩ go to the next and previous sentence (and seek there), the end wraps with a note, marks are text', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const { ko } = await withTracks(page, app);
+    const first = ko.findIndex((c) => c.text.includes('칼슘 펌프'));
+    const second = ko.findIndex((c, i) => i > first && c.text.includes('칼슘 펌프'));
+    await searchInput(page).fill('칼슘 펌프');
+    await expect(countText(page)).toHaveText('2개');
+    // Marks in the matching sentences only, each a text node; the nearest one before any ↩ is not yet current.
+    await expect(list(page).locator('mark')).toHaveCount(2);
+    await expect(list(page).locator('mark').first()).toHaveText('칼슘 펌프');
+    expect(await list(page).locator('mark').first().evaluate((m) => m.children.length)).toBe(0);
+
+    await searchInput(page).press('Enter');
+    await expect.poll(async () => Math.abs((await state(page)).timeMs - ko[first]!.startMs)).toBeLessThanOrEqual(80);
+    await expect(row(page, first).locator('mark')).toHaveClass('is-current');
+    await searchInput(page).press('Enter');
+    await expect.poll(async () => Math.abs((await state(page)).timeMs - ko[second]!.startMs)).toBeLessThanOrEqual(80);
+    await expect(countText(page)).toHaveText('2개');
+    await searchInput(page).press('Enter');
+    // Round again: the note stands for two seconds, then the count is the count.
+    await expect(countText(page)).toHaveText(/^처음부터\s· 1 \/ 2$/);
+    await expect(countText(page)).toHaveAttribute('data-wrapped');
+    await expect.poll(async () => Math.abs((await state(page)).timeMs - ko[first]!.startMs)).toBeLessThanOrEqual(80);
+    await expect(countText(page)).toHaveText('2개', { timeout: 6_000 });
+    await expect(countText(page)).not.toHaveAttribute('data-wrapped');
+
+    // Backwards from the first goes round to the last.
+    await searchInput(page).press('Shift+Enter');
+    await expect(countText(page)).toHaveText(/^처음부터\s· 2 \/ 2$/);
+    await expect.poll(async () => Math.abs((await state(page)).timeMs - ko[second]!.startMs)).toBeLessThanOrEqual(80);
+    // The field keeps the focus, and the matches ignore case and accents (Latin) in the query.
+    await expect(searchInput(page)).toBeFocused();
+    await searchInput(page).fill('ATP');
+    await expect(countText(page)).toHaveText('1개');
+    await searchInput(page).fill('atp');
+    await expect(countText(page)).toHaveText('1개');
+  } finally {
+    await app.close();
+  }
+});
+
+test('a word that is nowhere says so in the list\'s place; esc empties the field and goes to the list', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await withTracks(page, app);
+    await searchInput(page).fill('없는말');
+    const empty = page.getByTestId('transcript-empty');
+    await expect(empty).toContainText('‘없는말’');
+    await expect(empty).toContainText('이 나오는 문장이 없습니다');
+    await expect(empty).toContainText('자막 파일의 글자에서만 찾습니다. 다른 낱말로 찾아보세요.');
+    await expect(countText(page)).toHaveText('0개');
+    await expect(list(page)).toHaveCount(0);
+    // The positive control: the list is the same list once the query is gone.
+    await searchInput(page).press('Escape');
+    await expect(searchInput(page)).toHaveValue('');
+    await expect(empty).toHaveCount(0);
+    await expect(list(page)).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('role') ?? null)).toBe('option');
+  } finally {
+    await app.close();
+  }
+});
+
+test('with 2,000 sentences: End goes to the last one; the current sentence is followed until a wheel turns the switch off, and turning it on goes back to it', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await openLecture(page);
+    await addFromMenu(page, app, [fixture('long-2000.srt')]);
+    await expect(page.getByTestId('subtitle-attached')).toBeVisible();
+    await expect(list(page)).toHaveAttribute('data-count', '2000');
+    // Far fewer rows than sentences are drawn.
+    expect(await page.getByTestId('cue-row').count()).toBeLessThan(100);
+
+    // The current sentence (the one that started at 30 s) is in the upper third of the list.
+    await seek(page, 30_000);
+    await expect.poll(() => currentRows(page)).toEqual([20]);
+    await expect.poll(async () => {
+      const box = (await list(page).boundingBox())!;
+      const r = await row(page, 20).boundingBox();
+      return r ? Math.abs(r.y - (box.y + box.height / 3)) : Number.POSITIVE_INFINITY;
+    }).toBeLessThanOrEqual(24);
+
+    // A wheel on the list is the user's scroll: the switch goes off and the list stays where it is while the video goes on elsewhere.
+    await list(page).hover();
+    await page.mouse.wheel(0, 300);
+    await expect(follow(page)).not.toHaveAttribute('data-selected');
+    await seek(page, 54_000);
+    await expect.poll(async () => (await state(page)).timeMs).toBe(54_000);
+    await expect.poll(async () => (await state(page)).cueText).not.toBeNull();
+    expect(await rowInView(page, 36)).toBe(false);
+    // On again: back to the current sentence.
+    await follow(page).click();
+    await expect(follow(page)).toHaveAttribute('data-selected');
+    await expect.poll(() => rowInView(page, 36)).toBe(true);
+    await expect.poll(() => currentRows(page)).toEqual([36]);
+
+    // A press on a row does not turn it off.
+    await row(page, 38).click();
+    await expect(follow(page)).toHaveAttribute('data-selected');
+
+    // End, from a row, goes to the last sentence of the 2,000.
+    await row(page, 38).focus();
+    await page.keyboard.press('End');
+    await expect.poll(() => heldRow(page)).toBe('1999');
+    await expect.poll(() => rowInView(page, 1999)).toBe(true);
+    await expect(row(page, 1999)).toContainText('2000번째 문장');
+    // That was a key scroll of the list: the switch is off.
+    await expect(follow(page)).not.toHaveAttribute('data-selected');
+  } finally {
+    await app.close();
+  }
+});
+
+test('⌘F takes the focus to the transcript search, unfolding the sidebar when it is folded; a video with no track has no find', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await openLecture(page);
+    // No track yet: nothing to search, so ⌘F is off in the menu.
+    // (The menu item reports its state after the reader's first context.)
+    await expect.poll(() => menuItemEnabled(app, 'library.find')).toBe(false);
+    await addFromMenu(page, app, [KO]);
+    await expect(page.getByTestId('subtitle-attached')).toBeVisible();
+    await expect(list(page)).toBeVisible();
+
+    await runMenuCommand(app, 'library.find');
+    await expect(searchInput(page)).toBeFocused();
+    await searchInput(page).fill('칼슘');
+    await page.getByTestId('video-stage').focus();
+    await runMenuCommand(app, 'library.find');
+    await expect(searchInput(page)).toBeFocused();
+    // The text is selected: the next key replaces it.
+    expect(await searchInput(page).evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd])).toEqual([0, 2]);
+
+    // Folded sidebar: it opens, and the field has the focus.
+    await page.getByTestId('video-stage').focus();
+    await runMenuCommand(app, 'view.toggleSidebar');
+    await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
+    await runMenuCommand(app, 'library.find');
+    await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'shown');
+    await expect(searchInput(page)).toBeFocused();
+  } finally {
+    await app.close();
+  }
+});
+
+test('a video with no subtitles: the sidebar says so with the button that attaches them, and the list comes when they are on', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await openLecture(page);
+    const empty = page.getByTestId('transcript-empty');
+    await expect(empty).toContainText('자막이 없습니다');
+    await expect(empty).toContainText('SRT나 VTT 자막 파일을 추가하면 대본이 여기에 표시되고, 문장을 눌러 그 시간으로 이동할 수 있습니다.');
+    await expect(page.locator('.nav-title')).toHaveText('대본');
+    await expect(list(page)).toHaveCount(0);
+    await stubOpenDialog(app, [KO]);
+    await page.getByTestId('transcript-add').click();
+    await expect(page.getByTestId('subtitle-attached')).toBeVisible();
+    await expect(list(page)).toBeVisible();
+    await expect(empty).toHaveCount(0);
   } finally {
     await app.close();
   }

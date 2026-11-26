@@ -1,5 +1,6 @@
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { PlaybackRate, SubtitleTrack } from '@learn/domain';
+import type { CueHit } from './transcriptSearch';
 
 /** opening: before the first frame; ready: it plays; unplayable: the engine cannot decode it; failed: it did not open for another reason. */
 export type VideoStatus = 'opening' | 'ready' | 'unplayable' | 'failed';
@@ -25,6 +26,22 @@ export interface VideoHandle {
   removeTrack(name: string): void;
 }
 
+/**
+ * The transcript pane's state (spec 7), kept with the video so a tab that leaves the sidebar and comes back finds its search as it was.
+ * `follow` is on whenever a tab opens (never saved); `query` is the field's text and `hits` the cues it found at the last search; `hit` is
+ * the match the last ↩ went to (-1: none yet); `cursor` is the keyboard row of the list (-1: none); `wrapped` says the last ↩ came round from the end.
+ */
+export interface TranscriptState {
+  follow: boolean;
+  query: string;
+  hits: CueHit[];
+  hit: number;
+  cursor: number;
+  wrapped: boolean;
+}
+
+export const INITIAL_TRANSCRIPT: TranscriptState = { follow: true, query: '', hits: [], hit: -1, cursor: -1, wrapped: false };
+
 export interface VideoStore {
   status: VideoStatus;
   playing: boolean;
@@ -40,6 +57,9 @@ export interface VideoStore {
   trackId: string | null;
   captionsOn: boolean;
   cueText: string | null;
+  transcript: TranscriptState;
+  /** ⌘F: counted up to take the transcript search field's focus (the pane answers when it is shown). */
+  transcriptFocus: number;
   handle: VideoHandle | null;
   patch(p: Partial<Omit<VideoStore, 'patch' | 'setHandle'>>): void;
   setHandle(h: VideoHandle | null): void;
@@ -59,10 +79,17 @@ export function createVideoStore(): StoreApi<VideoStore> {
     trackId: null,
     captionsOn: false,
     cueText: null,
+    transcript: INITIAL_TRANSCRIPT,
+    transcriptFocus: 0,
     handle: null,
     patch: (p) => set(p),
     setHandle: (handle) => set({ handle }),
   }));
+}
+
+/** Changes some of the transcript's fields. */
+export function patchTranscript(store: StoreApi<VideoStore>, p: Partial<TranscriptState>): void {
+  store.getState().patch({ transcript: { ...store.getState().transcript, ...p } });
 }
 
 /** The shown reader's video state (the scope's, like useReader). */

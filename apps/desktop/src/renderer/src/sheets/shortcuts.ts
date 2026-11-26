@@ -126,8 +126,8 @@ function pairRow(p: PairSpec, platform: string, view?: 'library' | 'viewer'): Sh
 }
 
 /** What a video reader reports while a video plays or waits: the commands the reader's list keeps for it are the ones this says yes to. */
-const VIDEO_READER: CommandContextState = { view: 'viewer', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW, videoOpen: true };
-/** A row of the reader group that a video reader cannot use (the PDF's and the picture's own keys, ⌘F until the transcript search): left out of its sheet. */
+const VIDEO_READER: CommandContextState = { view: 'viewer', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW, videoOpen: true, videoCaptions: true };
+/** A row of the reader group that a video reader cannot use (the PDF's and the picture's own keys): left out of its sheet. */
 const unusableInVideo = (c: (typeof COMMANDS)[number]): boolean => !isCommandAvailable(c.id, VIDEO_READER);
 
 /**

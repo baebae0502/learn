@@ -1107,6 +1107,13 @@ describe('the subtitle commands (M8a spec 6.5, 10)', () => {
     expect(isCommandAvailable('video.addSubtitles', VIEWER)).toBe(false);
     expect(isCommandAvailable('video.addSubtitles', { ...OPEN, blocked: true })).toBe(false);
   });
+  it('⌘F finds in a video once it has a track (its transcript search), and not before; the PDF-only finds stay off', () => {
+    expect(isCommandAvailable('library.find', WITH_TRACK)).toBe(true);
+    expect(isCommandAvailable('library.find', OPEN)).toBe(false);
+    expect(isCommandAvailable('library.find', { ...WITH_TRACK, blocked: true })).toBe(false);
+    expect(isCommandAvailable('library.find', { ...VIEWER, videoCaptions: true })).toBe(false);
+    for (const id of ['reader.findNext', 'reader.findPrevious', 'reader.findSelection'] as const) expect(isCommandAvailable(id, WITH_TRACK), id).toBe(false);
+  });
   it('the toggle is named by what it does now', () => {
     const c = commandById('video.toggleCaptions');
     expect(commandLabel(c, 'linux', { videoCaptionsOn: true })).toBe('자막 끄기');

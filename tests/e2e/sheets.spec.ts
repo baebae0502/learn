@@ -477,7 +477,7 @@ test('the ⌘/ sheet lays its groups out in two columns, read down then across, 
   }
 });
 
-test('the ⌘/ sheet opened from a video reader lists the video\'s keys and not the PDF\'s, and fits a 1440 × 900 window with room for three more lines', async ({}, testInfo) => {
+test('the ⌘/ sheet opened from a video reader lists the video\'s keys and not the PDF\'s, and fits a 1440 × 900 window', async ({}, testInfo) => {
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await (await mainWindow(s.app)).evaluate((w) => w.setContentSize(1440, 900));
@@ -488,13 +488,15 @@ test('the ⌘/ sheet opened from a video reader lists the video\'s keys and not 
     const sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'app.shortcuts'));
     const titles = await sheet.locator('section[aria-label]').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')));
     expect(titles).toContain('동영상');
-    expect(titles).not.toContain('리더'); // the PDF's and the picture's rows are not a video's
+    // 리더 holds ⌘F alone (the transcript's search): the PDF's and the picture's other rows are not a video's.
+    expect(titles).toContain('리더');
     const spoken = await sheet.locator('[data-testid="shortcut-row"] .visually-hidden').evaluateAll((els) => els.map((e) => e.textContent ?? ''));
     expect(spoken.some((x) => x.includes('K'))).toBe(true);
     expect(spoken.some((x) => x.includes('⌘G') || x.includes('Ctrl+G'))).toBe(false);
+    expect(spoken.some((x) => x.includes('Ctrl+F') || x.includes('⌘F'))).toBe(true);
     const { natural } = await sheetRule(s.app, sheet, await parentHeightOf(s.app));
+    // 772: two pixels of room are left; the unit pin (shortcuts.test.ts) holds the same number.
     expect(natural).toBeLessThanOrEqual(774);
-    // The room for the three lines the next tasks add (C, F, esc) is pinned in shortcuts.test.ts, where the columns are cut again for them.
     await closeSheet(sheet, 'Escape');
   } finally {
     await s.app.close();

@@ -12,6 +12,7 @@ import './components/kbd.css';
 import './components/menu.css';
 import './components/segmented.css';
 import './components/checkbox.css';
+import './components/switch.css';
 import './components/tooltip.css';
 import './components/toast.css';
 import './components/progress.css';

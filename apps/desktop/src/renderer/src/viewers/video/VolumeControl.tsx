@@ -6,7 +6,7 @@ import { t } from '../../strings';
 import { IconButton } from '../../ui/Button';
 import { cx } from '../../ui/cx';
 import { currentPlatform } from '../../ui/platform';
-import { useReaderShown } from '../readerScope';
+import { useReaderScope, useReaderShown } from '../readerScope';
 import { useVideoSettings } from './useVideoSettings';
 
 /** A reader narrower than this folds the bar (spec 6.2). */
@@ -22,6 +22,7 @@ const BAR_WIDTH = 64 + 4; // local: the mockup's bar and the row's gap
 export function VolumeControl({ isDisabled, rowRef }: { isDisabled: boolean; rowRef: React.RefObject<HTMLDivElement | null> }) {
   const settings = useVideoSettings();
   const shown = useReaderShown();
+  const store = useReaderScope().video;
   const [folded, setFolded] = useState(false);
   const [near, setNear] = useState(false);
   const [draft, setDraft] = useState<number | null>(null);
@@ -71,12 +72,14 @@ export function VolumeControl({ isDisabled, rowRef }: { isDisabled: boolean; row
       isDisabled={isDisabled}
       onChange={(v) => {
         setDraft(v);
+        store.getState().patch({ volumeDraft: v }); // the sound follows the bar while it moves
         // Moving the bar is the wish to hear: it unmutes, as a player's does.
         if (settings.muted && v > 0) settings.setMuted(false);
       }}
       onChangeEnd={(v) => {
         setDraft(null);
         settings.setVolume(v);
+        store.getState().patch({ volumeDraft: null });
       }}
       data-testid="video-volume"
     >

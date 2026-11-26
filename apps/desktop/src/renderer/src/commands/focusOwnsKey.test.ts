@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { focusOwnsKey } from './focusOwnsKey';
+import { focusOwnsKey, inOpenPopup } from './focusOwnsKey';
 
 /** The few members of an element focusOwnsKey reads (the unit tests run without a DOM). */
 interface FakeEl {
@@ -64,5 +64,17 @@ describe('focusOwnsKey (the focused control keeps its own keys, M8a spec 6.3)', 
     expect(focusOwnsKey({} as EventTarget, 'Space')).toBe(false);
     expect(owns(el('button'), 'KeyK')).toBe(false);
     expect(owns(el('button'), 'Comma')).toBe(false);
+  });
+});
+
+describe('inOpenPopup (typeahead of an open menu or list keeps its letters)', () => {
+  it('is true inside a react-aria popover and false anywhere else', () => {
+    const popover = el('div', { 'data-trigger': 'MenuTrigger' });
+    const menu = el('div', { role: 'menu' }, popover);
+    expect(inOpenPopup(el('div', { role: 'menuitemradio' }, menu) as unknown as EventTarget)).toBe(true);
+    expect(inOpenPopup(el('div', { role: 'option' }, el('div', { role: 'listbox' }, el('div', { 'data-trigger': 'Select' }))) as unknown as EventTarget)).toBe(true);
+    expect(inOpenPopup(el('div', { tabindex: '0' }) as unknown as EventTarget)).toBe(false);
+    expect(inOpenPopup(el('div', { role: 'listbox' }) as unknown as EventTarget)).toBe(false); // a list in the page (the transcript) is not a pop-up
+    expect(inOpenPopup(null)).toBe(false);
   });
 });

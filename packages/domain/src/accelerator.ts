@@ -10,6 +10,8 @@ export interface KeySpec {
   inText?: boolean;
   /** The focused control's own use of this key comes first (Space on a button, arrows on a slider, a tab or a list). */
   yields?: true;
+  /** A held key does not run this again and again: a toggle (play, mute) would flicker. Seeks and frame steps leave it off and repeat. */
+  noRepeat?: true;
 }
 
 const MAC_SYMBOL: Readonly<Record<string, string>> = {

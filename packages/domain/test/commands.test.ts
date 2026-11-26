@@ -984,7 +984,7 @@ describe('video commands (M8a spec 6.3, 10)', () => {
   const PLAYING: CommandContextState = { ...OPEN, videoPlaying: true };
 
   it('names the keys as the table says: one key each, two for play/pause, the focused control first on Space and the arrows', () => {
-    expect(commandById('video.playPause')).toMatchObject({ label: '재생/일시정지', key: { code: 'KeyK' }, alsoKey: { code: 'Space', yields: true }, contexts: ['video'] });
+    expect(commandById('video.playPause')).toMatchObject({ label: '재생/일시정지', key: { code: 'KeyK', noRepeat: true }, alsoKey: { code: 'Space', yields: true, noRepeat: true }, contexts: ['video'] });
     expect(commandById('video.back10')).toMatchObject({ label: '10초 뒤로', key: { code: 'KeyJ' } });
     expect(commandById('video.forward10')).toMatchObject({ label: '10초 앞으로', key: { code: 'KeyL' } });
     expect(commandById('video.back5')).toMatchObject({ label: '5초 뒤로', key: { code: 'ArrowLeft', yields: true } });
@@ -993,7 +993,9 @@ describe('video commands (M8a spec 6.3, 10)', () => {
     expect(commandById('video.frameForward')).toMatchObject({ label: '한 프레임 앞으로', key: { code: 'Period' } });
     expect(commandById('video.slower')).toMatchObject({ label: '재생 속도 느리게', key: { code: 'Comma', shift: true } });
     expect(commandById('video.faster')).toMatchObject({ label: '재생 속도 빠르게', key: { code: 'Period', shift: true } });
-    expect(commandById('video.toggleMute')).toMatchObject({ label: '음소거', key: { code: 'KeyM' } });
+    expect(commandById('video.toggleMute')).toMatchObject({ label: '음소거', key: { code: 'KeyM', noRepeat: true } });
+    // A held key repeats a seek or a frame step, never a toggle.
+    for (const id of ['video.back10', 'video.forward10', 'video.back5', 'video.forward5', 'video.frameBack', 'video.frameForward']) expect(commandById(id as CommandId).key?.noRepeat, id).toBeUndefined();
     for (const id of IDS) {
       const c = commandById(id);
       expect(c.contexts, id).toEqual(['video']);

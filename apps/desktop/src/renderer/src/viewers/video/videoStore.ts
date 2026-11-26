@@ -24,6 +24,8 @@ export interface VideoStore {
   bufferedMs: number;
   /** One frame in ms, as far as the player has shown it (frameStep.ts). */
   frameMs: number;
+  /** The volume bar's value while it is being dragged: the sound follows it at once, the setting is written when the drag ends. */
+  volumeDraft: number | null;
   handle: VideoHandle | null;
   patch(p: Partial<Omit<VideoStore, 'patch' | 'setHandle'>>): void;
   setHandle(h: VideoHandle | null): void;
@@ -38,6 +40,7 @@ export function createVideoStore(): StoreApi<VideoStore> {
     durationMs: 0,
     bufferedMs: 0,
     frameMs: 1000 / 30,
+    volumeDraft: null,
     handle: null,
     patch: (p) => set(p),
     setHandle: (handle) => set({ handle }),

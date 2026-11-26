@@ -1,5 +1,6 @@
 import { PLAYBACK_RATES, isPlaybackRate } from '@learn/domain';
 import { t } from '../../strings';
+import { capsOf } from './capsOf';
 import { MenuButton, type MenuButtonItem } from '../../ui/MenuButton';
 import { useVideoSettings } from './useVideoSettings';
 
@@ -16,6 +17,9 @@ export function SpeedMenu({ isDisabled }: { isDisabled: boolean }) {
       variant="plain"
       size="small"
       chevron={false}
+      ariaLabel={t.video.speedName(settings.rate)}
+      menuLabel={t.video.speed}
+      tooltip={{ label: t.video.speed, keys: capsOf('video.slower', 'video.faster') }}
       triggerClassName="speed-btn"
       popoverClassName="speed-menu"
       testId="video-speed"

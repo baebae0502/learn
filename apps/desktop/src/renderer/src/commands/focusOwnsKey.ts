@@ -38,3 +38,13 @@ export function focusOwnsKey(target: EventTarget | null, code: string): boolean 
   }
   return false;
 }
+
+/**
+ * The focus is inside an open menu or list pop-up (react-aria marks its popover with `data-trigger`): the letters there are the list's
+ * own typeahead, so the registry's single-letter keys stay out of it.
+ */
+export function inOpenPopup(target: EventTarget | null): boolean {
+  if (!isElement(target)) return false;
+  for (let el: Focused | null = target; el; el = el.parentElement) if (el.hasAttribute('data-trigger')) return true;
+  return false;
+}

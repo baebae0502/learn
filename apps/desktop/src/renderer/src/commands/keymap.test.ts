@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CommandSpec } from '@learn/domain';
-import { keyCommand, type KeyLike } from './keymap';
+import { heldToggle, keyCommand, type KeyLike } from './keymap';
 
 const C: CommandSpec[] = [
   { id: 'view.nextPane', label: '다음 패널로 이동', key: { code: 'F6', inText: true }, contexts: ['app'] },
@@ -81,3 +81,26 @@ describe('a key that yields to the focused control, and a command with a second 
   });
 });
 
+
+describe('a held key', () => {
+  const V: CommandSpec[] = [
+    { id: 'video.playPause', label: '재생/일시정지', key: { code: 'KeyK', noRepeat: true }, alsoKey: { code: 'Space', yields: true, noRepeat: true }, contexts: ['video'] },
+    { id: 'video.forward10', label: '10초 앞으로', key: { code: 'KeyL' }, contexts: ['video'] },
+    { id: 'video.toggleMute', label: '음소거', key: { code: 'KeyM', noRepeat: true }, contexts: ['video'] },
+  ];
+  it('does not repeat a toggle: K, Space and M are held toggles, and only while repeating', () => {
+    expect(heldToggle(k({ code: 'KeyK', key: 'k', repeat: true }), V)).toBe(true);
+    expect(heldToggle(k({ code: 'Space', key: ' ', repeat: true }), V)).toBe(true);
+    expect(heldToggle(k({ code: 'KeyM', key: 'm', repeat: true }), V)).toBe(true);
+    expect(heldToggle(k({ code: 'KeyK', key: 'k', repeat: false }), V)).toBe(false);
+    expect(heldToggle(k({ code: 'KeyK', key: 'k' }), V)).toBe(false);
+  });
+  it('lets a seek repeat, and a key no command has is no held toggle', () => {
+    expect(heldToggle(k({ code: 'KeyL', key: 'l', repeat: true }), V)).toBe(false);
+    expect(heldToggle(k({ code: 'KeyQ', key: 'q', repeat: true }), V)).toBe(false);
+  });
+  it('holds the real registry the same way: play and mute do not repeat; J L ← → , . do', () => {
+    for (const code of ['KeyK', 'Space', 'KeyM']) expect(heldToggle(k({ code, key: code, repeat: true })), code).toBe(true);
+    for (const code of ['KeyJ', 'KeyL', 'ArrowLeft', 'ArrowRight', 'Comma', 'Period']) expect(heldToggle(k({ code, key: code, repeat: true })), code).toBe(false);
+  });
+});

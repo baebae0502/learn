@@ -191,13 +191,19 @@ export function MenuButton<K extends string>(props: {
   triggerClassName?: string;
   /** False: no ▾ after the label (the button names its value and the menu changes it). */
   chevron?: boolean;
+  /** The button's accessible name when the visible label alone does not say what it changes: it must contain the label ("재생 속도 1.25×"). */
+  ariaLabel?: string;
+  /** A tooltip for the button (name and keys, above it), for a button whose label is only its value. */
+  tooltip?: { label: string; keys: string };
+  /** The menu's accessible name. */
+  menuLabel?: string;
   testId?: string;
 }) {
   const reason = useDisabledReason(props.isDisabled, props.disabledReason);
   // Controlled, so a soft-disabled trigger (focusable, aria-disabled) can never open the menu.
   const [isOpen, setOpen] = useState(false);
   const trigger = (
-    <AriaButton className={cx('btn', `btn-${props.variant ?? 'secondary'}`, props.size === 'small' && 'btn-small', props.icon && 'has-icon', props.chevron !== false && 'has-menu', props.triggerClassName)} {...reason.controlProps} data-testid={props.testId}>
+    <AriaButton className={cx('btn', `btn-${props.variant ?? 'secondary'}`, props.size === 'small' && 'btn-small', props.icon && 'has-icon', props.chevron !== false && 'has-menu', props.triggerClassName)} {...reason.controlProps} aria-label={props.ariaLabel} data-testid={props.testId}>
       {props.icon && <Icon icon={props.icon} />}
       {props.label}
       {props.chevron !== false && <Icon icon={ChevronDown} size="xs" />}
@@ -207,14 +213,20 @@ export function MenuButton<K extends string>(props: {
     <>
       <MenuTrigger isOpen={isOpen && !reason.soft} onOpenChange={(open) => setOpen(open && !reason.soft)}>
         {props.disabledReason === undefined ? (
-          trigger
+          props.tooltip ? (
+            <Tooltip label={props.tooltip.label} keys={props.tooltip.keys} placement="top">
+              {trigger}
+            </Tooltip>
+          ) : (
+            trigger
+          )
         ) : (
           <Tooltip label={props.disabledReason} isDisabled={!reason.soft}>
             <SoftDisabled>{trigger}</SoftDisabled>
           </Tooltip>
         )}
         <Popover className={cx('menu-popover', props.popoverClassName)} placement={props.placement ?? 'bottom start'} offset={4}>
-          <MenuList entries={props.items} onAction={props.onAction} />
+          <MenuList entries={props.items} onAction={props.onAction} aria-label={props.menuLabel} />
         </Popover>
       </MenuTrigger>
       {reason.description}

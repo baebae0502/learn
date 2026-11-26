@@ -13,6 +13,9 @@ const probe = async (page: Page) => (await videoState(page))!;
 const timeMs = async (page: Page) => (await probe(page)).timeMs;
 const paused = async (page: Page) => (await probe(page)).paused;
 
+/** The speed menu is open and has taken the focus (react-aria moves it a frame after the pop-up shows). */
+const menuHasFocus = (page: Page) => expect.poll(() => page.evaluate(() => document.activeElement?.closest('[role="menu"]') !== null && document.activeElement?.closest('[role="menu"]') !== undefined)).toBe(true);
+
 async function openLecture(page: Page) {
   await importPaths(page, [LECTURE]);
   await openItem(page, 'lecture-60s');
@@ -274,6 +277,117 @@ test('an unplayable video: the notice alone, inside the stage at 1024 × 768; no
     await expect(page.getByTestId('video-toolbar')).toHaveCount(0);
     await expect(page.getByTestId('reader-sidebar-empty')).toHaveText('표시할 대본이 없습니다');
     expect((await videoState(page))?.status).toBe('unplayable');
+  } finally {
+    await app.close();
+  }
+});
+
+test('the speed button says what it changes (name, tooltip with keys, menu name), and its visible text is inside the name', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await openLecture(page);
+    const speed = page.getByTestId('video-speed');
+    await expect(speed).toHaveText('1×');
+    await expect(speed).toHaveAttribute('aria-label', '재생 속도 1×');
+    await speed.click();
+    await page.getByTestId('video-speed-1.25').click();
+    await expect(speed).toHaveText('1.25×');
+    await expect(speed).toHaveAttribute('aria-label', '재생 속도 1.25×');
+    await expect(page.getByTestId('video-speed-1.25')).toHaveCount(0); // the first pop-up is gone before the next opens
+    await speed.click();
+    await expect(page.getByRole('menu', { name: '재생 속도' })).toBeVisible();
+    await menuHasFocus(page);
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('video-speed-1.25')).toHaveCount(0);
+    // The tooltip opens on the keyboard focus at once, with the two keys.
+    await page.getByTestId('video-stage').focus();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    await expect(speed).toBeFocused();
+    const tip = page.getByRole('tooltip');
+    await expect(tip).toContainText('재생 속도');
+    await expect(tip).toContainText(process.platform === 'darwin' ? '⇧, ⇧.' : 'Shift+, · Shift+.');
+  } finally {
+    await app.close();
+  }
+});
+
+test('the volume bar changes the sound while it is dragged and saves the value when the drag ends', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await openLecture(page);
+    const bar = page.getByTestId('video-volume');
+    const from = await pointAt(bar, 0.9);
+    const to = await pointAt(bar, 0.3);
+    const stored = () => page.evaluate(() => window.learn.settings.get({ key: 'video.volume' }).then((r) => (r.ok ? r.data : null)));
+    expect(await stored()).toBeNull();
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 6 });
+    // Still held: the sound is at the bar, nothing is written yet.
+    await expect.poll(async () => Math.abs((await probe(page)).volume - 0.3)).toBeLessThanOrEqual(0.12);
+    expect(await stored()).toBeNull();
+    await page.mouse.up();
+    await expect.poll(async () => Math.abs(((await stored()) as number | null ?? 1) - 0.3)).toBeLessThanOrEqual(0.12);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a held key does not repeat a toggle (K, Space, M) and does repeat a seek (L); an open menu keeps its letters', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await openLecture(page);
+    await page.getByTestId('video-stage').focus();
+    // The event as the keyboard sends it while a key is held.
+    const key = (code: string, repeat: boolean) =>
+      page.evaluate(
+        ([code, repeat]) => {
+          const e = new KeyboardEvent('keydown', { code: code!, key: code === 'Space' ? ' ' : code!.slice(-1).toLowerCase(), repeat: repeat === 'true', bubbles: true, cancelable: true });
+          document.activeElement!.dispatchEvent(e);
+          return e.defaultPrevented;
+        },
+        [code, String(repeat)],
+      );
+    // A first press toggles (the control); its repeats are taken and change nothing.
+    expect(await key('KeyK', false)).toBe(true);
+    await expect.poll(() => paused(page)).toBe(false);
+    for (let i = 0; i < 4; i++) expect(await key('KeyK', true)).toBe(true);
+    await settled(page);
+    expect(await paused(page)).toBe(false);
+    for (let i = 0; i < 3; i++) expect(await key('Space', true)).toBe(true);
+    await settled(page);
+    expect(await paused(page)).toBe(false);
+    expect(await key('KeyK', false)).toBe(true);
+    await expect.poll(() => paused(page)).toBe(true);
+    expect(await key('KeyM', false)).toBe(true);
+    await expect.poll(async () => (await probe(page)).muted).toBe(true);
+    for (let i = 0; i < 3; i++) await key('KeyM', true);
+    await settled(page);
+    expect((await probe(page)).muted).toBe(true);
+    // A seek repeats: three repeated L are three skips.
+    const at = await timeMs(page);
+    for (let i = 0; i < 3; i++) {
+      await key('KeyL', true);
+      await expect.poll(() => timeMs(page)).toBeGreaterThanOrEqual(at + 9_500 * (i + 1));
+    }
+
+    // With the speed menu open its own typeahead has the letters: K does not play.
+    await page.getByTestId('video-speed').click();
+    await expect(page.getByTestId('video-speed-1.25')).toBeVisible();
+    await menuHasFocus(page);
+    await page.keyboard.press('k');
+    await settled(page);
+    expect(await paused(page)).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('video-speed-1.25')).toHaveCount(0);
+    // The control: the same key with the menu closed plays.
+    await page.getByTestId('video-stage').focus();
+    await page.keyboard.press('k');
+    await expect.poll(() => paused(page)).toBe(false);
   } finally {
     await app.close();
   }

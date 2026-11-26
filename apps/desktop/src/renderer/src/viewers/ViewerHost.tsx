@@ -98,7 +98,9 @@ function Viewer({ itemId }: { itemId: string }) {
       : trashed !== 'no'
         ? 'trashed'
         : kind === 'video'
-          ? 'noTranscript'
+          ? item.isFetchedAfterMount && (readerLost(item) || !item.data || item.data.availability === 'missing')
+            ? 'noVideo'
+            : 'noTranscript'
           : !item.isFetchedAfterMount
             ? null
             : readerLost(item) || !item.data || item.data.availability === 'missing' || item.data.type !== 'pdf'

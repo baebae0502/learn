@@ -41,6 +41,10 @@
   .video-controls.is-disabled :is(.control-row, .scrubber) {
     opacity: 0.45;
   }
+  /* The row is dimmed once; a button of it is disabled too, and must not dim its glyph a second time (.45 × .4 would all but erase it). */
+  .video-controls.is-disabled :is(.icon-btn, .btn)[data-disabled] {
+    opacity: 1;
+  }
   .video-controls.is-disabled .knob {
     display: none;
   }
@@ -225,6 +229,12 @@
     border-radius: var(--radius-lg);
     background: var(--bg-raised);
     box-shadow: var(--shadow-e1);
+  }
+  /* The volume is the row's last control: the pop-up ends at its right edge instead of standing out past the reader's. */
+  .volume:last-child .vol-pop {
+    left: auto;
+    right: 0;
+    translate: none;
   }
   .vol-pop .vtrack-slider {
     width: 80px; /* local: the bar's length in the pop-up */

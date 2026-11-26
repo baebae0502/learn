@@ -64,11 +64,13 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
     const height = (view?: 'library' | 'viewer' | 'video') => Math.max(...shortcutColumns(shortcutGroups('darwin', view)).map((c) => c.reduce((h, g, i) => h + 31 + 29 * g.rows.length + (i > 0 ? 16 : 0), 0)));
     expect(height()).toBe(height('library'));
     expect(height('library') + 136).toBe(772);
-    // A video reader's sheet also lists the video's keys (six lines under 동영상): its list scrolls in a 1440 × 900 room, where the pane keeps
-    // its title and foot (sheets.spec "scrolling"); the library's and a PDF's sheet stay whole.
     expect(height('viewer') + 136).toBe(754);
-    expect(height('video') + 136).toBe(848);
-    for (const view of ['library', 'viewer'] as const) expect(height(view) + 136, view).toBeLessThanOrEqual(774);
+    // It lists only the keys a video uses (the PDF's and the picture's rows are left out), so there is room for the three more lines
+    // (C, F, esc) that the next tasks add under 동영상.
+    expect(height('video') + 136).toBe(714);
+    for (const view of ['library', 'viewer', 'video'] as const) expect(height(view) + 136, view).toBeLessThanOrEqual(774);
+    const withThree = shortcutGroups('darwin', 'video').map((g) => (g.title === '동영상' ? { ...g, rows: [...g.rows, ...g.rows.slice(0, 3)] } : g));
+    expect(Math.max(...shortcutColumns(withThree).map((c) => c.reduce((h, g, i) => h + 31 + 29 * g.rows.length + (i > 0 ? 16 : 0), 0))) + 136).toBeLessThanOrEqual(774);
   });
   it('lists the video keys under 동영상 from a video reader only, a pair to a line, K and the space bar as one', () => {
     const rows = (view?: 'library' | 'viewer' | 'video') => shortcutGroups('darwin', view).find((g) => g.title === '동영상')?.rows;
@@ -84,7 +86,16 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
       { label: '음소거', keys: ['M'], spoken: 'M' },
     ]);
     const titles = shortcutGroups('darwin', 'video').map((g) => g.title);
-    expect(titles.indexOf('동영상')).toBe(titles.indexOf('리더') + 1);
+    expect(titles).toEqual(['앱', '라이브러리', '자료', '정리', '탭', '동영상', '팔레트·대화상자']);
+  });
+  it('lists the keys of the reader it was opened from: a video\'s sheet leaves the PDF\'s and the picture\'s rows out, theirs leave 동영상 out', () => {
+    const rows = (view: 'library' | 'viewer' | 'video') => shortcutGroups('darwin', view).flatMap((g) => g.rows.map((r) => r.spoken));
+    const pdfOnly = ['⌘G', '⌘E', '⌥⌘G', '⌘R', '⌥⌘2', '⌥⌘5', '⌃⌘1', '⌘+', '⌘['];
+    for (const key of pdfOnly) expect(rows('viewer').some((r) => r.startsWith(key)), `PDF sheet: ${key}`).toBe(true);
+    const video = rows('video');
+    for (const key of pdfOnly) expect(video.some((r) => r.startsWith(key)), `video sheet: ${key}`).toBe(false);
+    expect(rows('viewer').some((r) => r.startsWith('K'))).toBe(false);
+    expect(video.some((r) => r.startsWith('K'))).toBe(true);
   });
   it('lists 세션 보기 ⌥⌘5 under 리더, after the thumbnails / outline line', () => {
     const rows = shortcutGroups('darwin', 'viewer').find((g) => g.title === '리더')!.rows;

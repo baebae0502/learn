@@ -72,6 +72,8 @@ export interface IconButtonProps extends Omit<Base, 'aria-label'> {
   keys?: string;
   /** Where the tooltip stands: below the button (default), or above it for one at the window's bottom (the video controls). */
   tooltipPlacement?: 'bottom' | 'top';
+  /** The glyph's size where it is larger than the button's own (the video's play button is a 20 px glyph in the same 28 px box). */
+  glyph?: 'lg';
   /** Toggle drawn "on" (--fill-pressed + primary text). */
   isOn?: boolean;
   size?: 'regular' | 'small';
@@ -83,7 +85,7 @@ export interface IconButtonProps extends Omit<Base, 'aria-label'> {
   tooltipOpen?: boolean;
 }
 
-export function IconButton({ icon, label, accelerator, keys, tooltipPlacement, isOn, size = 'regular', testId, force, disabledReason, tooltipOpen, ...rest }: IconButtonProps) {
+export function IconButton({ icon, label, accelerator, keys, tooltipPlacement, glyph, isOn, size = 'regular', testId, force, disabledReason, tooltipOpen, ...rest }: IconButtonProps) {
   const reason = useDisabledReason(rest.isDisabled, disabledReason, rest['aria-describedby']);
   return (
     <>
@@ -97,7 +99,7 @@ export function IconButton({ icon, label, accelerator, keys, tooltipPlacement, i
           data-testid={testId}
           data-force={force?.join(' ')}
         >
-          <Icon icon={icon} size={size === 'small' ? 'sm' : 'md'} />
+          <Icon icon={icon} size={glyph ?? (size === 'small' ? 'sm' : 'md')} />
         </AriaButton>
       </Tooltip>
       {reason.description}

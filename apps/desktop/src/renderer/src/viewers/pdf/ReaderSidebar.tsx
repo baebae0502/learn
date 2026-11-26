@@ -1,4 +1,4 @@
-import { CaptionsOff, FileX, Image, Lock, Trash2 } from 'lucide-react';
+import { CaptionsOff, FileX, Image, Lock, Trash2, VideoOff } from 'lucide-react';
 import { acceleratorLabel, commandById, type ReaderNav } from '@learn/domain';
 import { saveSetting } from '../../data/saveSetting';
 import { t } from '../../strings';
@@ -19,6 +19,8 @@ const EMPTY: Record<NoPages, { icon: typeof FileX; title: string }> = {
   none: { icon: FileX, title: t.reader.noPages },
   image: { icon: Image, title: t.reader.noPagesImage },
   noTranscript: { icon: CaptionsOff, title: t.video.noTranscript },
+  /** The video itself cannot be shown (unplayable, did not open, original missing): the picture of its own notice. */
+  noVideo: { icon: VideoOff, title: t.video.noTranscript },
 };
 
 /**
@@ -27,7 +29,8 @@ const EMPTY: Record<NoPages, { icon: typeof FileX; title: string }> = {
  */
 export function ReaderSidebar() {
   const nav = useReaderNav();
-  const noPages = useReader((s) => s.noPages.host ?? s.noPages.reader);
+  // The video reader's own word for an unplayable file comes before the host's general one.
+  const noPages = useReader((s) => (s.noPages.reader === 'noVideo' ? 'noVideo' : (s.noPages.host ?? s.noPages.reader)));
   const ready = useReader((s) => s.pdf?.ready === true);
   const thumbnails = commandById('reader.showThumbnails');
   const outline = commandById('reader.showOutline');

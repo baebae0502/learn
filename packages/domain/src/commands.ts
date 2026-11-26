@@ -664,7 +664,7 @@ export const COMMANDS: readonly CommandSpec[] = [
   // The video reader's keys (spec 6.3, 10): single keys of the renderer keymap only, no menu item (a bare letter as an accelerator would be
   // taken even in a text field, J9). Palette and ⌘/ sheet show them; a frame step is off while the video plays.
   {
-    id: 'video.playPause', label: '재생/일시정지', key: { code: 'KeyK' }, alsoKey: { code: 'Space', yields: true }, contexts: ['video'],
+    id: 'video.playPause', label: '재생/일시정지', key: { code: 'KeyK', noRepeat: true }, alsoKey: { code: 'Space', yields: true, noRepeat: true }, contexts: ['video'],
     stateLabels: { video: { field: 'videoPlaying', on: '일시정지', off: '재생' } },
     keywords: ['재생', '일시정지', '멈춤', '정지', '영상', '동영상', 'play', 'pause'],
   },
@@ -677,7 +677,7 @@ export const COMMANDS: readonly CommandSpec[] = [
   { id: 'video.slower', label: '재생 속도 느리게', key: { code: 'Comma', shift: true }, contexts: ['video'], keywords: ['속도', '느리게', '배속', '영상', '동영상', 'speed', 'slower'] },
   { id: 'video.faster', label: '재생 속도 빠르게', key: { code: 'Period', shift: true }, contexts: ['video'], keywords: ['속도', '빠르게', '배속', '영상', '동영상', 'speed', 'faster'] },
   {
-    id: 'video.toggleMute', label: '음소거', key: { code: 'KeyM' }, contexts: ['video'],
+    id: 'video.toggleMute', label: '음소거', key: { code: 'KeyM', noRepeat: true }, contexts: ['video'],
     stateLabels: { video: { field: 'videoMuted', on: '음소거 해제', off: '음소거' } },
     keywords: ['음소거', '소리', '음량', '영상', '동영상', 'mute', 'sound'],
   },

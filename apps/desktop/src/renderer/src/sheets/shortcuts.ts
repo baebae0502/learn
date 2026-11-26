@@ -1,4 +1,4 @@
-import { COMMANDS, acceleratorKeys, acceleratorLabel, commandLabel, keySpecKeys, tagSlot, type CommandId } from '@learn/domain';
+import { COMMANDS, NO_LIBRARY_VIEW, acceleratorKeys, acceleratorLabel, commandLabel, isCommandAvailable, keySpecKeys, tagSlot, type CommandContextState, type CommandId } from '@learn/domain';
 import { t } from '../strings';
 
 export interface ShortcutRow {
@@ -125,6 +125,11 @@ function pairRow(p: PairSpec, platform: string, view?: 'library' | 'viewer'): Sh
   return { label: p.label(view), keys, pairKeys: second.keys, spoken: `${spokenA} / ${second.spoken}` };
 }
 
+/** What a video reader reports while a video plays or waits: the commands the reader's list keeps for it are the ones this says yes to. */
+const VIDEO_READER: CommandContextState = { view: 'viewer', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW, videoOpen: true };
+/** A row of the reader group that a video reader cannot use (the PDF's and the picture's own keys, ⌘F until the transcript search): left out of its sheet. */
+const unusableInVideo = (c: (typeof COMMANDS)[number]): boolean => !isCommandAvailable(c.id, VIDEO_READER);
+
 /**
  * The ⌘/ sheet: every registry shortcut by its first context (labelled as the menus label it), the system's 전체 화면
  * after the app rows, then the palette and dialog keys. `view`: ⌘F ⌘+ ⌘− ⌘0 are named as that view's menu names them, and from
@@ -136,7 +141,8 @@ export function shortcutGroups(platform: string, shown?: 'library' | 'viewer' | 
   const groups = ORDER.map((ctx) => ({
     title: t.sheets.groups[ctx],
     // The video's keys are listed from a video's reader only: a PDF's or the library's sheet has no use for them, and they would lengthen it.
-    rows: COMMANDS.filter((c) => groupOf(c, view) === ctx && (ctx !== 'video' || shown === 'video'))
+    // Opened from a reader, the list holds that reader's keys: a video's shows 동영상 and not the PDF's and the picture's; theirs not 동영상.
+    rows: COMMANDS.filter((c) => groupOf(c, view) === ctx && (ctx !== 'video' || shown === 'video') && !(ctx === 'viewer' && shown === 'video' && unusableInVideo(c)))
       .sort((a, b) => sheetRank(a.id) - sheetRank(b.id)) // stable: the rest keep the registry order
       .flatMap((c): ShortcutRow[] => {
         const stands = PAIR_BY_ANCHOR.get(c.id);

@@ -2,7 +2,6 @@
 export const video = {
   /** The reader's sidebar while there is no transcript to show (an unplayable video, a file that did not open, until the transcript pane arrives). */
   noTranscript: '표시할 대본이 없습니다',
-  toolbar: '동영상 도구',
   /** Read after the stage's name when it has the focus. */
   stageHint: '스페이스로 재생',
   opening: '여는 중…',
@@ -13,6 +12,8 @@ export const video = {
   play: '재생',
   pause: '일시정지',
   speed: '재생 속도',
+  /** The speed button's name: its visible text stays inside it. */
+  speedName: (rate: number) => `재생 속도 ${rate}×`,
   mute: '음소거',
   unmute: '음소거 해제',
   volume: '음량',

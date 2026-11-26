@@ -84,10 +84,12 @@ export function VideoReader({ item }: { item: LibraryItem }) {
     if (!v || !s.loaded) return;
     v.defaultPlaybackRate = s.rate;
     v.playbackRate = s.rate;
-    v.volume = s.volume;
-    v.muted = s.muted;
-  }, []);
-  useEffect(apply, [apply, settings.loaded, settings.rate, settings.volume, settings.muted]);
+    const draft = store.getState().volumeDraft;
+    v.volume = draft ?? s.volume;
+    v.muted = draft !== null && draft > 0 ? false : s.muted;
+  }, [store]);
+  const volumeDraft = useVideo((s) => s.volumeDraft);
+  useEffect(apply, [apply, settings.loaded, settings.rate, settings.volume, settings.muted, volumeDraft]);
 
   const syncTime = (v: HTMLVideoElement) => store.getState().patch({ timeMs: Math.round(v.currentTime * 1000) });
 
@@ -192,7 +194,7 @@ export function VideoReader({ item }: { item: LibraryItem }) {
   // The sidebar says there is no transcript for a file that cannot be shown (spec 6.7).
   useEffect(() => {
     if (!final) return;
-    scope.reader.getState().setNoPages('reader', 'noTranscript');
+    scope.reader.getState().setNoPages('reader', 'noVideo');
     return () => scope.reader.getState().setNoPages('reader', null);
   }, [final, scope]);
 

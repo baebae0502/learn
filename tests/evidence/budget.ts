@@ -23,15 +23,15 @@ export function limitFailures(limits: readonly Limit[], factor = 2): string[] {
 
 /**
  * M8a spec 14, the video's lines (video-perf.json); ms. The transcript's scroll and the playing list with the overlay are p95 of the frame
- * gap (one 60 Hz frame); the cue switch is the p95 lag from the video frame that crossed a cue's start to the DOM change of the overlay
- * (one frame); the search is the p95 from the search starting (the debounce over) to the frame that paints its matches.
+ * gap (one 60 Hz frame); the cue switch is the p95 lag, at 1×, from the video frame that crossed a cue's start to the start of the frame that paints the
+ * overlay's DOM change (one frame); the search is the p95 from the search starting (the debounce over) to the frame that paints its matches.
  */
 export const VIDEO_BUDGET_MS = { transcriptScrollP95: 16.7, playingFollowP95: 16.7, cueSwitchP95: 16.7, transcriptSearchP95: 50 } as const;
 
 const VIDEO_WHAT: Record<keyof typeof VIDEO_BUDGET_MS, string> = {
   transcriptScrollP95: 'transcript scroll frame gap p95 (2,000 cues, follow off)',
   playingFollowP95: 'frame gap p95 while playing at 2× for 20 s (follow on, overlay on)',
-  cueSwitchP95: 'cue switch → overlay text change p95 (40 cues)',
+  cueSwitchP95: 'cue switch → overlay text painted p95 (40 cues, 1×)',
   transcriptSearchP95: 'transcript search → matches painted p95 (2,000 cues)',
 };
 

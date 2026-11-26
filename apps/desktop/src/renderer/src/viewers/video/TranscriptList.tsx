@@ -219,8 +219,9 @@ export function TranscriptList({ ix, ranges, hitIndex, handleRef }: { ix: CueInd
     const to = cursorAfter(e.key, row ?? cursor, count, page);
     if (to === null) return;
     e.preventDefault();
-    // The list scrolls to the cursor: a scroll the user asked for with a key.
-    stopFollowing();
+    // A move that has to scroll the list is a scroll the user asked for with a key; one between rows in view is not.
+    const at = virtualizer.measurementsCache[to];
+    if (view && at && (at.start < view.scrollTop || at.end > view.scrollTop + view.clientHeight)) stopFollowing();
     moveCursor(to, true);
   };
 

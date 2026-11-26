@@ -11,7 +11,7 @@ import { Switch } from '../../ui/Switch';
 import { useReaderScope } from '../readerScope';
 import { indexCues } from './activeCues';
 import { TranscriptList, type TranscriptListHandle } from './TranscriptList';
-import { findInCues } from './transcriptSearch';
+import { findInCues, hitAtOrAfter, hitBefore } from './transcriptSearch';
 import { useCues, useTracks } from './useSubtitles';
 import { patchTranscript, useVideo } from './videoStore';
 
@@ -64,7 +64,9 @@ export function TranscriptPane() {
     const search = (keepHit: boolean) => {
       if (q !== '') perfMarkLatest('transcript:search');
       // A search that comes back to a tab keeps the match it was at; a new list or a new query starts again.
-      patchTranscript(store, { hits: q === '' ? [] : findInCues(ix.cues, q), ...(keepHit ? {} : { hit: -1, wrapped: false }) });
+      const hits = q === '' ? [] : findInCues(ix.cues, q);
+      // The match on the playhead's side is marked current before any ↩ (its time is not moved to).
+      patchTranscript(store, { hits, ...(keepHit ? {} : { hit: hitAtOrAfter(hits, ix.cues, store.getState().timeMs), arrived: false, wrapped: false }) });
       setSettled(q);
     };
     // No key to wait for after: the first search of a shown pane (it comes back to what was typed before), a new list, and a cleared query.
@@ -116,6 +118,14 @@ export function TranscriptPane() {
     return () => cancelAnimationFrame(id);
   }, [focusSeq]);
 
+  // A cursor row of another track means another sentence: a new track starts without one.
+  const lastTrack = useRef(trackId);
+  useEffect(() => {
+    if (lastTrack.current === trackId) return;
+    lastTrack.current = trackId;
+    patchTranscript(store, { cursor: -1 });
+  }, [trackId, store]);
+
   const ranges = useMemo(() => new Map(hits.map((h) => [h.index, h.ranges] as const)), [hits]);
   const q = query.trim();
   const noMatch = q !== '' && settled === q && hits.length === 0;
@@ -124,19 +134,27 @@ export function TranscriptPane() {
   /** ↩ and ⇧↩ in the field: the next or previous sentence with the query, and the video goes to its start. */
   const step = (dir: 1 | -1) => {
     pending.current?.();
-    const { hits: found, hit: at } = store.getState().transcript;
+    const { hits: found, hit: at, arrived } = store.getState().transcript;
     if (!ix || found.length === 0) return;
-    let next = dir > 0 ? (at < 0 ? 0 : at + 1) : at < 0 ? found.length - 1 : at - 1;
+    const ms = store.getState().timeMs;
+    // The first ↩ starts from the playhead (the find bar starts from the current page); after that it goes by the list, round at its ends.
+    let next: number;
     let wrappedNow = false;
-    if (next >= found.length) {
-      next = 0;
-      wrappedNow = true;
-    } else if (next < 0) {
-      next = found.length - 1;
-      wrappedNow = true;
+    if (!arrived) {
+      next = dir > 0 ? hitAtOrAfter(found, ix.cues, ms) : hitBefore(found, ix.cues, ms);
+      if (next < 0) {
+        next = dir > 0 ? 0 : found.length - 1;
+        wrappedNow = true;
+      }
+    } else {
+      next = at + dir;
+      if (next >= found.length || next < 0) {
+        next = dir > 0 ? 0 : found.length - 1;
+        wrappedNow = true;
+      }
     }
     const target = found[next]!;
-    patchTranscript(store, { hit: next, wrapped: wrappedNow, cursor: target.index });
+    patchTranscript(store, { hit: next, arrived: true, wrapped: wrappedNow, cursor: target.index });
     if (wrappedNow) setWrapNote((n) => n + 1);
     const cue = ix.cues[target.index];
     if (cue) store.getState().handle?.seekTo(cue.startMs);
@@ -172,7 +190,7 @@ export function TranscriptPane() {
           isDisabled={opening}
           inputRef={input}
           testId="transcript-search"
-          onChange={(value) => patchTranscript(store, { query: value, hit: -1, wrapped: false })}
+          onChange={(value) => patchTranscript(store, { query: value, hit: -1, arrived: false, wrapped: false })}
           trailing={
             count !== '' ? (
               <span className="find-count num" data-testid="transcript-count" data-wrapped={wrapped ? '' : undefined} aria-hidden="true">
@@ -187,7 +205,7 @@ export function TranscriptPane() {
             } else if (e.key === 'Escape') {
               // The query goes and the keys move to the list.
               e.preventDefault();
-              patchTranscript(store, { query: '', hits: [], hit: -1, wrapped: false });
+              patchTranscript(store, { query: '', hits: [], hit: -1, arrived: false, wrapped: false });
               wantList.current = true;
               list.current?.focusCursor();
             }
@@ -214,11 +232,14 @@ export function TranscriptPane() {
       ) : (
         <TranscriptList key={trackId} ix={ix} ranges={ranges} hitIndex={hit >= 0 ? (hits[hit]?.index ?? -1) : -1} handleRef={list} />
       )}
-      <div className={opening ? 'transcript-foot is-disabled' : 'transcript-foot'}>
-        <Switch isSelected={follow} isDisabled={opening} onChange={(on) => patchTranscript(store, { follow: on })} testId="transcript-follow">
-          {t.video.follow}
-        </Switch>
-      </div>
+      {/* No sentence is listed while a search found nothing, so there is nothing to follow: the bar goes (the switch keeps its value). */}
+      {!noMatch && (
+        <div className="transcript-foot">
+          <Switch isSelected={follow} isDisabled={opening} onChange={(on) => patchTranscript(store, { follow: on })} testId="transcript-follow">
+            {t.video.follow}
+          </Switch>
+        </div>
+      )}
     </>
   );
 }

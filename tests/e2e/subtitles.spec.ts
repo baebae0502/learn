@@ -396,9 +396,12 @@ test('the list is a list box: ↑↓ Home End PageUp PageDown move the cursor ro
     await page.keyboard.press('ArrowUp');
     await page.keyboard.press('ArrowUp');
     await expect.poll(() => heldRow(page)).toBe('1');
+    // A move between rows that are in view is no scroll: the switch stays on. End has to scroll the list, and turns it off.
+    await expect(follow(page)).toHaveAttribute('data-selected');
     await page.keyboard.press('End');
     await expect.poll(() => heldRow(page)).toBe(String(ko.length - 1));
     await expect.poll(() => rowInView(page, ko.length - 1)).toBe(true);
+    await expect(follow(page)).not.toHaveAttribute('data-selected');
     await page.keyboard.press('Home');
     await expect.poll(() => heldRow(page)).toBe('0');
     await page.keyboard.press('PageDown');
@@ -457,6 +460,59 @@ test('searching the track: the count, ↩ and ⇧↩ go to the next and previous
   }
 });
 
+test('↩ starts from the playhead: the first match on or after it, ⇧↩ the last before it; the match on the playhead is marked before any ↩', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const { ko } = await withTracks(page, app);
+    const first = ko.findIndex((c) => c.text.includes('칼슘 펌프'));
+    const second = ko.findIndex((c, i) => i > first && c.text.includes('칼슘 펌프'));
+    const at = async (i: number) => expect.poll(async () => Math.abs((await state(page)).timeMs - ko[i]!.startMs)).toBeLessThanOrEqual(80);
+    // Between the two matches (the first ends at 22.5 s, the second starts at 34.5 s): the second is the one ahead, and is marked.
+    await seek(page, 25_000);
+    await expect.poll(async () => (await state(page)).timeMs).toBe(25_000);
+    await searchInput(page).fill('칼슘 펌프');
+    await expect(countText(page)).toHaveText('2개');
+    await expect(row(page, second).locator('mark')).toHaveClass('is-current');
+    await expect(row(page, first).locator('mark')).not.toHaveClass('is-current');
+    await searchInput(page).press('Enter');
+    await at(second);
+    // From there the list's own order goes on: the end wraps to the first.
+    await searchInput(page).press('Enter');
+    await expect(countText(page)).toHaveText(/^처음부터\s· 1 \/ 2$/);
+    await at(first);
+
+    // ⇧↩ from between the two: the last one behind the playhead is the first match, with no wrap.
+    await searchInput(page).fill('');
+    await seek(page, 25_000);
+    await expect.poll(async () => (await state(page)).timeMs).toBe(25_000);
+    await searchInput(page).fill('칼슘 펌프');
+    await expect(countText(page)).toHaveText('2개');
+    await searchInput(page).press('Shift+Enter');
+    await at(first);
+    await expect(countText(page)).toHaveText('2개');
+
+    // Past the last match, ↩ comes round to the first (with the note); inside the first match's own sentence it is the one at the playhead.
+    await searchInput(page).fill('');
+    await seek(page, 40_000);
+    await expect.poll(async () => (await state(page)).timeMs).toBe(40_000);
+    await searchInput(page).fill('칼슘 펌프');
+    await expect(countText(page)).toHaveText('2개');
+    await searchInput(page).press('Enter');
+    await expect(countText(page)).toHaveText(/^처음부터\s· 1 \/ 2$/);
+    await at(first);
+    await searchInput(page).fill('');
+    await seek(page, 20_000);
+    await expect.poll(async () => (await state(page)).timeMs).toBe(20_000);
+    await searchInput(page).fill('칼슘 펌프');
+    await expect(countText(page)).toHaveText('2개');
+    await searchInput(page).press('Enter');
+    await at(first);
+    await expect(countText(page)).toHaveText('2개');
+  } finally {
+    await app.close();
+  }
+});
+
 test('a word that is nowhere says so in the list\'s place; esc empties the field and goes to the list', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
   try {
@@ -468,11 +524,14 @@ test('a word that is nowhere says so in the list\'s place; esc empties the field
     await expect(empty).toContainText('자막 파일의 글자에서만 찾습니다. 다른 낱말로 찾아보세요.');
     await expect(countText(page)).toHaveText('0개');
     await expect(list(page)).toHaveCount(0);
+    // Nothing is listed, so nothing is followed: no bar, and its value is kept for the list's return.
+    await expect(follow(page)).toHaveCount(0);
     // The positive control: the list is the same list once the query is gone.
     await searchInput(page).press('Escape');
     await expect(searchInput(page)).toHaveValue('');
     await expect(empty).toHaveCount(0);
     await expect(list(page)).toBeVisible();
+    await expect(follow(page)).toHaveAttribute('data-selected');
     await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('role') ?? null)).toBe('option');
   } finally {
     await app.close();

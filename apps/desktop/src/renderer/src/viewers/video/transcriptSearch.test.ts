@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Cue } from '@learn/domain';
-import { findInCues, foldForSearch } from './transcriptSearch';
+import { findInCues, foldForSearch, hitAtOrAfter, hitBefore } from './transcriptSearch';
 
 const cue = (text: string, i = 0): Cue => ({ startMs: i * 1000, endMs: i * 1000 + 800, text });
 
@@ -67,5 +67,26 @@ describe('findInCues (spec 7.4)', () => {
       return performance.now() - t;
     });
     expect(Math.min(...runs)).toBeLessThan(20);
+  });
+});
+
+describe('hitAtOrAfter / hitBefore (where ↩ and ⇧↩ start from the playhead)', () => {
+  // Cues 0–1 s, 4–5 s, 8–9 s, 12–13 s; the hits are cues 1 and 3.
+  const cues = [0, 4, 8, 12].map((s) => ({ startMs: s * 1000, endMs: s * 1000 + 1000, text: 'x' }));
+  const hits = [{ index: 1, ranges: [[0, 1]] as Array<[number, number]> }, { index: 3, ranges: [[0, 1]] as Array<[number, number]> }];
+  it('forward: the first hit still on or ahead of the playhead, -1 when none is', () => {
+    expect(hitAtOrAfter(hits, cues, 0)).toBe(0);
+    expect(hitAtOrAfter(hits, cues, 4500)).toBe(0); // inside the hit's own cue: it is at the playhead
+    expect(hitAtOrAfter(hits, cues, 5000)).toBe(1); // its end is the playhead: it is behind
+    expect(hitAtOrAfter(hits, cues, 12500)).toBe(1);
+    expect(hitAtOrAfter(hits, cues, 13000)).toBe(-1);
+    expect(hitAtOrAfter([], cues, 0)).toBe(-1);
+  });
+  it('backward: the last hit behind the playhead, -1 when none is', () => {
+    expect(hitBefore(hits, cues, 0)).toBe(-1);
+    expect(hitBefore(hits, cues, 4500)).toBe(-1); // inside the first hit's cue
+    expect(hitBefore(hits, cues, 5000)).toBe(0);
+    expect(hitBefore(hits, cues, 9000)).toBe(0);
+    expect(hitBefore(hits, cues, 20000)).toBe(1);
   });
 });

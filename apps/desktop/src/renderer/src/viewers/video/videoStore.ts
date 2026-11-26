@@ -29,18 +29,20 @@ export interface VideoHandle {
 /**
  * The transcript pane's state (spec 7), kept with the video so a tab that leaves the sidebar and comes back finds its search as it was.
  * `follow` is on whenever a tab opens (never saved); `query` is the field's text and `hits` the cues it found at the last search; `hit` is
- * the match the last ↩ went to (-1: none yet); `cursor` is the keyboard row of the list (-1: none); `wrapped` says the last ↩ came round from the end.
+ * the match marked current (the last ↩'s, or before one the first on or after the playhead; -1: none); `cursor` is the keyboard row of the list (-1: none); `wrapped` says the last ↩ came round from the end.
  */
 export interface TranscriptState {
   follow: boolean;
   query: string;
   hits: CueHit[];
   hit: number;
+  /** The last ↩ has gone to `hit`: until then `hit` is only the match marked on the playhead's side, and the first ↩ starts from the playhead. */
+  arrived: boolean;
   cursor: number;
   wrapped: boolean;
 }
 
-export const INITIAL_TRANSCRIPT: TranscriptState = { follow: true, query: '', hits: [], hit: -1, cursor: -1, wrapped: false };
+export const INITIAL_TRANSCRIPT: TranscriptState = { follow: true, query: '', hits: [], hit: -1, arrived: false, cursor: -1, wrapped: false };
 
 export interface VideoStore {
   status: VideoStatus;

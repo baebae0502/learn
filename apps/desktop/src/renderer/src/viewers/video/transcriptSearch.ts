@@ -117,3 +117,14 @@ export function findInCues(cues: readonly Cue[], query: string): CueHit[] {
   }
   return hits;
 }
+
+/** The first hit whose cue is still on at `ms` or ahead of it (its end is after `ms`), as an index into `hits`; -1 when every hit is behind. */
+export function hitAtOrAfter(hits: readonly CueHit[], cues: readonly Cue[], ms: number): number {
+  return hits.findIndex((h) => (cues[h.index]?.endMs ?? 0) > ms);
+}
+
+/** The last hit whose cue is over at `ms` (its end is not after `ms`), as an index into `hits`; -1 when none is. */
+export function hitBefore(hits: readonly CueHit[], cues: readonly Cue[], ms: number): number {
+  for (let i = hits.length - 1; i >= 0; i--) if ((cues[hits[i]!.index]?.endMs ?? 0) <= ms) return i;
+  return -1;
+}

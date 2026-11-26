@@ -1,9 +1,10 @@
 // @perf — M8a spec 14 (video-perf.json): the transcript pane over long-2000.srt (2,000 cues) beside lecture-60s.mp4.
 //   1. the list's scroll, follow off: the gaps between animation frames while the list scrolls (p95 ≤ 16.7 ms);
 //   2. 2× playback for 20 s with the switch on and the overlay showing: the same gaps (p95 ≤ 16.7 ms);
-//   3. a cue's switch → the overlay's text: for each of the 40 cues of the video, the lag from the first video frame whose media time
-//      reached the cue's start (requestVideoFrameCallback's `now`) to the DOM change of the overlay (a MutationObserver's callback);
-//      the page's own probes, nothing added to the app (p95 ≤ one frame, 16.7 ms);
+//   3. a cue's switch → the overlay's text painted, at 1× speed: for each of the 40 cues of the video, the lag from the first video frame
+//      whose media time reached the cue's start (requestVideoFrameCallback's `now`) to the start of the first animation frame after the
+//      overlay's DOM change (a MutationObserver's callback asks for it): the frame that paints the change. The DOM change itself is
+//      reported beside it. The page's own probes, nothing added to the app (p95 ≤ one frame, 16.7 ms);
 //   4. the transcript search: `learn:transcript:search` (the debounce is over, the search begins) → `learn:transcript:painted` (the frame
 //      that paints its matches), p95 ≤ 50 ms. The input → painted time, 150 ms of debounce included, is reported beside it.
 // Linux CI fails beyond twice each budget (budget.ts); every other run reports.
@@ -194,12 +195,16 @@ test('video budgets @2: 2× playback for 20 s with follow and the overlay (frame
     save({ playingFollow: { ...spread(gaps), frames: played.stamps.length, overlayTextsSeen: played.shown, mediaSeconds: tenth(played.endTime), over33ms: gaps.filter((g) => g > 33.4).length } });
     await page.evaluate(() => document.querySelector<HTMLVideoElement>('[data-testid="video"]')!.pause());
 
-    // 3. The 40 cue switches. The page's own probes: every presented video frame (requestVideoFrameCallback: when its callback ran and
-    //    its media time) and every change of the overlay's text (MutationObserver: when the DOM was changed, and to what).
+    // 3. The 40 cue switches, at 1×. The page's own probes: every presented video frame (requestVideoFrameCallback: when its callback ran
+    //    and its media time) and every change of the overlay's text (MutationObserver: when the DOM was changed and, from the next animation
+    //    frame, when that frame began: the one that paints it, and to what).
+    await page.getByTestId('video-speed').click();
+    await page.getByTestId('video-speed-1').click();
+    await expect(page.getByTestId('video-speed')).toHaveText('1×');
     await page.evaluate(() => {
       const v = document.querySelector<HTMLVideoElement>('[data-testid="video"]')!;
       const box = document.querySelector('[data-testid="subtitle-box"]')!;
-      const w = window as unknown as { __frames: Array<{ now: number; mediaTime: number }>; __changes: Array<{ at: number; text: string }> };
+      const w = window as unknown as { __frames: Array<{ now: number; mediaTime: number }>; __changes: Array<{ at: number; dom: number; text: string }> };
       w.__frames = [];
       w.__changes = [];
       const loop = (now: number, meta: VideoFrameCallbackMetadata) => {
@@ -209,7 +214,11 @@ test('video budgets @2: 2× playback for 20 s with follow and the overlay (frame
       v.requestVideoFrameCallback(loop);
       new MutationObserver(() => {
         const text = box.textContent ?? '';
-        if (text !== '' && w.__changes[w.__changes.length - 1]?.text !== text) w.__changes.push({ at: performance.now(), text });
+        if (text === '' || w.__changes[w.__changes.length - 1]?.text === text) return;
+        const dom = performance.now();
+        const change = { at: dom, dom, text };
+        w.__changes.push(change);
+        requestAnimationFrame((frame) => (change.at = frame));
       }).observe(box, { childList: true, subtree: true, characterData: true });
       v.currentTime = 0.2;
     });
@@ -218,13 +227,14 @@ test('video budgets @2: 2× playback for 20 s with follow and the overlay (frame
     // To the end of the 60 s (40 cues, the first at 0 s is before the probes).
     await expect.poll(async () => (await page.evaluate(() => window.__learnVideo!.state()))!.timeMs, { timeout: 60_000, intervals: [500] }).toBeGreaterThan(59_000);
     const { frames, changes } = await page.evaluate(() => {
-      const w = window as unknown as { __frames: VideoFrame[]; __changes: OverlayChange[] };
+      const w = window as unknown as { __frames: VideoFrame[]; __changes: Array<OverlayChange & { dom: number }> };
       return { frames: w.__frames, changes: w.__changes };
     });
     const starts = Array.from({ length: 39 }, (_, i) => ({ startMs: (i + 1) * CUE_STEP_MS, lead: `${i + 2}번째 문장` }));
     const lags = cueSwitchLags(frames, changes, starts);
+    const domLags = cueSwitchLags(frames, changes.map((c) => ({ at: c.dom, text: c.text })), starts);
     expect(lags.length, 'a frame and an overlay change were seen for nearly every cue').toBeGreaterThanOrEqual(36);
-    save({ cueSwitch: { ...spread(lags), cues: lags.length, early: lags.filter((l) => l < 0).length, over16_7ms: lags.filter((l) => l > 16.7).length, how: 'lag = DOM change of the overlay − the callback time of the first video frame whose mediaTime reached the cue start' } });
+    save({ cueSwitch: { ...spread(lags), cues: lags.length, early: lags.filter((l) => l < 0).length, over16_7ms: lags.filter((l) => l > 16.7).length, speed: '1×', domChange: spread(domLags), how: 'lag = start of the first animation frame after the overlay\'s DOM change (the frame that paints it) − the callback time of the first video frame whose mediaTime reached the cue start; domChange is the same to the DOM change itself' } });
 
     // The verdict for the whole file, once every section is in.
     const all = readSaved() as Record<string, { p95?: number } | undefined>;

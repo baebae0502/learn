@@ -360,12 +360,15 @@
     padding: 0 var(--space-4);
     font: var(--type-headline);
   }
-  /* Secondary, not the mockup's tertiary: 12 px text keeps 4.5:1, as the find bar's count does. */
   /* The pane changes its content while the video opens (the placeholder, then the list or the empty state); on a layer of its own that
-     repaint cannot reach the sidebar's top, whose launcher corners would otherwise be drawn over twice (layout B's pixel identity). */
+     repaint cannot reach the sidebar's top, whose launcher corners would otherwise be drawn over twice (layout B's pixel identity, seen
+     on Linux). A transform layer keeps its alpha, so the vibrancy behind the window shows as before: to be confirmed on a Mac run. The
+     bottom bar sits on the window's lower edge (the scroller's 12 px of room under a sidebar's last row is taken back). */
   .reader-sidebar.is-transcript {
     will-change: transform;
+    margin-bottom: calc(-1 * var(--space-12));
   }
+  /* Secondary, not the mockup's tertiary: 12 px text keeps 4.5:1, as the find bar's count does. */
   .nav-search .find-count {
     flex: none;
     color: var(--text-secondary);
@@ -378,7 +381,7 @@
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    scrollbar-gutter: stable both-edges; /* a classic bar's room on both sides, as the thumbnail list keeps */
+    scrollbar-gutter: stable; /* a classic bar's room at the end only: the rows keep the sidebar's 8–231 lines, as the outline's do */
     position: relative;
     outline: none;
   }
@@ -395,6 +398,7 @@
   }
   .transcript.is-placeholder {
     overflow: hidden;
+    scrollbar-gutter: auto; /* no bar to make room for: the placeholder bars start where the rows will */
     padding: var(--space-4) var(--space-8) var(--space-8);
   }
   .cue {
@@ -465,8 +469,5 @@
     height: 40px; /* local: the bar under the list */
     padding: 0 var(--space-16) 0 var(--space-24);
     border-top: 1px solid var(--separator);
-  }
-  .transcript-foot.is-disabled {
-    opacity: 0.45;
   }
 }

@@ -169,3 +169,14 @@ ADR-0002는 그대로 유효하다: 불변 revision 귀속, `schema_version`, `o
 | 인용 이력 | `message_sources.anchor_id`는 `SET NULL`이고 `label`·`quote_snapshot`이 남는다. 앵커 삭제를 막지 않는다 |
 | 재앵커(M9 이후) | `page` 앵커는 쪽 번호로만 옮긴다. 글 증거가 없으므로 인용문 일치는 쓰지 않는다 |
 
+
+## M8a 결과 (2026-11)
+
+M8a는 앵커를 만들지 않았다. 영상 자막은 새 데이터 객체이므로 이 ADR의 규칙(새 데이터 객체는 모두 앵커로 주소를 가질 수 있다)을 어떻게 지키는지만 적는다.
+
+| 항목 | 결정 |
+|---|---|
+| 큐의 주소 | 큐는 그 영상 **판본**의 `video` 앵커 `{ kind: 'video', revisionId, startMs, endMs }`로 가리킬 수 있다(ADR-0002 좌표 그대로). 큐 글의 근거(quote의 출처)는 **자막 자산의 판본**이다 — 영상 판본이 바뀌어도 자막 파일은 그대로이고, 자막이 바뀌면 새 sha이므로 새 큐 표다(`cue_texts`의 열쇠는 파일 내용, ADR-0003 "스키마 v6") |
+| 만드는 곳 | 없다. `anchors` 행도 `anchor_id`를 가리키는 표도 M8a가 더하지 않았다. 대본 칸·시간 행은 `startMs`를 직접 쓰는 화면 동작(`PendingJump`)이고 앵커가 아니다 |
+| M8b | 시간 인용 칩과 `read_transcript`가 이 길을 쓴다: 튜터가 읽은 큐 범위(`cue_texts_time`)를 `video` 앵커로 만들어 `message_sources`가 가리키게 한다. `audio` 앵커 필드(`startMs`/`endMs`)는 오디오 자료(`items.type` CHECK를 다시 만드는 마이그레이션)와 함께 M8b에서 더한다 |
+| M9 | 시간 메모와 정지 프레임 필기가 같은 `video` 앵커(`frame`·`rect` 선택 필드)를 쓴다. M8a의 대본 칸은 M9의 "시간 메모" 칸 자리를 세그먼트로 남겨 두지 않았다 — 칸 머리는 "대본" 한 줄이다 |

@@ -1,6 +1,6 @@
 # ADR-0003: 저장 구조
 
-- 상태: 채택 (2026-10-20), 스키마 v2 반영 (2026-10-21, M2), 점검·백업·복원·영구 삭제 반영 (2026-11-02, M6) · 관련: spec 08·09·12, ADR-0007
+- 상태: 채택 (2026-10-20), 스키마 v2 반영 (2026-10-21, M2), 점검·백업·복원·영구 삭제 반영 (2026-11-02, M6) · 관련: spec 08·09·12, ADR-0007 · 스키마 v6 반영 (2026-11, M8a)
 
 ## 결정
 - 라이브러리 = 한 폴더: `library.sqlite`, `assets/<sha256 앞 2자>/<sha256>`, `staging/`, `derived/`, `exports/`. 기본 위치 macOS `~/Library/Application Support/Learn/Library`, Linux `~/.config/Learn/Library`(앱 이름 `Learn`), `LEARN_LIBRARY_DIR`로 바꿀 수 있다.
@@ -64,6 +64,16 @@ SQLite는 CHECK를 고칠 수 없어 `items`와 `anchors`를 다시 만든다. `
 에이전트·도구 이름 열은 목록 CHECK가 아니라 형식 CHECK(`GLOB`)와 도메인 zod다. 에이전트가 늘 때마다 표를 다시 만들지 않기 위해서다. 상태처럼 안정된 집합은 CHECK다.
 
 백업은 대기 중인 첫 마이그레이션 앞에서 `library.sqlite.pre-v5.bak`. 1만 앵커를 다시 만드는 시간은 단위 시험이 1초 미만으로 지킨다.
+
+## 스키마 v6 (M8a, `packages/db/src/migrations/006-subtitles.ts`)
+새 표만 더하므로 `foreignKeysOff`가 필요 없다(실행기의 보통 길, 외래 키를 켠 채). 새 표 둘과 FTS 표 하나(비어 있다):
+- `subtitle_tracks(item_id, asset_id, role, language, position, created_at)`: 기본 키 `(item_id, asset_id)`, `role`은 `'subtitle'`만(CHECK), `language`는 `NULL`이거나 2–35자. `(item_id, asset_id, role)`이 `item_assets`의 기본 키를 `ON DELETE CASCADE`로 가리킨다 — 자막과 영상의 연결은 지금 있는 `item_assets(role = 'subtitle')`가 맡고, 이 표는 그 행의 언어와 순서만 든다. 연결 행을 지우면(트랙 제거, 자료 영구 삭제) 트랙 행이 따라 지워진다. 그래서 언어는 다시 알 길이 없어 되돌리기가 `RemovedTrack = { position, language }`로 실어 보낸다(spec-amendments 16절 P-7). 색인 `subtitle_tracks_asset`.
+- `cue_texts(id, sha256, cue_index, start_ms, end_ms, text)`: 열쇠는 자막 **파일 내용**(`UNIQUE (sha256, cue_index)`)이라 같은 자막을 붙인 영상이 몇이든 한 벌이다(`page_texts`와 같은 규칙, ADR-0008 J35). 색인 `cue_texts_time(sha256, start_ms)`가 시간 범위를 읽는다 — M8b의 `read_transcript`가 쓸 길이다. 쪽 열쇠의 `page_texts`에 섞지 않았다: 한 표에 두면 두 질의가 모두 종류를 가려야 한다(J3).
+- `cue_texts_fts`: `cue_texts`를 가리키는 외부 내용 FTS5(`tokenize = 'trigram remove_diacritics 2'`)와 `page_texts`와 같은 세 트리거(`cue_texts_ai`·`_ad`·`_au`).
+
+큐는 **붙이는 트랜잭션 안에서** 쓴다(자산 → `item_assets` → `subtitle_tracks` → `cue_texts`, 같은 sha의 큐가 있으면 `ON CONFLICT DO NOTHING`) — M7c의 `jobs` 길을 쓰지 않는다(J4, ADR-0008 9절). 영구 삭제는 sha에 자산이 하나도 남지 않을 때만 `cue_texts`를 지운다(다른 영상이 같은 자막 파일을 쓰면 남는다). 검증: `migrate.test.ts` "migration v6 (subtitles)" — v5 실데이터 라이브러리에서 모든 행과 rowid가 같고 `foreign_key_check`가 비며 `.pre-v6.bak`이 v5인 것, 트랙이 연결 행을 따라 지워지고 자막 역할의 연결만 트랙을 가지는 것, 006이 실패하면 v5가 남는 것. 1만 항목 라이브러리의 006은 1.15 ms였다(Task 4 보고값, 단위 시험의 한도는 1초).
+
+백업은 대기 중인 첫 마이그레이션 앞에서 `library.sqlite.pre-v6.bak`. 자막 사본은 `allAssets()`에 이미 들어가므로 백업이 그대로 복사하고, 매니페스트 개수에 `subtitleTracks`를 더했다(복원 뒤 일치 확인, AC15).
 
 ## 근거
 원본 불변·재시작 복구·빈 프로필 복원(AC01·AC06·AC15)을 파일 시스템과 DB 양쪽에서 단순하게 보장하기 위해서다.

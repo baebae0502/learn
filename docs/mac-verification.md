@@ -1,6 +1,6 @@
 # macOS 검증 기록 (M0 증거 레인)
 
-- 갱신: 2026-11-10(mac-index-hang PR #15의 `perf` run 42774413580이 성공 — 아래 "mac-index-hang") · 2026-11-10(M7c — 아래 "M7c": Linux CI run 42654046397의 값, 중간 `e2e` run 42660475115는 러너를 받지 못해 취소, 최종 `all` 두 번(42704566004 · 42716660692)은 기능 E2E 녹색, 증거는 매번 다른 시험 하나 실패; mac-flakes PR #13의 `all` run 42479810434가 전부 녹색 — 아래 "mac-flakes") · 2026-11-05(M7a 최종 `all` run 41917866220, c83064d가 전부 녹색 — 아래 "M7a"; 중간 `e2e` run 41740397794) · 2026-10-30(M5 정리, 최종 `all` run 41024983289, af807d6이 전부 녹색 — 아래 "M5 정리") · 2026-10-28(M5 정리, run 40708161452) · 2026-10-26(M4 라이브러리, 최종 `all` run 40242680541이 전부 녹색 — 아래 "M4 라이브러리") · 2026-10-23(M3 셸 Task 14 반영, 5차 run 39920413383까지 — 아래 "M3 셸 (Task 14)") · 처음: 2026-10-20(수정 1회차 반영) · 브랜치 `m0-evidence` · 계획: [`superpowers/plans/2026-10-20-m0-macos-evidence.md`](superpowers/plans/2026-10-20-m0-macos-evidence.md)
+- 갱신: 2026-11-27(M8a — 아래 "M8a": 중간 `e2e` run 45899814765, 전체 화면 해제 멈춤은 무대 모드로 해결, 최종 `all` 줄은 컨트롤러가 채움) · 2026-11-10(mac-index-hang PR #15의 `perf` run 42774413580이 성공 — 아래 "mac-index-hang") · 2026-11-10(M7c — 아래 "M7c": Linux CI run 42654046397의 값, 중간 `e2e` run 42660475115는 러너를 받지 못해 취소, 최종 `all` 두 번(42704566004 · 42716660692)은 기능 E2E 녹색, 증거는 매번 다른 시험 하나 실패; mac-flakes PR #13의 `all` run 42479810434가 전부 녹색 — 아래 "mac-flakes") · 2026-11-05(M7a 최종 `all` run 41917866220, c83064d가 전부 녹색 — 아래 "M7a"; 중간 `e2e` run 41740397794) · 2026-10-30(M5 정리, 최종 `all` run 41024983289, af807d6이 전부 녹색 — 아래 "M5 정리") · 2026-10-28(M5 정리, run 40708161452) · 2026-10-26(M4 라이브러리, 최종 `all` run 40242680541이 전부 녹색 — 아래 "M4 라이브러리") · 2026-10-23(M3 셸 Task 14 반영, 5차 run 39920413383까지 — 아래 "M3 셸 (Task 14)") · 처음: 2026-10-20(수정 1회차 반영) · 브랜치 `m0-evidence` · 계획: [`superpowers/plans/2026-10-20-m0-macos-evidence.md`](superpowers/plans/2026-10-20-m0-macos-evidence.md)
 - 이 문서의 수치는 모두 아래 실행 기록의 artifact(`env.json`, `baseline.json`, `spikes.json`, Playwright 리포트)에서 옮겼다. GitHub 러너는 M1 **가상 머신**이므로 성능·코덱 값은 참고값이고, AC16 판정은 기준 장비(Apple Silicon 16 GB 실기)에서 한다.
 
 ## 목적
@@ -99,6 +99,8 @@ macOS 분은 잡마다 분 단위로 올림되고, 비공개 저장소는 macOS 
 | 6 | 서버로의 artifact 다운로드 속도 | **문제 없음** — 6.56 MB를 4.90초/5.06초(1.34 / 1.30 MB/s). 작은 artifact는 고정 지연(약 2–3초)이 지배: 1.77 MB 3.24초, 1.41 MB 3.37초, 2.92 MB 3.37초, 3.56 MB 3.59초, 3.02 MB 3.60초 | `evidence/<label>/<run_id>/run.json`. 릴리스 다운로드에서 보던 연결당 20–60 KB/s 제한은 artifact(blob)에는 없다. 참고로 오늘은 GitHub 릴리스 자산(actionlint 2.4 MB)도 1초 안에 받아져 그 제한이 재현되지 않았다 |
 
 ### 추가 발견: HTML 전체 화면 해제 멈춤 (macOS 전용)
+
+- **해결(M8a): 무대 모드로 — 빠른 토글 시험 Mac 통과.** 앱이 HTML 전체 화면 API를 쓰지 않는다. 아래 "M8a"를 본다.
 
 - 기존 기능 E2E `first-session.spec.ts`가 macOS 15·26 모두에서 `video.requestFullscreen()` 직후 `document.exitFullscreen()`의 Promise가 끝나지 않아 120초 시간 초과로 실패했다(run 1·4, trace: 마지막 Evaluate에 끝 이벤트 없음). 나머지 5개 E2E는 macOS에서 통과. Linux에서는 6/6 통과.
 - 스파이크(`x-html-fullscreen`, run 3·4)로 특성 확인:
@@ -897,6 +899,28 @@ tutor-perf p95(`tutor-perf.json`), **모두 예산 안**:
 - 보고 줄: 새 세션 첫 글 200.1 ms, 끝의 다시 그리기 긴 작업 0 · 최장 간격 34 ms.
 - 스트리밍 프레임은 287개 가운데 두 프레임 간격 11개다(1회차 277개 가운데 35개, p95 33.3). P-53은 닫혔다.
 
+## M8a (2026-11-27, macos-15 arm64, 브랜치 `m8a-video`)
+
+M8a의 macOS 실행. 계획은 영상 리더와 자막이 끝난 중간 지점의 `e2e` 한 번과 끝의 `all`이다(M8a 명세 15절). `all`은 최종 코드에서 두 번까지 보내고 서로 다른 간헐 실패는 줄마다 적는다. 새 증거 spec `m8a-shots.evidence.ts`(suite `m8a`, `@m8a`)는 13절 ①–⑦의 상태를 라이트 · 다크로 찍는다.
+
+### HTML 전체 화면 해제 멈춤 — M8a에서 무대 모드로 해결 (빠른 토글 시험 Mac 통과)
+- 위 "추가 발견"의 원인은 HTML 전체 화면 API(`requestFullscreen`/`exitFullscreen`)와 네이티브 전환 애니메이션의 경합이었다. M8a는 그 API를 쓰지 않는다: F · 단추 · esc · ⌃⌘F는 main의 무대 제어기(`video-stage.ts`)가 `BrowserWindow.setFullScreen`을 한 번에 하나씩, 마지막 바람이 이기게 처리하고, 렌더러는 창 상태(`windowState`의 `stage`)만 따라 무대 모드를 그린다. 페이지가 들어갈 길도 막았다 — `APP_PERMISSIONS`에서 `fullscreen`을 뺐고 Electron 44에서 `requestFullscreen()`은 거절도 오류도 없이 보류로 남는다(시험은 아무것도 바뀌지 않음을 본다).
+- **중간 `e2e` run 45899814765**(`93d0649` — Task 13까지, 청구 53분 · 3,169초): 기능 E2E 716 통과 · 0 실패 · 0 불안정 · 57 건너뜀. `first-session.spec.ts`의 "quick toggles settle: five F presses 50 ms apart end on the stage with the window in full screen"와 `video-stage.spec.ts`의 넷이 **macOS에서 통과했고**, 옛 darwin 전용 특성 시험(`test.fail()`)은 지웠다.
+- 같은 실행에서 `will-change: transform`을 준 대본 사이드바의 vibrancy는 기능 E2E로 보이지 않는다(그림 시험의 일). 그 판단은 아래 최종 `all`의 `m8a` 창 사진이다.
+
+### 최종 `all`
+- **(컨트롤러가 채움)** 실행 1: run `________` (`________`) — 증거 · 기능 E2E · PNG · 청구 분 · 실패는 줄마다.
+- **(컨트롤러가 채움)** 실행 2(필요하면, 두 번까지): run `________`.
+- **(컨트롤러가 채움)** 데모 `m8a-demo.final.mov`: 길이 · 장 수 · 화면 크기. Linux 1440×900의 같은 대본은 전체 속도 198.3초(3:18) · 장 열한 개이고 겹침 0건이다(`m8a-demo.chapters.json`).
+- **(컨트롤러가 채움)** Mac 사진 `m8a-shots`와 데모 프레임의 디자인 비평(라이트 · 다크): blocker · major · minor.
+
+### Mac `all`이 재고 정하는 것
+- **실제 영상 재생과 한 프레임 이동**: Mac의 Chromium이 H.264/AAC 재생 · 프레임 단위 이동(`,` `.`)과 `requestVideoFrameCallback`의 프레임 간격 추정이 Linux와 같은지(명세 18절). `video-perf` 줄의 Mac 값과 함께 본다.
+- **실제 창 전체 화면 전환**: 무대 모드의 들어가기 · 나오기와 빠른 다섯 번 토글이 `all`에서도 서는지(위 중간 실행은 통과). 들어가기 · 나가기 사건이 2초 넘게 늦으면 창이 전체 화면인 채 무대 없이 남을 수 있다(Task 9 리뷰의 남은 minor) — 이 실행에서 보인 바가 없는지.
+- **대본 사이드바의 vibrancy**: `will-change: transform`과 하단 −12 px 여백이 macOS의 사이드바 재질을 깨지 않는지(`m8a-shots`의 창 사진).
+- **끌기 종류**: 플랫폼이 끌기 중에 보고하는 파일 형식(`DataTransferItem.type` — Linux는 `.vtt`를 `text/vtt`, `.srt`를 `application/x-subrip`으로 보고한다)을 `m8a-drop-types.json`이 Mac에서 읽는다. 값이 비면 끌기 관문(5.3)이 영상 탭의 자막 드롭을 놓칠 수 있다.
+- **데모**: 열한 장(첫 장 끌어 놓기 · 열기와 재생 키 · 자막 오버레이 · 대본 · 영어 자막 끌어 놓기 · 자막 고르기와 C · F 전체 화면 · 라이브러리 검색 · 시간 행 · 제거와 실행 취소 · 다시 실행)이 `RECORD_SECONDS`(300초) 안에 끝나는지. 두 끌어 놓기는 Finder가 아니라 합성 끌기 사건이며 자막과 태그가 그렇게 말한다.
+
 ## 알려진 한계
 
 - 러너는 M1 가상 머신(3 vCPU, 가상 GPU, 1024×768 @1x)이다. 콜드 시간은 run마다 2–3배 차이가 나고, Retina(@2x) 렌더링·실제 GPU·트랙패드는 확인할 수 없다.
@@ -926,7 +950,7 @@ tutor-perf p95(`tutor-perf.json`), **모두 예산 안**:
 - HEVC 재생 확정(실제 하드웨어 디코더, 캔버스 읽기 포함).
 - AC16 기준 장비(Apple Silicon 16 GB)에서 첫 PDF·첫 MP4·냉시작 시간.
 - Retina @2x에서 PDF 캔버스 선명도와 글꼴 렌더링.
-- 전체 화면 빠른 토글 시 멈춤이 실기에서도 나는지.
+- 전체 화면 빠른 토글 시 멈춤이 실기에서도 나는지(M8a에서 앱이 HTML 전체 화면 API를 쓰지 않게 해 러너에서는 풀렸다 — 아래 "M8a". 실기에서의 신호등과 ⌃⌘F 섞어 누르기는 `next-session.md` "실기에서만 확인할 것 (M8a)"에 있다).
 - 서명·공증된 패키지(P6)에서 PDF·영상(AC20).
 - **M4 라이브러리**:
   - VoiceOver: 표(grid — 행, 열 머리, 정렬 상태, 선택 알림), 항목 패널 폼(칸 이름, 오류 문구가 읽히는지), 팔레트 자료 결과;

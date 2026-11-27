@@ -58,6 +58,7 @@
 3. 실패하면 `new TextDecoder('euc-kr')`(WHATWG `euc-kr` = CP949/UHC).
 - **스파이크(계획의 Task 1)**: Electron 44 main에서 `TextDecoder('euc-kr')`가 되는지 시험 훅으로 확인한다(이 서버의 `ELECTRON_RUN_AS_NODE`로는 GTK 라이브러리가 없어 확인하지 못했다). 안 되면 빌드 때 시스템 Node(full ICU)의 `TextDecoder('euc-kr')`로 2바이트 → 코드 포인트 표를 만들어(`scripts/build-cp949.mjs`, 생성물 커밋) 같은 함수 뒤에서 쓴다. 새 런타임 의존성은 없다.
 - 디코드한 글은 NFC로 정규화한다.
+- (계획 판정 P-2로 고침, spec-amendments §16: 위 "스파이크"의 결과 Node 22의 `TextDecoder('euc-kr')`는 엄격한 EUC-KR이라 시험과 앱이 갈라졌다. CP949는 `scripts/build-cp949.py`가 만들어 커밋한 23,940칸 표 하나로 디코드하고, "안 되면"과 `scripts/build-cp949.mjs`는 없다.)
 
 ### 3.4 SRT
 - 블록은 빈 줄로 가른다(`\r\n`·`\r`·`\n` 모두). 번호 줄은 있어도 없어도 된다.
@@ -90,6 +91,7 @@
 
 ### 3.8 언어
 - 파일 이름의 끝에서 둘째 마디가 언어 꼬리이면 쓴다: `강의.ko.srt` → `ko`, `lecture.en-US.vtt` → `en-US`, `강의.kor.srt` → `ko`(ISO 639-2 세 글자 중 `kor`·`eng`·`jpn`·`zho`·`chi`·`deu`·`ger`·`fra`·`fre`·`spa`만 두 글자로 바꿈). 꼬리 규칙은 `^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$`.
+- (계획 판정 P-4로 고침, spec-amendments §16: 꼬리는 두 글자 기본 + 선택 지역 부분이고, 세 글자는 위 열 개만 받는다 — 위 정규식 `{2,3}`은 `강의.new.srt`를 언어로 읽는다.)
 - 없으면 VTT 머리의 `Language:`, 그것도 없으면 `null`.
 - 화면의 이름은 렌더러가 `Intl.DisplayNames(['ko'], { type: 'language' })`로 만든다("한국어", "영어", "영어(미국)"). 언어가 없으면 "자막 1", "자막 2"(트랙 순서), 같은 이름이 둘이면 뒤 것에 " 2"를 붙인다.
 
@@ -219,6 +221,7 @@ CREATE VIRTUAL TABLE cue_texts_fts USING fts5(
 - 모두 명령 레지스트리(`COMMANDS`)에 `key:` 사양으로 넣는다. 새 맥락 `video`, 새 상황 필드 `videoOpen`(재생할 수 있는 영상 리더가 보임) · `videoCaptions`(트랙 있음)을 `CommandContextState`와 `ui:reportContext`에 더한다.
 - 렌더러 키맵(`useKeymap`)이 `event.code`로 비교하므로 한글 입력 상태에서도 동작한다. 입력란·IME 조합 중에는 무시한다(기존).
 - **포커스 예외**: 포커스가 단추에 있으면 스페이스·↩는 그 단추의 기본 동작이다. 스크러버·음량 막대에 있으면 화살표는 슬라이더 동작이다(스크러버는 같은 ±5초).
+- (계획 판정 P-18 · P-19로 고침, spec-amendments §16: esc는 명령 `video.exitFullScreen`이고, ⌘F의 명령은 `reader.find`가 아니라 `library.find`다.)
 - 메뉴 막대에는 넣지 않는다. 팔레트와 ⌘/ 시트에 키와 함께 보인다. (컨트롤러 판정 J9: Electron 메뉴의 수식 키 없는 가속기는 입력란 안에서도 먼저 잡힌다 — 한 글자 키는 ADR-0005대로 렌더러 키맵만 처리한다)
 - 한 프레임 간격: 재생 중 `requestVideoFrameCallback`의 `mediaTime` 차이로 추정한 값, 추정 전에는 1/30초.
 
@@ -290,6 +293,7 @@ CREATE VIRTUAL TABLE cue_texts_fts USING fts5(
 - `search:body`(정보와 본문 범위의 자료 id 집합): 지금의 PDF 쪽 글 일치에 **살아 있는 영상의 자막 큐 일치**를 합친다. 조건: `items.deleted_at IS NULL`, `items.type = 'video'`, `item_assets.role = 'subtitle'`, `subtitle_tracks` 존재.
 - 낱말 규칙은 M7c 그대로(`bodyQueryWords`): 3글자 이상은 FTS5 trigram(`cue_texts_fts`), 2글자는 `cue_texts`의 부분 일치 훑기(덩어리 나눔·취소), 1글자는 정보만. 여러 낱말은 **큐 하나 안의 AND**(쪽 단위 AND와 같은 규칙).
 - `search:pages` → **`search:matches`**로 이름과 모양을 바꾼다: `{ matches: Array<{ kind: 'page', pageIndex, snippet } | { kind: 'time', startMs, snippet, track: string | null }>, total }`. PDF는 지금과 같은 행, 동영상은 시간 행(시작 순, 트랙이 둘 이상인 자료만 `track` = 언어 코드). 조각 표시 `U+E000`/`U+E001`과 최대 20행 · "외 N개"는 그대로.
+- (계획 판정 P-14로 고침, spec-amendments §16: 시간 행의 `track`은 언어 코드가 아니라 자막 **자산 id**다.)
 - 진행 줄("본문 색인 37 / 120")은 PDF만 센다 — 자막은 붙일 때 색인되므로 기다림이 없다.
 
 ### 8.2 화면
@@ -317,6 +321,7 @@ CREATE VIRTUAL TABLE cue_texts_fts USING fts5(
 ## 10. 명령 · 메뉴 · 키
 - 새 명령(맥락 `video`, 모두 `videoOpen` 필요): `video.playPause`(스페이스·K), `video.back10`(J), `video.forward10`(L), `video.back5`(←), `video.forward5`(→), `video.frameBack`(,), `video.frameForward`(.), `video.slower`(⇧,), `video.faster`(⇧.), `video.toggleCaptions`(C, `videoCaptions` 필요), `video.toggleMute`(M), `video.toggleFullScreen`(F), `video.addSubtitles`(키 없음 — "자막 파일 추가…").
 - `reader.find`(⌘F)의 가용성에 `videoOpen && videoCaptions`를 더하고, 처리기는 보이는 리더가 영상이면 대본 검색 칸으로 간다(J8). 명령·가속기·메뉴 항목은 하나 그대로다.
+- (계획 판정 P-18 · P-19로 고침, spec-amendments §16: `video.exitFullScreen`을 더하고, `reader.find`는 `library.find`다.)
 - 토글 이름(Mac 관례 — 지금 누르면 할 동작): "재생"/"일시정지", "자막 켜기"/"자막 끄기", "음소거"/"음소거 해제", "전체 화면으로 보기"/"전체 화면 끝내기". 중립 이름(⌘/ 시트·7.4 표): "재생/일시정지", "자막 켜기/끄기", "음소거", "전체 화면".
 - `commands-coverage`에 `M8A_COMMANDS`.
 
@@ -331,6 +336,7 @@ CREATE VIRTUAL TABLE cue_texts_fts USING fts5(
 | `subtitles:restore` | `{ itemId, assetId, position }` | `Track` |
 | `search:matches` | `{ itemId, query }` | 8.1 |
 
+- (계획 판정 P-7로 고침, spec-amendments §16: `subtitles:remove`의 결과는 `{ position, language }`이고 `subtitles:restore`의 입력에 `language`가 더해진다.)
 - 모든 채널은 기존 `handle()` 래퍼(발신자 검사 + zod + Result)와 `channel-kinds.ts` 등록. 알림 `subtitles:changed { itemId }`는 이벤트 채널 허용 목록에 더한다.
 - 가져오기 결과(`ImportReport`)에 `subtitles: { attached: number, failed: { name, reason }[] }`를 더한다.
 - 설정 키 셋(4.4), locator 확장(4.4), `CommandContextState`의 `videoOpen`·`videoCaptions`(6.3).
@@ -340,7 +346,7 @@ CREATE VIRTUAL TABLE cue_texts_fts USING fts5(
 - 빈 상태: "자막이 없습니다" / "SRT나 VTT 자막 파일을 추가하면 대본이 여기에 표시되고, 문장을 눌러 그 시간으로 이동할 수 있습니다." / [자막 파일 추가…].
 - 대본: "대본", "대본에서 찾기", "현재 위치 따라가기", "N개", "처음부터 · 1 / N", 결과 없음(7.4).
 - 붙이기 토스트: "자막 N개를 붙였습니다", "이미 붙어 있는 자막입니다", 실패 머리 "자막 N개를 붙이지 못했습니다". 실패 토스트는 닫기 단추를 두고, 행(이름 — 이유) 아래 다음 행동 한 줄을 둔다: `unreadable`이 있으면 "UTF-8로 저장한 뒤 다시 붙이세요.", `no-cues`가 있으면 "SRT · VTT 형식인지 확인하세요."(둘 다면 "UTF-8로 저장한 뒤 다시 붙이세요. SRT · VTT 형식인지도 확인하세요."). 영상 리더의 토스트는 무대 오른쪽 위에 선다(소유자 결정 2026-11-26 — 자막도 컨트롤도 가리지 않는다). (목업 비평 뒤 컨트롤러 고침 2026-11-25)
-- 실패 이유: `unreadable` "글자 인코딩을 알아볼 수 없습니다", `no-cues` "자막 문장을 찾지 못했습니다", `too-large` "자막 파일이 너무 큽니다(5 MB까지)", `too-many-cues` "자막 문장이 너무 많습니다(2만 개까지)", 확장자 "자막 파일(SRT · VTT)만 붙일 수 있습니다", 짝 없음 "자막 파일은 동영상에 붙입니다", 영상 실패 "동영상을 가져오지 못해 자막도 붙이지 않았습니다", 파일 오류(`io`) "파일을 읽지 못했습니다". 짝 없음 행(가져오기에서만 생긴다)이 있으면 공통 안내 "동영상 탭에 끌어 놓거나 자막 메뉴의 ‘자막 파일 추가…’로 붙이세요." 확장자 행(영상 탭에 놓기·파일 추가…)에는 붙이지 않는다 — 사람이 이미 영상 앞에 있고 행의 이유가 다음 행동이다. (디자인 비평 뒤 자율 결정 2026-11-27)(목업 비평 Q6 — '자막 ▾'는 화면에 보이는 이름이 아니다). (목업 비평 뒤 컨트롤러 고침 2026-11-25)
+- 실패 이유: `unreadable` "글자 인코딩을 알아볼 수 없습니다", `no-cues` "자막 문장을 찾지 못했습니다", `too-large` "자막 파일이 너무 큽니다(5 MB까지)", `too-many-cues` "자막 문장이 너무 많습니다(2만 개까지)", 확장자 "자막 파일(SRT · VTT)만 붙일 수 있습니다", 짝 없음 "자막 파일은 동영상에 붙입니다", 영상 실패 "동영상을 가져오지 못해 자막도 붙이지 않았습니다", 파일 오류(`io`) "파일을 읽지 못했습니다". 짝 없음 행(가져오기에서만 생긴다)이 있으면 공통 안내 "동영상 탭에 끌어 놓거나 자막 메뉴의 ‘자막 파일 추가…’로 붙이세요."(목업 비평 Q6 — '자막 ▾'는 화면에 보이는 이름이 아니다) (목업 비평 뒤 컨트롤러 고침 2026-11-25) 확장자 행(영상 탭에 놓기·파일 추가…)에는 붙이지 않는다 — 사람이 이미 영상 앞에 있고 행의 이유가 다음 행동이다. (디자인 비평 뒤 자율 결정 2026-11-27)
 - 제거: "‘{이름}’ 자막을 제거했습니다" + [실행 취소].
 - 끌어 놓기: "자막으로 붙이기" / "SRT · VTT 파일을 이 동영상에 붙입니다", 요약의 "자막 N". 자막이 섞인 라이브러리 드롭의 ⌥(외부 파일로 연결) 카드에 "자막은 사본으로 둡니다."를 더한다(4.2). (목업 비평 뒤 컨트롤러 고침 2026-11-25)
 - 항목 패널: "자막" 줄, '본문 일치' 시간 행, 머리 개수 "문장 N개", 20행 넘음 "외 N문장". 두 자막이 같은 시각에 함께 일치하면 두 행·두 문장으로 센다(J10). (목업 비평 뒤 컨트롤러 고침 2026-11-25)
@@ -400,7 +406,7 @@ M1에서 승인한 `reader-video.html`이 기준이고, 그 뒤 생긴 상태와
   - 커밋(작은 글 파일, `static/subtitles/`): `lecture-60s.ko.srt`, `lecture-60s.en.vtt`(이 저장소가 쓴 한국어·영어 강의 문장, 두 줄 큐·겹침 큐·태그 포함), `broken.srt`(시간 줄 없음), `notes.ko.srt`(짝 없는 자막).
 - 로컬: 새 spec은 `taskset -c 0-1`, 전체는 `taskset -c 0-3`. `xvfb-run -s "-screen 0 1024x768x24"`로 기능 E2E 한 번.
 - **Mac**: 리더와 자막이 끝난 중간 지점에서 `e2e` 한 번, 끝에 `all` — 최종 코드에서 두 번까지. 새 증거 spec `tests/evidence/m8a-shots.evidence.ts`(`@m8a`, suite `m8a`): 13절 ①–⑦ 상태를 라이트·다크 창 사진(`screencapture -l`)과 페이지 사진으로(T1a `t1a-shots`와 같은 틀). Mac에서 실제 영상 재생·전체 화면 전환·한 프레임 이동을 본다.
-- **데모**(3–4분, 장 목록): 영상과 자막 둘을 함께 끌어 놓기 → 열기·재생·J/K/L·속도 → 자막 오버레이 → 대본 클릭·따라가기·검색 → 영상 탭에 영어 자막 끌어 놓기 → 트랙 바꾸기·C → F 전체 화면과 돌아오기 → 라이브러리 '정보와 본문'에서 자막 낱말 검색 → 시간 행 → 그 시각에서 열림 → 자막 제거와 되돌리기 → 다시 실행하면 같은 시각·같은 트랙.
+- **데모**(3–4분, 장 목록): 영상과 자막 둘을 함께 끌어 놓기 → 열기·재생·J/K/L·속도 → 자막 오버레이 → 대본 클릭·따라가기·검색 → 영상 탭에 영어 자막 끌어 놓기 → 트랙 바꾸기·C → F 전체 화면과 돌아오기 → 라이브러리 '정보와 본문'에서 자막 낱말 검색 → 시간 행 → 그 시각에서 열림 → 자막 제거와 되돌리기 → 다시 실행하면 같은 시각·같은 트랙. (구현의 읽기: 첫 장은 영상과 한국어 자막 하나를 함께 끌어 놓고 영어 자막은 영상 탭에 끌어 놓는다 — spec-amendments §16 E "데모의 첫 장". 장은 열한 개, Linux 전체 속도 3:18)
 - **디자인 비평**: UI 작업마다 Linux 투어 PNG와 목업 대조, 끝에 Mac 증거 사진과 데모 프레임(라이트·다크).
 
 ## 16. 계획의 Global Constraints에 들어갈 것

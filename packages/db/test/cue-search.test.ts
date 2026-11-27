@@ -1,6 +1,6 @@
 import { bodyQueryWords, MARK_END, MARK_START, newId, nowIso, type Cue } from '@learn/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CUE_INDEX_UNION_SQL, CUE_WALK_MAX, LibraryRepository, SubtitlesRepository, cueItemIds, cueLikeChunks, cueMatches, cueRanges, type AssetRow, type Db } from '../src/index';
+import { CUE_INDEX_SQL, CUE_WALK_MAX, LibraryRepository, SubtitlesRepository, cueItemIds, cueLikeChunks, cueMatches, cueRanges, type AssetRow, type Db } from '../src/index';
 import { freshDb, seedItem } from './fixtures';
 
 let db: Db;
@@ -157,7 +157,7 @@ describe('cueMatches', () => {
     expect(r.matches.every((m) => !m.snippet.includes('나'))).toBe(true);
   });
 
-  it('a long video whose second track came late is read from each track\'s own ids, not from the span over the videos between', () => {
+  it('a long video whose second track came late joins only its own tracks\' ids, not the span over the videos between', () => {
     const a = video();
     const long = (tag: string) => Array.from({ length: CUE_WALK_MAX + 1 }, (_, i) => `칼슘 ${tag}${i}`);
     const one = track(a, long('가'));
@@ -176,9 +176,10 @@ describe('cueMatches', () => {
     // A word only the late track has, and one only the videos between have.
     expect(cueMatches(db, a, bodyQueryWords('칼슘 다12')).matches.map((m) => [m.startMs, m.track])).toEqual([[12_000, two.id]]);
     expect(cueMatches(db, a, bodyQueryWords('칼슘 나12'))).toEqual({ matches: [], total: 0 });
-    // Each arm keeps the index plan: the word's matches first, bounded by the rowid range (MATCH, >, <), then the video's joins.
-    const plan = db.prepare(`EXPLAIN QUERY PLAN ${CUE_INDEX_UNION_SQL(0, 2)}`).all('x', '"칼슘"', 1, 2, 'x', '"칼슘"', 3, 4) as Array<{ detail: string }>;
-    expect(plan.filter((p) => p.detail.startsWith('SCAN')).map((p) => p.detail)).toEqual(['SCAN f VIRTUAL TABLE INDEX 0:M1><', 'SCAN f VIRTUAL TABLE INDEX 0:M1><']);
+    // The index plan: the word's matches first, bounded by the span (MATCH, >, <), read once; the ranges filter the rows before the joins.
+    const plan = db.prepare(`EXPLAIN QUERY PLAN ${CUE_INDEX_SQL(0, 2)}`).all('x', '"칼슘"', 1, 4, 1, 2, 3, 4) as Array<{ detail: string }>;
+    expect(plan.map((p) => p.detail)[0]).toBe('SCAN f VIRTUAL TABLE INDEX 0:M1><');
+    expect(plan.filter((p) => p.detail.startsWith('SCAN')).map((p) => p.detail)).toEqual(['SCAN f VIRTUAL TABLE INDEX 0:M1><']);
   });
 
   it('another video, a trashed one and a PDF give none', () => {

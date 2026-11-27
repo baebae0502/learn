@@ -61,12 +61,15 @@ const INDEX_CUES = `cue_texts_fts f
 const CUES_FROM = (likes: number): string =>
   `FROM ${TRACK_CUES} CROSS JOIN cue_texts_fts f ON f.rowid = c.id WHERE st.item_id = ? AND cue_texts_fts MATCH ?${LIKE_CLAUSE.repeat(likes)}`;
 /**
- * The index plan bounded to one id range: the cues of one file are written together, so each track's lie in a range of their own, and
- * the index is read only there. One range over all of a video's tracks would span the library between a track and one attached later.
+ * The index plan, bounded by the ids the video's cues lie in. The cues of one file are written together, so each track's lie in a range
+ * of their own, and one attached later lies past the rest of the library. The index is handed the span of them all: a bound shortens the
+ * read of a short word, while a long phrase costs about as much bounded as not, so one read beats one per range. The rows outside every
+ * range are then dropped before the video's joins (`+f.rowid` is a filter, not a second bound for the index), and only its own are joined.
  */
-const INDEX_ARM = (likes: number): string =>
-  `SELECT c.id AS id, c.start_ms AS startMs, st.position AS position, st.asset_id AS assetId FROM ${INDEX_CUES}
-   WHERE st.item_id = ? AND cue_texts_fts MATCH ? AND f.rowid BETWEEN ? AND ?${LIKE_CLAUSE.repeat(likes)}`;
+const INDEX_FROM = (likes: number, ranges: number): string => {
+  const own = ranges > 1 ? ` AND (${Array.from({ length: ranges }, () => '+f.rowid BETWEEN ? AND ?').join(' OR ')})` : '';
+  return `FROM ${INDEX_CUES} WHERE st.item_id = ? AND cue_texts_fts MATCH ? AND f.rowid BETWEEN ? AND ?${own}${LIKE_CLAUSE.repeat(likes)}`;
+};
 const ITEM_ORDER = `ORDER BY c.start_ms, st.position LIMIT ${TEXT_LIMITS.pagesShown}`;
 
 export interface CueRange {
@@ -82,7 +85,7 @@ function trackRanges(db: Db, itemId: string): { n: number; ranges: CueRange[] } 
        WHERE st.item_id = ? GROUP BY a.sha256 ORDER BY lo`,
     )
     .all(itemId) as Array<{ n: number; lo: number; hi: number }>;
-  // Ranges that meet are one: each cue is then read by one arm of the union, never counted twice.
+  // Ranges that meet are one: the filter has a term per range that is apart.
   const ranges: CueRange[] = [];
   for (const { lo, hi } of rows) {
     const prev = ranges.at(-1);
@@ -95,8 +98,8 @@ function trackRanges(db: Db, itemId: string): { n: number; ranges: CueRange[] } 
 /** The id ranges the index plan reads for a video (exported for its test). */
 export const cueRanges = (db: Db, itemId: string): CueRange[] => trackRanges(db, itemId).ranges;
 
-/** The index plan's union over `arms` ranges (exported for its query-plan test). */
-export const CUE_INDEX_UNION_SQL = (likes: number, arms: number): string => Array.from({ length: arms }, () => INDEX_ARM(likes)).join(' UNION ALL ');
+/** The index plan's rows for a video whose cues lie in `ranges` ranges (exported for its query-plan test). */
+export const CUE_INDEX_SQL = (likes: number, ranges: number): string => `SELECT c.id AS id ${INDEX_FROM(likes, ranges)}`;
 
 /**
  * The cues of one video that match, by start time (the first track's on a tie), a snippet each; `total` counts all of them.
@@ -111,14 +114,14 @@ export function cueMatches(db: Db, itemId: string, words: BodyWords): { matches:
     const { n, ranges } = trackRanges(db, itemId);
     const plan: CuesPlan = n <= CUE_WALK_MAX ? 'cues' : 'index';
     const match = ftsMatch(words.fts);
-    // The index plan reads one arm per range of the video's ids.
-    const union = CUE_INDEX_UNION_SQL(likes.length, ranges.length);
-    const [chosenSql, countSql, args] =
+    const [from, args] =
       plan === 'cues'
-        ? [`SELECT c.id AS id, c.start_ms AS startMs, st.asset_id AS assetId ${CUES_FROM(likes.length)} ${ITEM_ORDER}`, `SELECT COUNT(*) ${CUES_FROM(likes.length)}`, [itemId, match, ...likes]]
-        : [`SELECT id, startMs, assetId FROM (${union}) ORDER BY startMs, position LIMIT ${TEXT_LIMITS.pagesShown}`, `SELECT COUNT(*) FROM (${union})`, ranges.flatMap((r) => [itemId, match, r.lo, r.hi, ...likes])];
-    // The twenty rows are chosen first: a snippet is computed for each of them only, not for every matching cue before the sort.
-    const chosen = db.prepare(chosenSql).all(...args) as Array<{ id: number; startMs: number; assetId: string }>;
+        ? [CUES_FROM(likes.length), [itemId, match, ...likes]]
+        : [INDEX_FROM(likes.length, ranges.length), [itemId, match, ranges[0]!.lo, ranges.at(-1)!.hi, ...(ranges.length > 1 ? ranges.flatMap((r) => [r.lo, r.hi]) : []), ...likes]];
+    // The twenty rows are chosen first, and counted in the same read: a snippet is computed for each of them only, not for every matching cue.
+    const chosen = db
+      .prepare(`SELECT c.id AS id, c.start_ms AS startMs, st.asset_id AS assetId, COUNT(*) OVER () AS total ${from} ${ITEM_ORDER}`)
+      .all(...args) as Array<{ id: number; startMs: number; assetId: string; total: number }>;
     // One statement for the chosen cues: an aux function asked with `rowid = ?` beside MATCH answered another cue's text (two tracks with the
     // same start gave the second one the first one's sentence), and a rowid list does not.
     const ids = chosen.map((r) => r.id);
@@ -133,8 +136,7 @@ export function cueMatches(db: Db, itemId: string, words: BodyWords): { matches:
       .all(match, ...ids) as Array<{ id: number; cut: string; whole: string }>;
     for (const m of marked) shown.set(m.id, wholeCueLength(m.whole) <= WHOLE_CUE_CHARS ? m.whole : m.cut);
     const rows = chosen.map((r) => ({ startMs: r.startMs, assetId: r.assetId, snippet: shown.get(r.id) ?? '' }));
-    const total = rows.length < TEXT_LIMITS.pagesShown ? rows.length : (db.prepare(countSql).pluck().get(...args) as number);
-    return { matches: rows.map((r) => ({ kind: 'time', startMs: r.startMs, snippet: r.snippet, track: trackOf(r.assetId) })), total };
+    return { matches: rows.map((r) => ({ kind: 'time', startMs: r.startMs, snippet: r.snippet, track: trackOf(r.assetId) })), total: chosen[0]!.total };
   }
   const from = `FROM ${TRACK_CUES} WHERE st.item_id = ?${LIKE_CLAUSE.repeat(likes.length)}`;
   const rows = db

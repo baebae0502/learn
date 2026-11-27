@@ -1,6 +1,6 @@
 import { bodyQueryWords, MARK_END, MARK_START, newId, nowIso, type Cue } from '@learn/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CUE_WALK_MAX, LibraryRepository, SubtitlesRepository, cueItemIds, cueLikeChunks, cueMatches, type AssetRow, type Db } from '../src/index';
+import { CUE_INDEX_UNION_SQL, CUE_WALK_MAX, LibraryRepository, SubtitlesRepository, cueItemIds, cueLikeChunks, cueMatches, cueRanges, type AssetRow, type Db } from '../src/index';
 import { freshDb, seedItem } from './fixtures';
 
 let db: Db;
@@ -155,6 +155,30 @@ describe('cueMatches', () => {
     expect(r.matches).toHaveLength(20);
     expect(r.matches.slice(0, 2).map((m) => [m.startMs, m.track])).toEqual([[0, one.id], [0, two.id]]);
     expect(r.matches.every((m) => !m.snippet.includes('나'))).toBe(true);
+  });
+
+  it('a long video whose second track came late is read from each track\'s own ids, not from the span over the videos between', () => {
+    const a = video();
+    const long = (tag: string) => Array.from({ length: CUE_WALK_MAX + 1 }, (_, i) => `칼슘 ${tag}${i}`);
+    const one = track(a, long('가'));
+    const between = [video(), video(), video()].map((b) => track(b, long('나')));
+    const two = track(a, long('다'));
+    const idsOf = (sha: string) => db.prepare('SELECT MIN(id) AS lo, MAX(id) AS hi FROM cue_texts WHERE sha256 = ?').get(sha) as { lo: number; hi: number };
+    const [r1, r2] = [idsOf(one.sha256), idsOf(two.sha256)];
+    expect(cueRanges(db, a)).toEqual([r1, r2]);
+    // The ids between the two are the other videos' only: the span over both would read all of them.
+    expect(between.map((b) => idsOf(b.sha256)).every(({ lo, hi }) => lo > r1.hi && hi < r2.lo)).toBe(true);
+
+    const r = cueMatches(db, a, bodyQueryWords('칼슘'));
+    expect(r.total).toBe(2 * (CUE_WALK_MAX + 1));
+    expect(r.matches.slice(0, 4).map((m) => [m.startMs, m.track])).toEqual([[0, one.id], [0, two.id], [1000, one.id], [1000, two.id]]);
+    expect(r.matches.every((m) => !m.snippet.includes('나'))).toBe(true);
+    // A word only the late track has, and one only the videos between have.
+    expect(cueMatches(db, a, bodyQueryWords('칼슘 다12')).matches.map((m) => [m.startMs, m.track])).toEqual([[12_000, two.id]]);
+    expect(cueMatches(db, a, bodyQueryWords('칼슘 나12'))).toEqual({ matches: [], total: 0 });
+    // Each arm keeps the index plan: the word's matches first, bounded by the rowid range (MATCH, >, <), then the video's joins.
+    const plan = db.prepare(`EXPLAIN QUERY PLAN ${CUE_INDEX_UNION_SQL(0, 2)}`).all('x', '"칼슘"', 1, 2, 'x', '"칼슘"', 3, 4) as Array<{ detail: string }>;
+    expect(plan.filter((p) => p.detail.startsWith('SCAN')).map((p) => p.detail)).toEqual(['SCAN f VIRTUAL TABLE INDEX 0:M1><', 'SCAN f VIRTUAL TABLE INDEX 0:M1><']);
   });
 
   it('another video, a trashed one and a PDF give none', () => {

@@ -39,7 +39,7 @@ export interface TutorStartup {
  * found missing or back are announced (libraryChanged{availability}) — the linked ones before the folder is read, so the
  * table is right as soon as it can be. The result is the context's newest check.
  */
-export async function runCheck(ctx: CheckContext, announce: (itemIds: string[]) => void, opts: { startup?: boolean; tutor?: TutorStartup; removeFiles?(assets: PurgedAsset[]): void } = {}): Promise<LibraryCheck> {
+export async function runCheck(ctx: CheckContext, announce: (itemIds: string[]) => void, opts: { startup?: boolean; tutor?: TutorStartup; removeFiles?(assets: PurgedAsset[]): Promise<void> | void } = {}): Promise<LibraryCheck> {
   // Before any await: the first sessions:get must see answers a quit cut off as failed, even when the disk is slow to stat.
   if (opts.startup && opts.tutor) {
     try {
@@ -50,16 +50,19 @@ export async function runCheck(ctx: CheckContext, announce: (itemIds: string[]) 
     }
   }
   // Same place and reason: the rows go now, before the first await; the files follow the commit (the caller removes them).
+  let swept: Promise<void> | void = undefined;
   if (opts.startup) {
     try {
       const orphans = ctx.subtitles.sweepOrphans();
-      if (orphans.length > 0) opts.removeFiles?.(orphans);
+      if (orphans.length > 0) swept = opts.removeFiles?.(orphans);
     } catch (e) {
       console.warn(`[check] the unlinked subtitles were not swept: ${toLearnError(e).code}`);
     }
   }
   const linked = itemsOf(ctx.repo, await refreshLinkedAvailability(ctx.layout, ctx.repo));
   if (linked.length > 0) announce(linked);
+  // A swept copy still on the disk has no row any more: read before it went, the folder would show it as an unused copy.
+  await swept;
   const before = managedState(ctx.repo);
   const check = await checkLibrary(ctx.layout, ctx.repo, { interruptJobs: opts.startup === true, stagingInUse: ctx.importer.stagingInUse() });
   const moved = [...managedState(ctx.repo)].filter(([id, availability]) => before.get(id) !== availability).map(([id]) => id);
@@ -107,8 +110,8 @@ export interface StartCheckDeps {
   onChecked?(): void;
   /** The tutor's startup repair (P-8): runs with the first check only. */
   tutor?: TutorStartup;
-  /** The files of the unlinked subtitle assets the startup sweep removed (after its commit). */
-  removeFiles?(assets: PurgedAsset[]): void;
+  /** The files of the unlinked subtitle assets the startup sweep removed (after its commit); the check reads the folder once they are gone. */
+  removeFiles?(assets: PurgedAsset[]): Promise<void> | void;
 }
 
 /**

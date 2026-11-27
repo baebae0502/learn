@@ -14,9 +14,10 @@ export const purgeFilesSettled = (): Promise<void> => filesSettled;
  * After the commit (ADR-0006): the files of the assets no item uses any more, behind the purges before it. The answer
  * does not wait for them — the trash view has already changed. What cannot be removed stays for the library check;
  * the log has the count only. A closed database (the app quitting) keeps every copy: nothing can be asked again.
+ * Settles (never rejects) once these files and the ones queued before them are done.
  */
-export function removeFilesAfter(ctx: LibraryContext, assets: PurgeResult['assets']): void {
-  if (assets.length === 0) return;
+export function removeFilesAfter(ctx: LibraryContext, assets: PurgeResult['assets']): Promise<void> {
+  if (assets.length === 0) return filesSettled;
   const inUse = (relativePath: string): boolean => !ctx.db.open || ctx.repo.managedPathInUse(relativePath);
   filesSettled = filesSettled
     .then(() => timeLastAsync('purgeFiles', () => removePurgedFiles(ctx.layout, assets, { inUse })))
@@ -24,6 +25,7 @@ export function removeFilesAfter(ctx: LibraryContext, assets: PurgeResult['asset
       if (failed > 0) console.warn(`[library] purge: ${failed} file(s) left for the library check`);
     })
     .catch((e: unknown) => console.warn(`[library] purge: removing its files failed: ${toLearnError(e).code}`));
+  return filesSettled;
 }
 
 /**
@@ -34,7 +36,7 @@ function announcePurge(ctx: LibraryContext, result: PurgeResult, deps: IpcDeps):
   const { itemIds, collectionIds } = result;
   if (itemIds.length > 0) broadcast('libraryChanged', { reason: 'purge', itemIds });
   else if (collectionIds.length > 0) broadcast('libraryChanged', { reason: 'purge' });
-  removeFilesAfter(ctx, result.assets);
+  void removeFilesAfter(ctx, result.assets);
   if (result.conversationIds.length > 0) void deps.tutor?.removeWorkFolders(result.conversationIds);
   return { itemIds, collectionIds };
 }

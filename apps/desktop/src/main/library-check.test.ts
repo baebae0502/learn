@@ -4,7 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CheckAction, ImportReport, LibraryCheck, LibraryCheckPayload, SheetPayload } from '@learn/domain';
-import { attachSubtitleFiles, managedRelativePath, resolveAssetPath } from '@learn/library';
+import type { PurgedAsset } from '@learn/db';
+import { attachSubtitleFiles, managedRelativePath, removePurgedFiles, resolveAssetPath } from '@learn/library';
 import type { ImportBatch } from './jobs/import-queue';
 import { AUTO_POLL_MS, LAST_SHOWN, autoShowDue, checkPayload, clearToShow, createCheckSheets, importAndWait, runCheck, startLibraryCheck, type AutoGate, type CheckSheetsDeps } from './library-check';
 import { openLibraryContext, type LibraryContext } from './library-context';
@@ -279,6 +280,20 @@ describe('the sweep of unlinked subtitle copies at startup (P-8)', () => {
     expect(ctx.repo.getAsset(asset.id)).toBeUndefined();
     expect(ctx.subtitles.cueTextCount({ sha256: asset.sha256 })).toBe(0);
     linked.mockRestore();
+  });
+
+  it('reads the folder once the swept copies are gone: none of them is reported as 쓰이지 않는 사본, though another stray copy is', async () => {
+    const ctx = await library();
+    const { asset } = await orphaned(ctx);
+    const file = resolveAssetPath(ctx.layout, asset);
+    expect(fs.existsSync(file)).toBe(true);
+    const stray = put(path.join(ctx.layout.assetsDir, 'ab', 'stray'), 4);
+    // A slow disk: each copy goes a while after the sweep's commit, behind the purges before it.
+    const removeFiles = (assets: PurgedAsset[]) =>
+      new Promise<void>((resolve) => setTimeout(resolve, 50)).then(() => removePurgedFiles(ctx.layout, assets, { inUse: (key) => ctx.repo.managedPathInUse(key) })).then(() => {});
+    const check = await runCheck(ctx, () => {}, { startup: true, removeFiles });
+    expect(check.unreferenced.keys).toEqual([path.relative(ctx.layout.root, stray).split(path.sep).join('/')]);
+    expect(fs.existsSync(file)).toBe(false);
   });
 
   it('leaves a linked subtitle alone, and records only the code when the sweep throws', async () => {

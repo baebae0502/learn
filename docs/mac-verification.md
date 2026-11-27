@@ -917,6 +917,7 @@ M8a의 macOS 실행. 계획은 영상 리더와 자막이 끝난 중간 지점�
 ### Mac `all`이 재고 정하는 것
 - **실제 영상 재생과 한 프레임 이동**: Mac의 Chromium이 H.264/AAC 재생 · 프레임 단위 이동(`,` `.`)과 `requestVideoFrameCallback`의 프레임 간격 추정이 Linux와 같은지(명세 18절). `video-perf` 줄의 Mac 값과 함께 본다.
 - **실제 창 전체 화면 전환**: 무대 모드의 들어가기 · 나오기와 빠른 다섯 번 토글이 `all`에서도 서는지(위 중간 실행은 통과). 들어가기 · 나가기 사건이 2초 넘게 늦으면 창이 전체 화면인 채 무대 없이 남을 수 있다(Task 9 리뷰의 남은 minor) — 이 실행에서 보인 바가 없는지.
+- **무대로 끝낸 창(최종 리뷰 M6 · 재검토 N1)**: `stage-relaunch.evidence.ts`(`@m8a`)의 세 시험이 판정한다 — 무대에서 끝내면 다음 실행은 창이고 무대는 꺼져 있다, 사용자가 연 전체 화면(main의 `setFullScreen(true)`)은 끝낸 뒤에도 5초 동안 전체 화면이고 F · esc는 무대만 켜고 끈다, 무대에서 main을 SIGKILL하면 다음 실행은 창이고 진행 중인 것이 없다. `stage-relaunch.json`의 `stageLines`에 실행마다 창을 만들 때의 `isFullScreen`과 `show` · `enter-full-screen`의 순서가 있다. Linux Xvfb에서 이 앱의 창은 전체 화면으로 끝내도 창으로 저장되므로 둘째 시험의 되살리기는 Linux에서 기록만 한다(`restored: false`).
 - **대본 사이드바의 vibrancy**: `will-change: transform`과 하단 −12 px 여백이 macOS의 사이드바 재질을 깨지 않는지(`m8a-shots`의 창 사진).
 - **끌기 종류**: 플랫폼이 끌기 중에 보고하는 파일 형식(`DataTransferItem.type` — Linux는 `.vtt`를 `text/vtt`, `.srt`를 `application/x-subrip`으로 보고한다)을 `m8a-drop-types.json`이 Mac에서 읽는다. 값이 비면 끌기 관문(5.3)이 영상 탭의 자막 드롭을 놓칠 수 있다.
 - **데모**: 열한 장(첫 장 끌어 놓기 · 열기와 재생 키 · 자막 오버레이 · 대본 · 영어 자막 끌어 놓기 · 자막 고르기와 C · F 전체 화면 · 라이브러리 검색 · 시간 행 · 제거와 실행 취소 · 다시 실행)이 `RECORD_SECONDS`(300초) 안에 끝나는지. 두 끌어 놓기는 Finder가 아니라 합성 끌기 사건이며 자막과 태그가 그렇게 말한다.

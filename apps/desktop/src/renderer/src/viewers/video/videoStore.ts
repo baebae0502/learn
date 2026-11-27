@@ -104,6 +104,8 @@ export interface VideoProbe {
   status: VideoStatus;
   timeMs: number;
   paused: boolean;
+  /** The store's play state, which the keys' rules read (videoPlaying): it follows the element's play and pause events. */
+  playing: boolean;
   rate: number;
   volume: number;
   muted: boolean;

@@ -106,6 +106,8 @@ test('the keys with the stage focused: K and Space, J L, the arrows, the frame s
     await expect.poll(() => paused(page)).toBe(false);
     await page.keyboard.press('Space');
     await expect.poll(() => paused(page)).toBe(true);
+    // The frame keys' rule reads the store's play state (videoPaused), which follows the element's pause event a task later.
+    await expect.poll(async () => (await probe(page)).playing).toBe(false);
 
     const at = await timeMs(page);
     await page.keyboard.press('l');
@@ -122,7 +124,7 @@ test('the keys with the stage focused: K and Space, J L, the arrows, the frame s
     // Frame steps, paused: one frame on is a step of at most 100 ms, one back is the same the other way.
     const before = await timeMs(page);
     await page.keyboard.press('.');
-    await expect.poll(() => timeMs(page)).toBeGreaterThan(before);
+    await expect.poll(() => timeMs(page), { message: `one frame on from ${before} ms` }).toBeGreaterThan(before);
     const forward = await timeMs(page);
     expect(forward - before).toBeLessThanOrEqual(100);
     await page.keyboard.press(',');

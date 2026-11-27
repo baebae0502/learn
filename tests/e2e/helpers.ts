@@ -22,6 +22,8 @@ export interface VideoProbe {
   status: 'opening' | 'ready' | 'unplayable' | 'failed';
   timeMs: number;
   paused: boolean;
+  /** The store's play state, which the keys' rules read: it follows the element's play and pause events a task later. */
+  playing: boolean;
   rate: number;
   volume: number;
   muted: boolean;

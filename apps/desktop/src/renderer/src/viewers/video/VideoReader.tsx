@@ -200,6 +200,7 @@ export function VideoReader({ item }: { item: LibraryItem }) {
         status: store.getState().status,
         timeMs: v ? Math.round(v.currentTime * 1000) : 0,
         paused: v ? v.paused : true,
+        playing: store.getState().playing,
         rate: v ? v.playbackRate : 1,
         volume: v ? v.volume : 1,
         muted: v ? v.muted : false,

@@ -12,6 +12,13 @@ describe('drop summary (design-spec 6 드롭 오버레이)', () => {
     expect(summarizeDrop([f('application/pdf'), png, f('image/jpeg'), f('image/webp'), f('image/gif'), f('image/avif')])).toEqual({ files: 6, pdf: 1, video: 0, image: 5, subtitles: 0, other: 0 });
     expect(summarizeDrop([png, f('image/heic'), f('image/svg+xml')])).toEqual({ files: 3, pdf: 0, video: 0, image: 1, subtitles: 0, other: 2 });
   });
+  it('counts a file with no type as a subtitle next to a video (macOS gives .srt no type), and as other without one', () => {
+    expect(summarizeDrop([f('video/mp4'), f('')])).toEqual({ files: 2, pdf: 0, video: 1, image: 0, subtitles: 1, other: 0 });
+    expect(summarizeDrop([f(''), f('video/quicktime'), f('text/vtt')])).toEqual({ files: 3, pdf: 0, video: 1, image: 0, subtitles: 2, other: 0 });
+    expect(summarizeDrop([f('')])).toEqual({ files: 1, pdf: 0, video: 0, image: 0, subtitles: 0, other: 1 });
+    expect(summarizeDrop([f('application/pdf'), f(''), f('text/plain')])).toEqual({ files: 3, pdf: 1, video: 0, image: 0, subtitles: 0, other: 2 });
+    expect(summarizeDrop([f('video/mp4'), f('text/plain')])).toEqual({ files: 2, pdf: 0, video: 1, image: 0, subtitles: 0, other: 1 });
+  });
   it('writes "파일 3개(PDF 1 · 이미지 2)"', () => {
     expect(dropSummaryText({ files: 3, pdf: 1, video: 0, image: 2, subtitles: 0, other: 0 })).toBe('파일 3개(PDF 1 · 이미지 2)');
     expect(dropSummaryText({ files: 4, pdf: 1, video: 1, image: 1, subtitles: 0, other: 1 })).toBe('파일 4개(PDF 1 · 동영상 1 · 이미지 1 · 기타 1)');
@@ -241,8 +248,8 @@ describe('the document refuses drops nothing takes (review minor 2)', () => {
 });
 
 describe('drop summary names subtitles (spec 5.3)', () => {
-  it('counts only text/vtt and application/x-subrip as subtitles; empty and text/plain are other', () => {
-    expect(summarizeDrop([f('video/mp4'), f('text/vtt'), f('application/x-subrip'), f(''), f('text/plain')])).toEqual({ files: 5, pdf: 0, video: 1, image: 0, subtitles: 2, other: 2 });
+  it('counts text/vtt and application/x-subrip as subtitles, and an empty type beside a video; text/plain is other', () => {
+    expect(summarizeDrop([f('video/mp4'), f('text/vtt'), f('application/x-subrip'), f(''), f('text/plain')])).toEqual({ files: 5, pdf: 0, video: 1, image: 0, subtitles: 3, other: 1 });
   });
   it('writes "파일 3개(동영상 1 · 자막 2)"; subtitles alone are a known kind', () => {
     expect(dropSummaryText({ files: 3, pdf: 0, video: 1, image: 0, subtitles: 2, other: 0 })).toBe('파일 3개(동영상 1 · 자막 2)');

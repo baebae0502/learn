@@ -83,8 +83,8 @@ jobs:
   mac:
     needs: fixtures
     runs-on: ${{ inputs.runner }}
-    # Setup ≤ 5 (69 s in M3's last run, the display spike capped at 3) + evidence ≤ 43 + functional E2E ≤ 62 + 5 = 115 min.
-    timeout-minutes: 115
+    # Setup ≤ 5 (69 s in M3's last run, the display spike capped at 3) + evidence ≤ 43 + functional E2E ≤ 89 + 5 = 142 min.
+    timeout-minutes: 142
     env:
       SUITE: ${{ inputs.suite }}
       PACKAGED: ${{ inputs.packaged }}
@@ -230,10 +230,12 @@ jobs:
         # T1a: M7c took 36.2 and 37.6 min here (runs 42704566004, 42716660692). The tests T1a added since eacaeed took 14.2 of the
         # Linux full run's 59.0 min (114 of 718 tests), so the rest × 59.0 / 44.8 = 1.317: 37.6 × 1.317 = 49.5, + 25 % = 62; the
         # global timeout a minute under it.
-        timeout-minutes: 62
+        # M8a: run 45968030204 ran 695 of 796 tests in its 61 min (5.27 s each on that runner) and stopped there with none failed:
+        # 796 × 5.27 s = 70 min, + 25 % = 88 for the global timeout (5280 s), the step a minute over it.
+        timeout-minutes: 89
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: evidence-results/e2e-report.json
-        run: pnpm exec playwright test --reporter=list,json --global-timeout 3660000
+        run: pnpm exec playwright test --reporter=list,json --global-timeout 5280000
 
       - name: Upload evidence
         if: always()

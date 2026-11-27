@@ -10,7 +10,7 @@ import zlib from 'node:zlib';
 import { expect, test, type Page } from '@playwright/test';
 import type { LearnPdfProbe } from '../../../apps/desktop/src/renderer/src/viewers/pdf/anchorProbe';
 import {
-  FIXTURES, addToCollection, assignTag, backupPause, backupResume, backupWaiting, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, drag, dropSource, expectWindow, holdCopies, holdJob, imageState, importFiles as importFilesNow, importPause, importPaths as importNow, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, requestLibraryCheck, rowAt, recordedPopups, restorePause, restoreResume, restoreWaiting, rowByTitle, runMenuCommand, seedLibrary, selectInPage, translationFake, seedMetadata, selectRows,
+  FIXTURES, addToCollection, assignTag, displayRoom, backupPause, backupResume, backupWaiting, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, drag, dropSource, expectWindow, holdCopies, holdJob, imageState, importFiles as importFilesNow, importPause, importPaths as importNow, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, requestLibraryCheck, rowAt, recordedPopups, restorePause, restoreResume, restoreWaiting, rowByTitle, runMenuCommand, seedLibrary, selectInPage, translationFake, seedMetadata, selectRows,
   makeTags, setTagColor, specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubSaveDialog, tagChip, textExtraction, trashItems, treeRow, waitForSheet, waitImportIdle, type Session,
   backFromReader, runMenuAccelerator, seedSessions, stageState, tutorFakeScript, tutorKillAgent, tutorNetwork, tutorProcesses,
 } from '../helpers';
@@ -3111,8 +3111,10 @@ test('M8a video reader: the stage mode, the 1024 window, and the video that cann
       await expect.poll(() => stageState(app)).toMatchObject({ stage: false, fullScreen: false, pending: false });
       await expect.poll(() => page.evaluate(() => [innerWidth, innerHeight].join('x'))).toBe('1440x900');
     }
-    await size(1024, 768);
-    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(1024);
+    const room = await displayRoom(app); // a 1024 wide display leaves a pixel less than 1024
+    const narrow = Math.min(1024, room.width);
+    await size(narrow, Math.min(768, room.height));
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBeGreaterThanOrEqual(narrow - 2); // Xvfb at 1024 takes a pixel for a frame
     for (const theme of THEMES) {
       await setTheme(page, theme);
       await seekVideo(page, 1000);

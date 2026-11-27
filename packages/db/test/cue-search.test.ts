@@ -173,10 +173,13 @@ describe('cueMatches', () => {
     track(a, ['세포막 구조']);
     track(b, ['인지질 이중층']);
     const words = bodyQueryWords('인지질');
-    expect(cueMatches(db, b, words).total).toBe(1); // positive control: the word is indexed and the snippet statement runs for b
     const prepare = vi.spyOn(db, 'prepare');
+    const snippets = () => prepare.mock.calls.filter(([sql]) => String(sql).includes('snippet(')).length;
+    expect(cueMatches(db, b, words).total).toBe(1); // positive control, under the same spy: the snippet statement is prepared for b
+    expect(snippets()).toBe(1);
+    prepare.mockClear();
     expect(cueMatches(db, a, words)).toEqual({ matches: [], total: 0 });
-    expect(prepare.mock.calls.filter(([sql]) => String(sql).includes('snippet(')), 'the snippet statement was prepared').toEqual([]);
+    expect(snippets(), 'the snippet statement was prepared').toBe(0);
     prepare.mockRestore();
   });
 });

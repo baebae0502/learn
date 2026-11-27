@@ -205,6 +205,8 @@ test('M8a ①–③: the video reader — no subtitles, the 자막 ▾ menus, th
   const { page } = s;
   try {
     const itemId = await openLecture(s);
+    const longFile = path.join(s.dir, 'long.ko.srt');
+    fs.writeFileSync(longFile, '1\n00:00:00,000 --> 00:00:09,000\n세포막은 인지질 이중층으로 이루어져 있고, 그 사이에 박혀 있는 단백질이 물질의 출입을 조절하며 신호를 받아들이는 일도 맡습니다\n그래서 막의 성질을 알면 세포가 어떻게 살아가는지 많은 것을 설명할 수 있습니다\n둘째 줄과 셋째 줄까지 길게 이어지는 문장도 영상 아래쪽에 가려지지 않아야 합니다\n');
     const stage = page.getByTestId('video-stage');
     const row = (i: number) => page.locator(`[data-testid="cue-row"][data-index="${i}"]`);
     for (const theme of THEMES) {
@@ -306,6 +308,32 @@ test('M8a ①–③: the video reader — no subtitles, the 자막 ▾ menus, th
       await page.getByTestId('transcript-follow').click();
       await expect(page.getByTestId('transcript-follow')).toHaveAttribute('data-selected');
       await blur(page);
+
+      // ③ a long sentence (three lines) as a third track, on the picture and in the transcript; then back to the first Korean track.
+      const attachedLong = await page.evaluate((input) => window.learn.subtitles.attach(input), { itemId, paths: [longFile] });
+      if (!attachedLong.ok) throw new Error(`subtitles.attach failed: ${attachedLong.code}`);
+      await noMenu(page);
+      await menuButton(page).click();
+      await page.getByRole('menuitemradio', { name: '한국어 2' }).click();
+      await expect(menuButton(page)).toHaveText('한국어 2');
+      await seek(page, 2000);
+      await expect.poll(async () => (await videoState(page))?.cueText ?? '').toContain('둘째 줄');
+      await shoot(s, theme, { name: 'overlay-long', what: '3 a three-line sentence on the picture and its row in the transcript', subjects: [['the sentence', page.getByTestId('subtitle-overlay')]] });
+      await noMenu(page);
+      await menuButton(page).click();
+      await page.getByRole('menuitemradio', { name: '한국어', exact: true }).click();
+      await expect(menuButton(page)).toHaveText('한국어');
+
+      // ④ 이 자막 제거: the toast with 되돌리기, then the undo.
+      await front(s);
+      await noMenu(page);
+      await menuButton(page).click();
+      await page.getByRole('menuitem', { name: '이 자막 제거' }).click();
+      await expect(page.getByTestId('subtitle-removed')).toBeVisible();
+      await shoot(s, theme, { name: 'toast-removed', what: '4 the toast after 이 자막 제거, with its undo', subjects: [['the toast', page.getByTestId('subtitle-removed')]], front: false, toast: true });
+      await page.getByTestId('subtitle-removed').getByTestId('undo-action').click();
+      await expect(menuButton(page)).toHaveText('한국어');
+      await expect(page.getByTestId('subtitle-removed')).toHaveCount(0, { timeout: 12_000 });
     }
 
     // The sidebar's vibrancy: the window of the reader as a Mac shows it, the transcript on the sidebar's material (the Mac midpoint could

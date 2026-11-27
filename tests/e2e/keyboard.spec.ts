@@ -6,7 +6,7 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import { expectNoSeriousA11y } from './a11y';
 import { beginDrag, cancelDrag, hover } from './dnd-helpers';
 import {
-  FIXTURES, addToCollection, closeSheet, createCollection, distinctPdfs, drag, dropSource, enabledMenuCommands, expectWindow, holdCopies, holdOpenDialog, holdSaveDialog, importFiles, importPause, importPaths, importResume, importWaiting, launch, libraryTab, mainWindow, readerTab, runMenuAccelerator,
+  FIXTURES, addToCollection, closeSheet, displayRoom, createCollection, distinctPdfs, drag, dropSource, enabledMenuCommands, expectWindow, holdCopies, holdOpenDialog, holdSaveDialog, importFiles, importPause, importPaths, importResume, importWaiting, launch, libraryTab, mainWindow, readerTab, runMenuAccelerator,
   makeTags, menuItemEnabled, openItem, organizeSnapshot, releaseCopies, releaseOpenDialog, releaseSaveDialog, rowAt, rowByTitle, runMenuCommand, selectRows, sheetReleased, showItemPanel,
   specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, tagChip, trashItems, translationFake, treeRow, waitImportIdle,
   selectInPage, textExtraction, textIdle, imageState, quiet, videoReady,
@@ -1022,6 +1022,49 @@ test('the video reader by keyboard: F6 to the stage, Tab through the controls in
     await expect.poll(async () => Math.abs((await state()).timeMs - cues[first + 1]!.startMs)).toBeLessThanOrEqual(80);
     expect((await state()).paused).toBe(true);
     await expect(page.locator(`[data-testid="cue-row"][data-index="${first + 1}"]`)).toBeFocused();
+  } finally {
+    await app.close();
+  }
+});
+
+test('the video reader\'s other states pass axe: the stage mode, the 1024 window, the unplayable notice and the video-tab drop overlay', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const [item] = await importPaths(page, [LECTURE_MP4, path.join(FIXTURES, 'sample-mpeg4part2.mp4')]);
+    const attached = await page.evaluate((input) => window.learn.subtitles.attach(input), { itemId: item!.id, paths: [LECTURE_KO] });
+    expect(attached.ok).toBe(true);
+    await openItem(page, 'lecture-60s');
+    await videoReady(page);
+
+    // The overlay of a subtitle dragged over the tab (the file is real, so the drop gate reads its type as it does for Finder).
+    await dropSource(page, [LECTURE_EN]);
+    await drag(page, 'dragenter', 'source');
+    await expect(page.getByTestId('subtitle-drop-overlay')).toBeVisible();
+    await expectNoSeriousA11y(page, 'video tab, the subtitle drop overlay');
+    await drag(page, 'dragleave', 'source');
+    await expect(page.getByTestId('subtitle-drop-overlay')).toHaveCount(0);
+
+    // The stage mode: the controls on the dark bar and a sentence on the picture.
+    await page.getByTestId('video-fullscreen').click();
+    await expect.poll(() => app.evaluate(() => (globalThis as unknown as { __learnTest: { stageState(): { stage: boolean; fullScreen: boolean; pending: boolean } } }).__learnTest.stageState())).toMatchObject({ stage: true, fullScreen: true, pending: false });
+    await expectNoSeriousA11y(page, 'video reader, the stage mode');
+    await page.getByTestId('video-stage').focus();
+    await page.keyboard.press('Escape');
+    await expect.poll(() => app.evaluate(() => (globalThis as unknown as { __learnTest: { stageState(): { stage: boolean; pending: boolean } } }).__learnTest.stageState())).toMatchObject({ stage: false, pending: false });
+
+    // The 1024 window: the reader and the transcript at their narrowest.
+    const win = await mainWindow(app);
+    const room = await displayRoom(app); // a 1024 wide display leaves a pixel less than 1024
+    const width = Math.min(1024, room.width);
+    await win.evaluate((w, [cw, ch]) => w.setContentSize(cw!, ch!), [width, Math.min(768, room.height)] as const);
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBeGreaterThanOrEqual(width - 2); // Xvfb at 1024 takes a pixel for a frame
+    await expectNoSeriousA11y(page, 'video reader, a 1024 window');
+
+    // The notice for a video the player cannot decode.
+    await libraryTab(page).click();
+    await openItem(page, 'sample-mpeg4part2');
+    await expect(page.getByTestId('video-error')).toBeVisible();
+    await expectNoSeriousA11y(page, 'video reader, the unplayable notice');
   } finally {
     await app.close();
   }

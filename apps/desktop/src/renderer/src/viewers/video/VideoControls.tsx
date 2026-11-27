@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { Captions, CaptionsOff, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw } from 'lucide-react';
-import { commandById, commandLabel } from '@learn/domain';
+import { VIDEO_TIMING, commandById, commandLabel } from '@learn/domain';
 import { useCommands } from '../../commands/CommandProvider';
 import { useVideoStage } from '../../shell/videoStage';
 import { t } from '../../strings';
@@ -39,9 +39,9 @@ export function VideoControls() {
     <div className={cx('video-controls', disabled && 'is-disabled')} role="group" aria-label={t.video.controls} data-testid="video-controls">
       <Scrubber />
       <div className="control-row" ref={rowRef}>
-        <IconButton icon={RotateCcw} label={t.video.back10} keys={capsOf('video.back10')} tooltipPlacement="top" isDisabled={disabled} onPress={() => handle?.seekBy(-10_000)} testId="video-back10" />
+        <IconButton icon={RotateCcw} label={t.video.back10} keys={capsOf('video.back10')} tooltipPlacement="top" isDisabled={disabled} onPress={() => handle?.seekBy(-VIDEO_TIMING.skipLongMs)} testId="video-back10" />
         <IconButton icon={playing ? Pause : Play} label={playLabel} keys={capsOf('video.playPause')} tooltipPlacement="top" glyph="lg" isDisabled={disabled} onPress={() => handle?.togglePlay()} testId="video-play" />
-        <IconButton icon={RotateCw} label={t.video.forward10} keys={capsOf('video.forward10')} tooltipPlacement="top" isDisabled={disabled} onPress={() => handle?.seekBy(10_000)} testId="video-forward10" />
+        <IconButton icon={RotateCw} label={t.video.forward10} keys={capsOf('video.forward10')} tooltipPlacement="top" isDisabled={disabled} onPress={() => handle?.seekBy(VIDEO_TIMING.skipLongMs)} testId="video-forward10" />
         <span className="time num" data-testid="video-time">
           <b>{formatClock(timeMs, durationMs)}</b> / {formatClock(durationMs, durationMs)}
         </span>

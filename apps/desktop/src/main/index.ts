@@ -156,14 +156,33 @@ let autoCheck: AutoOutcome | 'pending' = 'pending';
 /** The main window's newest first idle, step by step (E2E's textState reads it); null before the first. */
 let firstIdle: FirstIdleReport | null = null;
 
+/** The library setting that says the main window's full screen is the video stage's (video-stage.ts; ADR-0007, main writes it). */
+const STAGE_FULL_SCREEN = 'ui.stageFullScreen';
+
 function openMainWindow(): BrowserWindow {
   const win = createMainWindow({
     preload: path.join(here, '../preload/main.cjs'),
     url: windowUrl(rendererBase, 'main', urlOptions),
     chrome: chrome(),
   });
-  // Every full-screen change of ours goes through the window's stage controller, one at a time (spec 6.6, 9.1).
-  attachStageController(win, () => resyncWindowState(win));
+  // Every full-screen change of ours goes through the window's stage controller, one at a time (spec 6.6, 9.1). The window comes back
+  // in the display mode it was quit in: a full screen the stage left behind is left once.
+  let restoredForStage = false;
+  try {
+    restoredForStage = ctx?.settings.get(STAGE_FULL_SCREEN) === true;
+  } catch (e) {
+    console.warn(`[stage] the stage's full screen was not read: ${toLearnError(e).code}`);
+  }
+  attachStageController(win, () => resyncWindowState(win), {
+    restoredForStage,
+    remember: (on) => {
+      try {
+        ctx?.settings.set(STAGE_FULL_SCREEN, on);
+      } catch (e) {
+        console.warn(`[stage] the stage's full screen was not recorded: ${toLearnError(e).code}`);
+      }
+    },
+  });
   // The macOS 전체 화면 item says what it will do (전체 화면 시작 / 종료).
   win.on('enter-full-screen', refreshFullScreenItem);
   win.on('leave-full-screen', refreshFullScreenItem);

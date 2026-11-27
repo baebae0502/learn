@@ -8,11 +8,15 @@ export interface StagePort {
   onEnter(fn: () => void): void; // 'enter-full-screen'
   onLeave(fn: () => void): void; // 'leave-full-screen'
   changed(): void; // re-push the window state (resyncWindowState)
+  /** Keeps whether the window's full screen is the stage's: the window comes back in its display mode after a quit. */
+  remember?(full: boolean): void;
 }
 
 export interface StageController {
   request(action: 'toggle' | 'exit'): void; // ui:stage
   toggleWindow(): void; // the 전체 화면 menu item (⌃⌘F)
+  /** The window is on screen: a full screen it comes back in arrives by now, or within one settle (an animation). */
+  shown(): void;
   stage(): boolean;
   pending(): boolean;
   dispose(): void;
@@ -27,11 +31,29 @@ const DEFAULT_TIMERS: Timers = { set: (fn, ms) => setTimeout(fn, ms), clear: (h)
  * change in flight has landed. A new change started before the last one's event (macOS animates into its own Space) was
  * what hung the old HTML full screen (spec 9.1). The stage is on only while the window is full screen.
  */
-export function createStageController(port: StagePort, opts: { settleMs?: number; timers?: Timers } = {}): StageController {
+export function createStageController(port: StagePort, opts: { settleMs?: number; timers?: Timers; restoredForStage?: boolean } = {}): StageController {
   const settleMs = opts.settleMs ?? VIDEO_TIMING.stageSettleMs;
   const timers = opts.timers ?? DEFAULT_TIMERS;
   const want = { full: port.isFullScreen(), stage: false };
   let stage = false;
+  /** What the setting says now: read at launch, and cleared there once. */
+  let remembered = opts.restoredForStage === true;
+  /**
+   * The last run quit on the stage: the full screen this window comes back in is the stage's, without a stage now, and is left once.
+   * Ends with that leave, with the user's first full-screen wish, or a settle after the window shows.
+   */
+  let leaveRestored = remembered;
+  let restoreWait: unknown = null;
+  const remember = (on: boolean): void => {
+    if (on === remembered) return;
+    remembered = on;
+    port.remember?.(on);
+  };
+  const stopRestoring = (): void => {
+    leaveRestored = false;
+    if (restoreWait !== null) timers.clear(restoreWait);
+    restoreWait = null;
+  };
   let pending: 'enter' | 'leave' | null = null;
   /** The stage put the window in full screen, so the window leaves with it; a window that was full screen before stays. */
   let fullForStage = false;
@@ -69,6 +91,7 @@ export function createStageController(port: StagePort, opts: { settleMs?: number
     }
     if (want.stage && !stage && full) {
       stage = true;
+      if (fullForStage) remember(true);
       port.changed();
     }
   }
@@ -100,6 +123,13 @@ export function createStageController(port: StagePort, opts: { settleMs?: number
     if (disposed) return;
     const awaited = pending === change;
     stopWaiting();
+    if (change === 'leave') remember(false);
+    if (!awaited && change === 'enter' && leaveRestored) {
+      stopRestoring();
+      want.full = false;
+      drive();
+      return;
+    }
     if (!awaited) {
       // A change nobody here asked for: the traffic light, the Linux menu's own full-screen role, the system.
       if (change === 'leave') {
@@ -118,6 +148,12 @@ export function createStageController(port: StagePort, opts: { settleMs?: number
   };
   port.onEnter(() => heard('enter'));
   port.onLeave(() => heard('leave'));
+  if (remembered) remember(false);
+  if (leaveRestored && want.full) {
+    stopRestoring();
+    want.full = false;
+    drive();
+  }
 
   /** Between changes the window is the truth (one may have changed without a word); while one is in flight, the wish is. */
   const settledWish = () => {
@@ -127,6 +163,7 @@ export function createStageController(port: StagePort, opts: { settleMs?: number
   return {
     request(action) {
       if (disposed) return;
+      stopRestoring();
       settledWish();
       if (action === 'toggle' && !want.stage) {
         want.stage = true;
@@ -143,6 +180,7 @@ export function createStageController(port: StagePort, opts: { settleMs?: number
     },
     toggleWindow() {
       if (disposed) return;
+      stopRestoring();
       settledWish();
       want.full = !want.full;
       if (!want.full) {
@@ -151,11 +189,16 @@ export function createStageController(port: StagePort, opts: { settleMs?: number
       }
       drive();
     },
+    shown() {
+      if (disposed || !leaveRestored || restoreWait !== null) return;
+      restoreWait = timers.set(stopRestoring, settleMs);
+    },
     stage: () => stage,
     pending: () => pending !== null,
     dispose() {
       disposed = true;
       stopWaiting();
+      stopRestoring();
     },
   };
 }
@@ -164,9 +207,14 @@ const controllers = new WeakMap<BrowserWindow, StageController>();
 
 /**
  * Gives a main window its stage controller (index.ts openMainWindow); it goes with the window. `changed` re-pushes the
- * window's state (resyncWindowState).
+ * window's state (resyncWindowState). `restoredForStage` and `remember`: the setting that says the last run quit on the stage.
  */
-export function attachStageController(win: BrowserWindow, changed: () => void, opts?: { settleMs?: number; timers?: Timers }): StageController {
+export function attachStageController(
+  win: BrowserWindow,
+  changed: () => void,
+  opts: { settleMs?: number; timers?: Timers; restoredForStage?: boolean; remember?(full: boolean): void } = {},
+): StageController {
+  const { remember, ...options } = opts;
   const controller = createStageController(
     {
       isFullScreen: () => !win.isDestroyed() && win.isFullScreen(),
@@ -182,10 +230,12 @@ export function attachStageController(win: BrowserWindow, changed: () => void, o
       changed: () => {
         if (!win.isDestroyed()) changed();
       },
+      ...(remember ? { remember } : {}),
     },
-    opts,
+    options,
   );
   controllers.set(win, controller);
+  win.once('show', () => controller.shown());
   win.once('closed', () => {
     controller.dispose();
     controllers.delete(win);

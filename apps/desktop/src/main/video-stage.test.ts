@@ -14,6 +14,8 @@ function fakeWindow(opts: { full?: boolean } = {}) {
   const leave: Array<() => void> = [];
   /** What the controller did, in order: each setFullScreen, and the stage each changed() reported. */
   const log: string[] = [];
+  /** Each write of the "this full screen is the stage's" setting, oldest first. */
+  const remembered: boolean[] = [];
   let controller: StageController | null = null;
   const port: StagePort = {
     isFullScreen: () => full,
@@ -21,10 +23,12 @@ function fakeWindow(opts: { full?: boolean } = {}) {
     onEnter: (fn) => void enter.push(fn),
     onLeave: (fn) => void leave.push(fn),
     changed: () => void log.push(`stage ${controller?.stage()}`),
+    remember: (on) => void remembered.push(on),
   };
   return {
     port,
     log,
+    remembered,
     /** The setFullScreen calls, oldest first. */
     calls: () => log.filter((l) => l.startsWith('set ')).map((l) => l === 'set true'),
     bind: (c: StageController) => (controller = c),
@@ -45,9 +49,9 @@ function fakeWindow(opts: { full?: boolean } = {}) {
     },
   };
 }
-const make = (opts: { full?: boolean; settleMs?: number } = {}) => {
+const make = (opts: { full?: boolean; settleMs?: number; restoredForStage?: boolean } = {}) => {
   const w = fakeWindow(opts);
-  const c = createStageController(w.port, opts.settleMs === undefined ? {} : { settleMs: opts.settleMs });
+  const c = createStageController(w.port, { ...(opts.settleMs === undefined ? {} : { settleMs: opts.settleMs }), ...(opts.restoredForStage === undefined ? {} : { restoredForStage: opts.restoredForStage }) });
   w.bind(c);
   return { w, c };
 };
@@ -326,6 +330,95 @@ describe('the stage controller: one full-screen change at a time, the last wish 
   });
 });
 
+describe('a full screen the stage brought, at the next launch (the window keeps its display mode across a quit)', () => {
+  it('is remembered while the stage holds it, and forgotten once the window has left it', () => {
+    const { w, c } = make();
+    c.request('toggle');
+    expect(w.remembered).toEqual([]);
+    w.entered();
+    expect(w.remembered).toEqual([true]);
+    c.request('toggle');
+    expect(c.stage()).toBe(false);
+    expect(w.remembered).toEqual([true]); // a quit before the leave lands still finds the window the stage's
+    w.left();
+    expect(w.remembered).toEqual([true, false]);
+  });
+
+  it('a window that was full screen before the stage is the user\'s: nothing is remembered, not even when it leaves', () => {
+    const { w, c } = make({ full: true });
+    c.request('toggle');
+    expect(c.stage()).toBe(true);
+    c.request('toggle');
+    expect(c.stage()).toBe(false);
+    expect(w.isFullScreen()).toBe(true);
+    w.left();
+    expect(w.remembered).toEqual([]);
+  });
+
+  it('⌃⌘F on the stage hands the full screen to the user: forgotten as the window leaves; a traffic light\'s leave forgets it too', () => {
+    const { w, c } = make();
+    c.request('toggle');
+    w.entered();
+    c.toggleWindow();
+    w.left();
+    expect(w.remembered).toEqual([true, false]);
+    c.request('toggle');
+    w.entered();
+    w.left(); // the green button
+    expect(w.remembered).toEqual([true, false, true, false]);
+  });
+
+  it('remembered at launch: forgotten at once, and the full screen the window comes back in is left once', () => {
+    const { w, c } = make({ restoredForStage: true });
+    expect(w.remembered).toEqual([false]);
+    c.shown();
+    w.entered(); // the window shows in the display mode it was quit in
+    expect(w.calls()).toEqual([false]);
+    expect(c.stage()).toBe(false);
+    w.left();
+    expect(w.isFullScreen()).toBe(false);
+    // Once only: the user's own full screen afterwards stays.
+    w.entered();
+    expect(w.calls()).toEqual([false]);
+    expect(w.isFullScreen()).toBe(true);
+  });
+
+  it('remembered at launch, the window already full screen when the controller is made: left at once', () => {
+    const { w } = make({ full: true, restoredForStage: true });
+    expect(w.calls()).toEqual([false]);
+    w.left();
+    expect(w.remembered).toEqual([false]);
+  });
+
+  it('not remembered: the full screen the window comes back in stays (the user\'s own, or no stage)', () => {
+    const { w, c } = make({ restoredForStage: false });
+    c.shown();
+    w.entered();
+    expect(w.calls()).toEqual([]);
+    expect(w.isFullScreen()).toBe(true);
+    expect(w.remembered).toEqual([]);
+  });
+
+  it('remembered, but the window came back as a window: a full screen asked for after the settle is the user\'s', () => {
+    const { w, c } = make({ restoredForStage: true });
+    c.shown();
+    vi.advanceTimersByTime(VIDEO_TIMING.stageSettleMs);
+    w.entered(); // the green button
+    expect(w.calls()).toEqual([]);
+    expect(w.isFullScreen()).toBe(true);
+  });
+
+  it('remembered, and the user asks first: the wish is theirs', () => {
+    const { w, c } = make({ restoredForStage: true });
+    c.shown();
+    c.toggleWindow();
+    expect(w.calls()).toEqual([true]);
+    w.entered();
+    expect(w.calls()).toEqual([true]);
+    expect(w.isFullScreen()).toBe(true);
+  });
+});
+
 let nextId = 1;
 /** A BrowserWindow stand-in whose full screen changes at once and says so, as on Linux. */
 class FakeBrowserWindow extends EventEmitter {
@@ -384,6 +477,20 @@ describe('a main window\'s stage (stageOf, attachStageController)', () => {
     vi.advanceTimersToNextTimer();
     expect(heard).toEqual(['enter', 'leave']);
     expect(w.asked).toEqual([true, false]);
+  });
+
+  it('a window that shows in the full screen the last run\'s stage left (as Linux restores it, inside show) leaves it on the next turn', () => {
+    const w = new FakeBrowserWindow();
+    const remembered: boolean[] = [];
+    attachStageController(bw(w), () => {}, { restoredForStage: true, remember: (on) => void remembered.push(on) });
+    expect(remembered).toEqual([false]);
+    w.setFullScreen(true); // the display mode coming back
+    w.emit('show');
+    expect(w.asked).toEqual([true]);
+    vi.advanceTimersByTime(0);
+    expect(w.asked).toEqual([true, false]);
+    expect(w.isFullScreen()).toBe(false);
+    expect(stageOf(bw(w))).toBe(false);
   });
 
   it('a closed window lets go of its controller: no stage, no change asked after it', () => {

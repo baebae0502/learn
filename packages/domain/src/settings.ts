@@ -51,6 +51,11 @@ export const SETTINGS = {
   'layout.panes': z.record(z.string(), z.number().int().min(0).max(4000)),
   'ui.lastOpenItemId': z.uuid().nullable(),
   /**
+   * The main window's full screen is the video stage's (main writes it as the stage comes and the full screen goes): the window comes
+   * back in its display mode after a quit, without the stage, and leaves that full screen once.
+   */
+  'ui.stageFullScreen': z.boolean(),
+  /**
    * The reader tabs open at quit, in order, and the one that was shown (null = the library): the window reopens them. `known` is
    * each tab's last known title and kind (R38), a cache the live item replaces; an older value without it still reads.
    */
@@ -84,9 +89,9 @@ export type SettingKey = keyof typeof SETTINGS;
 export const isSettingKey = (key: string): key is SettingKey => Object.hasOwn(SETTINGS, key);
 /**
  * Keys main writes itself (Q-8e): settings.set refuses them from a page. backup.last also names a folder main shows in
- * Finder: a page must not be able to point it anywhere (R4).
+ * Finder: a page must not be able to point it anywhere (R4). ui.stageFullScreen set by a page would end the user's own full screen.
  */
-export const MAIN_WRITTEN_SETTINGS: ReadonlySet<SettingKey> = new Set<SettingKey>(['recovery.lastShown', 'backup.last']);
+export const MAIN_WRITTEN_SETTINGS: ReadonlySet<SettingKey> = new Set<SettingKey>(['recovery.lastShown', 'backup.last', 'ui.stageFullScreen']);
 
 /**
  * What a write may carry beyond what a read accepts. A record has no length of its own: column ids stay open (a later

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LearnError } from '../src/errors';
 import { DEFAULT_TUTOR_PREFS } from '../src/tutor';
-import { DEFAULT_PREFS, SAVED_TAB_TITLE_MAX, SEARCH_SCOPES, parseSetting, prefsSchema } from '../src/settings';
+import { DEFAULT_PREFS, MAIN_WRITTEN_SETTINGS, SAVED_TAB_TITLE_MAX, SEARCH_SCOPES, parseSetting, prefsSchema } from '../src/settings';
 import { newId } from '../src/ids';
 
 const code = (fn: () => unknown): string | undefined => {
@@ -23,6 +23,14 @@ describe('settings registry', () => {
     expect(code(() => parseSetting('layout.panes', { sidebar: 5000 }))).toBe('VALIDATION_FAILED');
     expect(code(() => parseSetting('ui.lastOpenItemId', 'not-a-uuid'))).toBe('VALIDATION_FAILED');
     expect(code(() => parseSetting('toString', 1))).toBe('VALIDATION_FAILED');
+  });
+});
+
+describe('ui.stageFullScreen', () => {
+  it('is a yes or no that main alone writes', () => {
+    for (const v of [true, false]) expect(parseSetting('ui.stageFullScreen', v)).toBe(v);
+    for (const v of ['true', 1, null]) expect(code(() => parseSetting('ui.stageFullScreen', v))).toBe('VALIDATION_FAILED');
+    expect(MAIN_WRITTEN_SETTINGS.has('ui.stageFullScreen')).toBe(true);
   });
 });
 

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import fs from 'node:fs/promises';
+import { constants } from 'node:fs';
+import fs, { type FileHandle } from 'node:fs/promises';
 import { LearnError, SUBTITLE_LIMITS, SUBTITLE_MIMES, newId, nowIso, subtitleFormatOf, type AttachFailureReason, type AttachResult } from '@learn/domain';
 import type { AssetRow, LibraryRepository, SubtitlesRepository } from '@learn/db';
 import { displayFileName, type Importer } from '../importer';
@@ -14,6 +15,38 @@ export interface AttachDeps {
 }
 
 const SUBTITLE_MIME_VALUES: readonly string[] = Object.values(SUBTITLE_MIMES);
+/** One read's most: a file within the limit is read in a few. */
+const READ_CHUNK = 1024 * 1024;
+
+/** Up to `max` bytes of the open file from its start: a file that grows while it is read is read no further. */
+async function readAtMost(fh: FileHandle, max: number): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  while (total < max) {
+    const chunk = Buffer.allocUnsafe(Math.min(READ_CHUNK, max - total));
+    const { bytesRead } = await fh.read(chunk, 0, chunk.length, total);
+    if (bytesRead === 0) break;
+    chunks.push(chunk.subarray(0, bytesRead));
+    total += bytesRead;
+  }
+  return Buffer.concat(chunks, total);
+}
+
+/**
+ * The file's bytes, or why there are none. One open, and the handle answers what it is: a path swapped between a check and the
+ * read cannot be read in its place. Non-blocking, so a FIFO's open does not wait for a writer (its stat refuses it).
+ */
+async function readSubtitleFile(p: string): Promise<Buffer | 'io' | 'too-large'> {
+  const fh = await fs.open(p, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
+  try {
+    const st = await fh.stat();
+    if (!st.isFile()) return 'io';
+    if (st.size > SUBTITLE_LIMITS.bytes) return 'too-large';
+    return await readAtMost(fh, SUBTITLE_LIMITS.bytes + 1);
+  } finally {
+    await fh.close();
+  }
+}
 
 /** A file the disk would not give (or that changed while it was copied) is io; anything else is a bug and keeps its own error. */
 function isFileError(e: unknown): boolean {
@@ -50,16 +83,14 @@ async function attachOne(deps: AttachDeps, itemId: string, p: string, name: stri
   if (subtitleFormatOf(name) === null) return 'not-subtitle';
   let bytes: Buffer;
   try {
-    const st = await fs.stat(p);
-    // A FIFO or a device reports size 0 and would be read without bound.
-    if (!st.isFile()) return 'io';
-    if (st.size > SUBTITLE_LIMITS.bytes) return 'too-large';
-    bytes = await fs.readFile(p);
+    const read = await readSubtitleFile(p);
+    if (read === 'io' || read === 'too-large') return read;
+    bytes = read;
   } catch (e) {
     if (!isFileError(e)) throw e;
     return 'io';
   }
-  // A file that grew since the stat is as large as the bytes in hand say.
+  // A file that grew since its size was asked is as large as the bytes in hand say.
   if (bytes.length > SUBTITLE_LIMITS.bytes) return 'too-large';
   const sha256 = createHash('sha256').update(bytes).digest('hex');
   const read = readSubtitle(bytes, name);

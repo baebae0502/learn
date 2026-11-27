@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -45,6 +46,33 @@ async function setup() {
   return { layout, db, repo, subtitles, importer, deps, video };
 }
 
+/**
+ * The files attach opens, seen through their handles: how many bytes were read. `size` makes a handle's own stat say that size
+ * (the file was that small when it was asked, and grew before it was read).
+ */
+function watchReads(over: { size?: number } = {}): { bytes: number } {
+  const real = fsp.open.bind(fsp);
+  const seen = { bytes: 0 };
+  vi.spyOn(fsp, 'open').mockImplementation(async (...args: Parameters<typeof fsp.open>) => {
+    const fh = await real(...args);
+    return new Proxy(fh, {
+      get(target, prop) {
+        if (prop === 'read') {
+          return async (...a: Parameters<typeof target.read>) => {
+            const r = await target.read(...a);
+            seen.bytes += r.bytesRead;
+            return r;
+          };
+        }
+        if (prop === 'stat' && over.size !== undefined) return async () => Object.assign(await target.stat(), { size: over.size });
+        const value: unknown = Reflect.get(target, prop);
+        return typeof value === 'function' ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+      },
+    });
+  });
+  return seen;
+}
+
 describe('attachSubtitleFiles', () => {
   it('adds the ko srt and the en vtt in order with their languages, and reports the broken one', async () => {
     const { deps, video, layout, repo, subtitles } = await setup();
@@ -79,18 +107,43 @@ describe('attachSubtitleFiles', () => {
     expect(r.failed).toEqual([{ name: 'notes.txt', reason: 'not-subtitle' }]);
   });
 
-  it('says too-large from the size alone, without opening the file', async () => {
+  it('says too-large from the size alone, without reading the file', async () => {
     const { deps, video } = await setup();
     const big = path.join(tempDir('src'), 'big.srt');
     fs.writeFileSync(big, Buffer.alloc(SUBTITLE_LIMITS.bytes + 1, 0x20));
-    const read = vi.spyOn(fsp, 'readFile');
     const itemId = await video('a');
+    const seen = watchReads();
     const r = await attachSubtitleFiles(deps, itemId, [big]);
     expect(r.failed).toEqual([{ name: 'big.srt', reason: 'too-large' }]);
-    expect(read).not.toHaveBeenCalled();
-    // The spy sees attach's reads: a small file is read once.
+    expect(seen.bytes).toBe(0);
+    // The watch sees attach's reads: a small file is read whole, once.
     await attachSubtitleFiles(deps, itemId, [sub('lecture-60s.ko.srt')]);
-    expect(read).toHaveBeenCalledTimes(1);
+    expect(seen.bytes).toBe(fs.statSync(sub('lecture-60s.ko.srt')).size);
+  });
+
+  it('a file that grew past the limit after its size was asked is too large, read no further than one byte past the limit', async () => {
+    const { deps, video } = await setup();
+    // Sparse: larger than one read of the whole file may be (2 GiB) without taking the disk.
+    const grown = path.join(tempDir('src'), 'grown.srt');
+    fs.closeSync(fs.openSync(grown, 'w'));
+    fs.truncateSync(grown, 3 * 1024 ** 3);
+    const itemId = await video('a');
+    // Both ways of asking the size answer what the file was before it grew.
+    const realStat = fsp.stat.bind(fsp);
+    vi.spyOn(fsp, 'stat').mockImplementation((async (p: Parameters<typeof fsp.stat>[0], o?: Parameters<typeof fsp.stat>[1]) =>
+      p === grown ? Object.assign(await realStat(p, o), { size: 10 }) : realStat(p, o)) as typeof fsp.stat);
+    const seen = watchReads({ size: 10 });
+    const r = await attachSubtitleFiles(deps, itemId, [grown]);
+    expect(r.failed).toEqual([{ name: 'grown.srt', reason: 'too-large' }]);
+    expect(seen.bytes).toBe(SUBTITLE_LIMITS.bytes + 1);
+  });
+
+  it.skipIf(process.platform === 'win32')('a FIFO named like a subtitle is io at once: nothing waits for a writer', async () => {
+    const { deps, video } = await setup();
+    const fifo = path.join(tempDir('src'), 'pipe.srt');
+    execFileSync('mkfifo', [fifo]);
+    const r = await attachSubtitleFiles(deps, await video('a'), [fifo]);
+    expect(r.failed).toEqual([{ name: 'pipe.srt', reason: 'io' }]);
   });
 
   it('refuses the whole call for an item that is not a live video', async () => {
@@ -133,10 +186,13 @@ describe('attachSubtitleFiles', () => {
     const { deps, video } = await setup();
     const dir = path.join(tempDir('src'), 'folder.srt');
     fs.mkdirSync(dir);
-    const read = vi.spyOn(fsp, 'readFile');
-    const r = await attachSubtitleFiles(deps, await video('a'), [dir]);
+    const itemId = await video('a');
+    const seen = watchReads();
+    const r = await attachSubtitleFiles(deps, itemId, [dir]);
     expect(r.failed).toEqual([{ name: 'folder.srt', reason: 'io' }]);
-    expect(read).not.toHaveBeenCalled();
+    expect(seen.bytes).toBe(0);
+    await attachSubtitleFiles(deps, itemId, [sub('lecture-60s.ko.srt')]);
+    expect(seen.bytes).toBeGreaterThan(0); // the watch does see attach's reads
   });
 
   it('a copy that changed while it was placed (HASH_MISMATCH) is io and adds nothing', async () => {

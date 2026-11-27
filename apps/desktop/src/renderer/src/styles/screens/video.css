@@ -470,4 +470,9 @@
     padding: 0 var(--space-16) 0 var(--space-24);
     border-top: 1px solid var(--separator);
   }
+  /* Over the macOS vibrancy material the opaque --separator is the material's own grey (1.04:1 in dark, Mac all
+     45968030204); the translucent one keeps its ratio on any surface, as the tag selector's does (design-spec 3.1). */
+  :root[data-vibrancy='1'] .transcript-foot {
+    border-top-color: var(--separator-on-surface);
+  }
 }

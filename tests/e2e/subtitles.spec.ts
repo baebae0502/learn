@@ -615,6 +615,16 @@ test('⌘F takes the focus to the transcript search, unfolding the sidebar when 
     await runMenuCommand(app, 'library.find');
     await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'shown');
     await expect(searchInput(page)).toBeFocused();
+
+    // The stage hides the sidebar, and its transcript search with it: 찾기 is off there, and on again once the stage ends.
+    expect(await menuItemEnabled(app, 'library.find')).toBe(true);
+    await page.getByTestId('video-stage').focus();
+    await page.keyboard.press('f');
+    await expect.poll(() => stageState(app)).toEqual({ stage: true, fullScreen: true, pending: false });
+    await expect.poll(() => menuItemEnabled(app, 'library.find')).toBe(false);
+    await page.keyboard.press('Escape');
+    await expect.poll(() => stageState(app)).toEqual({ stage: false, fullScreen: false, pending: false });
+    await expect.poll(() => menuItemEnabled(app, 'library.find')).toBe(true);
   } finally {
     await app.close();
   }

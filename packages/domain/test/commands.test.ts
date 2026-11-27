@@ -1114,6 +1114,10 @@ describe('the subtitle commands (M8a spec 6.5, 10)', () => {
     expect(isCommandAvailable('library.find', { ...VIEWER, videoCaptions: true })).toBe(false);
     for (const id of ['reader.findNext', 'reader.findPrevious', 'reader.findSelection'] as const) expect(isCommandAvailable(id, WITH_TRACK), id).toBe(false);
   });
+  it('⌘F is off on the stage, which hides the sidebar and its transcript search, and back once the stage ends', () => {
+    expect(isCommandAvailable('library.find', { ...WITH_TRACK, videoStage: false })).toBe(true);
+    expect(isCommandAvailable('library.find', { ...WITH_TRACK, videoStage: true })).toBe(false);
+  });
   it('the toggle is named by what it does now', () => {
     const c = commandById('video.toggleCaptions');
     expect(commandLabel(c, 'linux', { videoCaptionsOn: true })).toBe('자막 끄기');

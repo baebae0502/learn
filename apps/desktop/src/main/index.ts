@@ -218,6 +218,7 @@ const activation = createActivateGate({
   // R-22: only the main window counts. With just the settings window left (macOS keeps the app running), a dock click
   // still opens a main window.
   windowCount: () => (mainWindow && !mainWindow.isDestroyed() ? 1 : 0),
+  warn: (line) => console.warn(line),
 });
 
 /** The command context before the main window's renderer reports, and after it closed or crashed: nothing runs. */

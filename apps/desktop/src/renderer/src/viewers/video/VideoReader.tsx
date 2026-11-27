@@ -9,7 +9,7 @@ import { keepsPendingJump, useReader } from '../pdf/readerStore';
 import { usePosition } from '../usePosition';
 import { useVideoStage } from '../../shell/videoStage';
 import { SubtitleOverlay } from './SubtitleOverlay';
-import { jumpSearch } from './timeJump';
+import { jumpSearch, jumpTrack } from './timeJump';
 import { useCues, useTracks } from './useSubtitles';
 import { useStageToasts } from './useStageToasts';
 import { useSubtitleState } from './useSubtitleState';
@@ -114,7 +114,7 @@ export function VideoReader({ item }: { item: LibraryItem }) {
       return;
     }
     if (!placed || !listed || shownTracks !== listed) return;
-    const want = jump.track !== null && listed.some((track) => track.assetId === jump.track) ? jump.track : store.getState().trackId;
+    const want = jumpTrack(jump.track, listed, store.getState().trackId);
     if (want !== null) {
       if (trackId !== want) {
         // The cues of that track come with the next render; the search is made then.
@@ -126,8 +126,8 @@ export function VideoReader({ item }: { item: LibraryItem }) {
     }
     store.getState().handle?.seekTo(jump.startMs);
     videoRef.current?.pause();
-    const found = want !== null && cues ? jumpSearch(cues, jump.query, jump.startMs) : { hits: [], hit: -1 };
-    patchTranscript(store, { query: jump.query, hits: found.hits, hit: found.hit, arrived: false, wrapped: false, follow: true, cursor: -1 });
+    const found = want !== null && cues ? jumpSearch(cues, jump.query, jump.startMs) : { query: jump.query, hits: [], hit: -1 };
+    patchTranscript(store, { query: found.query, hits: found.hits, hit: found.hit, arrived: false, wrapped: false, follow: true, cursor: -1 });
     reader.setPendingJump(null);
   }, [jump, placed, listed, shownTracks, trackId, cues, error, scope, store]);
 

@@ -11,6 +11,7 @@ import { useTracks } from '../viewers/video/useSubtitles';
 import { trackNames } from '../viewers/video/trackNames';
 import { matchesView, snippetParts, timeRows, type SnippetPart, type TimeRowView } from './bodyText';
 import { Section } from './Section';
+import { useFileFacts } from './useFileFacts';
 import { useShownAfter } from './useShownAfter';
 
 /** A load shorter than this shows nothing (design-spec 6). */
@@ -64,7 +65,7 @@ export function BodyMatchesSection({ item, text }: { item: LibraryItem; text: Bo
         )
       }
     >
-      {shown && (video ? <TimeList itemId={item.id} query={target} times={shown.times} /> : <MatchList itemId={item.id} query={target} pages={shown.pages} />)}
+      {shown && (video ? <TimeList item={item} query={target} times={shown.times} /> : <MatchList itemId={item.id} query={target} pages={shown.pages} />)}
       {shown && shown.total > shown.pages.length + shown.times.length && (
         <div className="match-more num" data-testid="matches-more">
           {video ? t.inspector.matches.moreCues(shown.total - shown.times.length) : t.inspector.matches.more(shown.total - shown.pages.length)}
@@ -113,16 +114,17 @@ const Snippet = ({ parts }: { parts: SnippetPart[] }) => (
 );
 
 /**
- * A video's sentences as one list, as MatchList is for pages: ↩ or a click opens the video at the row's start, the transcript search on
- * one word of the query (a sentence holds every word, not always side by side, and the search finds its text as one phrase). With
- * several tracks a row names its track, and the label column is wider.
+ * A video's sentences as one list, as MatchList is for pages: ↩ or a click opens the video at the row's start with the transcript search on
+ * the query (the reader narrows it to one word when that sentence does not hold it whole). With several tracks a row names its track,
+ * and the label column takes the widest label. The clocks follow the video's length, as the player's do.
  */
-function TimeList({ itemId, query, times }: { itemId: string; query: string; times: ReadonlyArray<{ startMs: number; snippet: string; track: string | null }> }) {
+function TimeList({ item, query, times }: { item: LibraryItem; query: string; times: ReadonlyArray<{ startMs: number; snippet: string; track: string | null }> }) {
+  const itemId = item.id;
   const { env } = useCommands();
   const tracks = useTracks(itemId);
   const names = useMemo(() => trackNames(tracks ?? []), [tracks]);
-  const findWord = findWordOf(query);
-  const rows: TimeRowView[] = useMemo(() => timeRows(times, names), [times, names]);
+  const facts = useFileFacts(item);
+  const rows: TimeRowView[] = useMemo(() => timeRows(times, names, facts.durationMs), [times, names, facts.durationMs]);
   return (
     <ListBox
       aria-label={t.inspector.sections.matches}
@@ -130,12 +132,20 @@ function TimeList({ itemId, query, times }: { itemId: string; query: string; tim
       data-testid="match-list"
       onAction={(key) => {
         const row = rows.find((r) => r.key === key);
-        if (row) env.openAt(itemId, { kind: 'time', startMs: row.startMs, query: findWord, track: row.track });
+        if (row) env.openAt(itemId, { kind: 'time', startMs: row.startMs, query, track: row.track });
       }}
     >
       {rows.map((row) => (
         <ListBoxItem key={row.key} id={row.key} textValue={row.name} aria-label={row.name} className="match-row" data-testid="match-row" data-time={row.startMs}>
-          <span className="pg num">{row.label}</span>{' '}
+          <span className="pg num">
+            <span className="clk">{row.clock}</span>
+            {row.trackName !== null && (
+              <>
+                {'\u00a0·\u00a0'}
+                <span className="trk" title={row.trackName}>{row.trackName}</span>
+              </>
+            )}
+          </span>{' '}
           <Snippet parts={row.parts} />
         </ListBoxItem>
       ))}

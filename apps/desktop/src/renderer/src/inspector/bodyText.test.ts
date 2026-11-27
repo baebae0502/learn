@@ -114,7 +114,12 @@ describe('timeRows: a video\'s matches as rows (spec 8.2)', () => {
   it('a track the list does not know (just removed) shows the clock alone', () => {
     expect(timeRows([{ startMs: 5_000, snippet: 'x', track: 'asset-gone' }], names)[0]!.label).toBe('0:05');
   });
-  it('an hour in the list puts every clock in h:mm:ss, so the column keeps one shape', () => {
+  it('the video\'s length sets the clocks\' shape, as the player\'s: a long video\'s early rows read 0:05:00 too', () => {
+    expect(timeRows([{ startMs: 300_000, snippet: 'a', track: null }], names, 4_500_000)[0]!.label).toBe('0:05:00');
+    expect(timeRows([{ startMs: 300_000, snippet: 'a', track: null }], names, 90_000)[0]!.label).toBe('5:00');
+    expect(timeRows([{ startMs: 3_900_000, snippet: 'a', track: 'asset-en' }], names, 4_000_000)[0]).toMatchObject({ clock: '1:05:00', trackName: '영어', label: '1:05:00\u00a0· 영어' });
+  });
+  it('an hour in the list puts every clock in h:mm:ss when the length is not known, so the column keeps one shape', () => {
     expect(timeRows([{ startMs: 65_000, snippet: 'a', track: null }, { startMs: 3_725_000, snippet: 'b', track: null }], names).map((r) => r.label)).toEqual(['0:01:05', '1:02:05']);
   });
 });

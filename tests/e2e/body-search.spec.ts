@@ -942,7 +942,8 @@ test('본문 일치 of a video: "문장 2개" and a row per sentence with its st
     // A click: the tab opens at the sentence, paused (a row never starts playback), the search holds the word, that sentence is the match.
     await timeRow(page, '0:34').click();
     await expect(readerTab(page, video.id)).toBeVisible();
-    await expect(transcriptField(page)).toHaveValue('칼슘');
+    // The sentence holds the whole query as typed ("칼슘 펌프" side by side), so the field has all of it.
+    await expect(transcriptField(page)).toHaveValue('칼슘 펌프');
     await expect.poll(async () => Math.abs((await videoAt(page))!.timeMs - 34_500)).toBeLessThanOrEqual(80);
     expect((await videoAt(page))!.paused).toBe(true);
     expect((await videoAt(page))!.captionsOn).toBe(true);
@@ -950,7 +951,7 @@ test('본문 일치 of a video: "문장 2개" and a row per sentence with its st
     const hit = page.locator('[data-testid="cue-row"][data-index="9"]');
     await expect(hit).toBeVisible();
     await expect(hit.locator('mark.is-current').first()).toBeVisible();
-    await expect(page.locator('[data-testid="transcript"] mark.is-current')).toHaveCount(2); // the cue's two 칼슘, the one match
+    await expect(page.locator('[data-testid="transcript"] mark.is-current')).toHaveCount(1); // the phrase once: the cue's other 칼슘 is no match
     await expect(page.getByTestId('transcript-follow')).toHaveAttribute('data-selected');
     await expect(hit).toHaveAttribute('data-current', 'true');
 
@@ -962,7 +963,7 @@ test('본문 일치 of a video: "문장 2개" and a row per sentence with its st
     await expect(readerTab(page, video.id)).toHaveAttribute('aria-selected', 'true');
     await expect.poll(async () => Math.abs((await videoAt(page))!.timeMs - 19_000)).toBeLessThanOrEqual(80);
     await expect(page.locator('[data-testid="cue-row"][data-index="5"]')).toHaveAttribute('data-current', 'true');
-    await expect(transcriptField(page)).toHaveValue('칼슘');
+    await expect(transcriptField(page)).toHaveValue('칼슘 펌프');
     expect((await videoAt(page))!.paused).toBe(true);
     await expect.poll(() => page.evaluate(() => (window as unknown as { __learnReader: { getState(): { pendingJump: unknown } } }).__learnReader.getState().pendingJump)).toBeNull();
 
@@ -989,6 +990,9 @@ test('with two subtitles a row names its track ("0:23 · 한국어" and "0:23 ·
     await expect(matchList(page)).toHaveClass(/tracks/);
     await expect(matchList(page).getByRole('option').locator('.pg')).toHaveText(['0:23 · 한국어', '0:23 · 영어']);
     await expect(timeRow(page, '영어')).toHaveAccessibleName(/^0:23\u00a0· 영어, /);
+    // Each row shows its own track's sentence, not the other's.
+    await expect(timeRow(page, '영어').locator('.snip')).toHaveText('This process needs ATP.');
+    await expect(timeRow(page, '한국어').locator('.snip')).toHaveText('이 과정에는 ATP가 필요합니다.');
     await timeRow(page, '영어').click();
     await expect(readerTab(page, video.id)).toBeVisible();
     await expect(transcriptField(page)).toHaveValue('ATP');
@@ -1019,11 +1023,72 @@ test('a video in the trash is not found by its subtitles, and once deleted for g
     const [asset] = await subtitleAssets(app);
     const sha256 = asset!.sha256;
     expect(await cueTextCount(app, { sha256 })).toBeGreaterThan(0);
+    const bodyIds = () => page.evaluate(() => window.learn.search.body({ query: '칼슘' }).then((r) => (r.ok ? r.data.itemIds : null)));
+    expect(await bodyIds()).toEqual([video.id]); // the positive control: the search itself finds the live video
     await trashItems(page, [video.id]);
+    // The search, not the table, says it: search:body no longer answers the trashed video.
+    await expect.poll(bodyIds).toEqual([]);
+    const gone = await page.evaluate((id) => window.learn.search.matches({ itemId: id, query: '칼슘' }), video.id);
+    expect(gone.ok && gone.data.total).toBe(0);
     await expect(rowByTitle(page, video.title)).toHaveCount(0);
     const purged = await page.evaluate((itemIds) => window.learn.library.purge({ itemIds, collectionIds: [] }), [video.id]);
     expect(purged.ok).toBe(true);
     await expect.poll(() => cueTextCount(app, { sha256 })).toBe(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a sentence that holds the query\'s words apart opens with one word of it in the transcript search; the match is still that sentence', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const video = await subtitleLibrary(page, [KO]);
+    await chooseScope(page, '정보와 본문');
+    // "펌프가 멈추면 세포 안의 칼슘 농도가": both words, not side by side.
+    await panelFor(app, page, '펌프 농도', video.title);
+    await expect(matches(page).getByTestId('matches-count')).toHaveText('문장 1개');
+    await timeRow(page, '0:34').click();
+    await expect(readerTab(page, video.id)).toBeVisible();
+    await expect(transcriptField(page)).toHaveValue('펌프');
+    await expect(page.locator('[data-testid="cue-row"][data-index="9"] mark.is-current')).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
+test('the time column takes the widest label of a two-track list ("65:12 · 포르투갈어(브라질)"), the track\'s name alone is cut, and no label runs over its snippet', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const dir = testInfo.outputPath('subs');
+    fs.mkdirSync(dir, { recursive: true });
+    const cue = (text: string) => `1\n01:05:12,000 --> 01:05:15,000\n${text}\n`;
+    const koFile = path.join(dir, 'long.ko.srt');
+    const enFile = path.join(dir, 'long.pt-BR.srt');
+    fs.writeFileSync(koFile, cue('ATP 없이는 칼슘 펌프가 칼슘 이온을 세포 밖으로 내보내지 못합니다.'));
+    fs.writeFileSync(enFile, cue('ATP: a bomba de cálcio leva os íons de cálcio para fora da célula.'));
+    const video = await subtitleLibrary(page, [koFile, enFile]);
+    await chooseScope(page, '정보와 본문');
+    await panelFor(app, page, 'ATP', video.title);
+    await expect(matches(page).getByTestId('matches-count')).toHaveText('문장 2개');
+    await expect(matchList(page).locator('.pg').nth(1)).toContainText('65:12');
+    await expect(matchList(page).locator('.pg').nth(1)).toContainText('포르투갈어(브라질)');
+    const boxes = () =>
+      matchList(page).getByRole('option').evaluateAll((rows) =>
+        rows.map((row) => {
+          const pg = row.querySelector('.pg')!.getBoundingClientRect();
+          const snip = row.querySelector('.snip')!.getBoundingClientRect();
+          const clk = row.querySelector('.clk')!.getBoundingClientRect();
+          return { pgRight: pg.right, snipLeft: snip.left, clkRight: clk.right, pgLeft: pg.left, width: pg.width };
+        }),
+      );
+    const rows = await boxes();
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.width, 'wider than the floor: the label asked for it').toBeGreaterThan(92);
+      expect(row.pgRight).toBeLessThanOrEqual(row.snipLeft); // no label runs over its snippet
+      expect(row.clkRight).toBeLessThanOrEqual(row.pgRight);
+    }
+    expect(rows[0]!.snipLeft).toBe(rows[1]!.snipLeft); // one column for both rows
   } finally {
     await app.close();
   }

@@ -87,19 +87,24 @@ export interface TimeRowView {
   startMs: number;
   track: string | null;
   label: string;
+  clock: string;
+  /** What the screen calls the track, when the video has several and this one is still attached. */
+  trackName: string | null;
   parts: SnippetPart[];
   name: string;
 }
 
 /**
- * The rows of a video's matches. The item's length is not known here, so the clocks take the shape of the longest start in the list
- * (h:mm:ss once any row is an hour in), which keeps the column one shape; `names` maps a track's asset to what the screen calls it.
+ * The rows of a video's matches. The clocks take the shape of the video's length when it is known (h:mm:ss for an hour or more, as the
+ * player's clock does), else of the longest start in the list; `names` maps a track's asset to what the screen calls it.
  */
-export function timeRows(matches: ReadonlyArray<Pick<TimeMatch, 'startMs' | 'snippet' | 'track'>>, names: ReadonlyMap<string, string>): TimeRowView[] {
-  const last = matches.reduce((max, m) => Math.max(max, m.startMs), 0);
+export function timeRows(matches: ReadonlyArray<Pick<TimeMatch, 'startMs' | 'snippet' | 'track'>>, names: ReadonlyMap<string, string>, durationMs?: number): TimeRowView[] {
+  const length = durationMs ?? matches.reduce((max, m) => Math.max(max, m.startMs), 0);
   return matches.map((m, i) => {
     const parts = snippetParts(m.snippet);
-    const label = t.inspector.matches.time(formatClock(m.startMs, last), m.track === null ? null : (names.get(m.track) ?? null));
-    return { key: String(i), startMs: m.startMs, track: m.track, label, parts, name: t.inspector.matches.timeRowName(label, parts.map((part) => part.text).join('')) };
+    const clock = formatClock(m.startMs, length);
+    const trackName = m.track === null ? null : (names.get(m.track) ?? null);
+    const label = t.inspector.matches.time(clock, trackName);
+    return { key: String(i), startMs: m.startMs, track: m.track, label, clock, trackName, parts, name: t.inspector.matches.timeRowName(label, parts.map((part) => part.text).join('')) };
   });
 }

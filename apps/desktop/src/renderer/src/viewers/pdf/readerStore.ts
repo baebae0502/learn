@@ -66,8 +66,9 @@ export interface PdfViewHandle {
 export const CITE_FLASH_MS = 1500;
 
 /**
- * Where a 본문 일치 row sends the reader once it is placed, and the word its search then looks for (one word of the query). A PDF goes to
- * a page (the find bar opens on the word); a video goes to a sentence's start, its transcript search on the word, in `track` (the subtitle's
+ * Where a 본문 일치 row sends the reader once it is placed, and what its search then looks for. A PDF goes to a page, its find bar on one word
+ * of the query (it finds a phrase); a video goes to a sentence's start with the query as typed (the reader narrows it to a word when that
+ * sentence does not hold it whole, timeJump), its transcript search filled, in `track` (the subtitle's
  * asset when the video has several, else null: the one shown).
  */
 export type PendingJump =

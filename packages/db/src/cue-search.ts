@@ -1,6 +1,13 @@
 import { TEXT_LIMITS, ftsMatch, likePattern, likeSnippet, type BodyWords, type TimeMatch } from '@learn/domain';
 import type { Db } from './connection';
 
+/**
+ * A cue of up to this many characters is a row's snippet whole, and the row's two-line clamp ends it: a sentence that fits is never cut
+ * at the snippet's token count. A longer one is cut around the match.
+ */
+export const WHOLE_CUE_CHARS = 60;
+const wholeCueLength = (marked: string): number => marked.replace(/[\ue000\ue001]/g, '').length;
+
 /** Cue texts of the videos outside the trash that still link the subtitle file. */
 const LIVE_JOIN = `JOIN assets a ON a.sha256 = c.sha256
   JOIN item_assets ia ON ia.asset_id = a.id AND ia.role = 'subtitle'
@@ -82,8 +89,18 @@ export function cueMatches(db: Db, itemId: string, words: BodyWords): { matches:
     const chosen = db
       .prepare(`SELECT c.id AS id, c.start_ms AS startMs, st.asset_id AS assetId ${from} ${ITEM_ORDER}`)
       .all(...args) as Array<{ id: number; startMs: number; assetId: string }>;
-    const snippetOf = db.prepare(`SELECT snippet(cue_texts_fts, 0, char(57344), char(57345), '…', 48) FROM cue_texts_fts WHERE rowid = ? AND cue_texts_fts MATCH ?`).pluck();
-    const rows = chosen.map((r) => ({ startMs: r.startMs, assetId: r.assetId, snippet: snippetOf.get(r.id, args[1]) as string }));
+    // One statement for the chosen cues: an aux function asked with `rowid = ?` beside MATCH answered another cue's text (two tracks with the
+    // same start gave the second one the first one's sentence), and a rowid list does not.
+    const ids = chosen.map((r) => r.id);
+    const shown = new Map<number, string>();
+    const marked = db
+      .prepare(
+        `SELECT rowid AS id, snippet(cue_texts_fts, 0, char(57344), char(57345), '…', 48) AS cut, highlight(cue_texts_fts, 0, char(57344), char(57345)) AS whole
+         FROM cue_texts_fts WHERE cue_texts_fts MATCH ? AND rowid IN (${ids.map(() => '?').join(',')})`,
+      )
+      .all(args[1], ...ids) as Array<{ id: number; cut: string; whole: string }>;
+    for (const m of marked) shown.set(m.id, wholeCueLength(m.whole) <= WHOLE_CUE_CHARS ? m.whole : m.cut);
+    const rows = chosen.map((r) => ({ startMs: r.startMs, assetId: r.assetId, snippet: shown.get(r.id) ?? '' }));
     const total = rows.length < TEXT_LIMITS.pagesShown ? rows.length : (db.prepare(`SELECT COUNT(*) ${from}`).pluck().get(...args) as number);
     return { matches: rows.map((r) => ({ kind: 'time', startMs: r.startMs, snippet: r.snippet, track: trackOf(r.assetId) })), total };
   }
@@ -92,5 +109,5 @@ export function cueMatches(db: Db, itemId: string, words: BodyWords): { matches:
     .prepare(`SELECT c.start_ms AS startMs, st.asset_id AS assetId, c.text AS text ${from} ${ITEM_ORDER}`)
     .all(itemId, ...likes) as Array<{ startMs: number; assetId: string; text: string }>;
   const total = rows.length < TEXT_LIMITS.pagesShown ? rows.length : (db.prepare(`SELECT COUNT(*) ${from}`).pluck().get(itemId, ...likes) as number);
-  return { matches: rows.map((r) => ({ kind: 'time', startMs: r.startMs, snippet: likeSnippet(r.text, words.like), track: trackOf(r.assetId) })), total };
+  return { matches: rows.map((r) => ({ kind: 'time', startMs: r.startMs, snippet: likeSnippet(r.text, words.like, WHOLE_CUE_CHARS), track: trackOf(r.assetId) })), total };
 }

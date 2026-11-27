@@ -1,4 +1,4 @@
-import { bodyQueryWords, MARK_START, newId, nowIso, type Cue } from '@learn/domain';
+import { bodyQueryWords, MARK_END, MARK_START, newId, nowIso, type Cue } from '@learn/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CUE_WALK_MAX, LibraryRepository, SubtitlesRepository, cueItemIds, cueLikeChunks, cueMatches, type AssetRow, type Db } from '../src/index';
 import { freshDb, seedItem } from './fixtures';
@@ -86,6 +86,28 @@ describe('cueMatches', () => {
     const two = track(a, ['칼슘 영어']);
     const r2 = cueMatches(db, a, words);
     expect(r2.matches.map((m) => [m.startMs, m.track])).toEqual([[0, two.id], [1000, one.id], [3000, one.id]]);
+  });
+
+  it('each row of two tracks shows its own track\'s sentence', () => {
+    const a = video();
+    const ko = track(a, ['이 과정에는 ATP가 필요합니다.']);
+    const en = track(a, ['This process needs ATP.']);
+    const r = cueMatches(db, a, bodyQueryWords('ATP'));
+    const text = (snippet: string) => snippet.replaceAll(MARK_START, '').replaceAll(MARK_END, '');
+    expect(r.matches.map((m) => [m.track, text(m.snippet)])).toEqual([[ko.id, '이 과정에는 ATP가 필요합니다.'], [en.id, 'This process needs ATP.']]);
+  });
+
+  it('a cue short enough for two lines comes whole, by the trigram index and by the scan; a long one is cut around the match', () => {
+    const a = video();
+    const shortCue = '1번째 문장: 칼슘 펌프는 칼슘 이온을 세포 밖으로 내보내며 에너지를 씁니다.';
+    const longCue = `${'가나다라 '.repeat(30)}칼슘 펌프${' 마바사아'.repeat(30)}`;
+    track(a, [shortCue, longCue]);
+    const plain = (s: string) => s.replaceAll(MARK_START, '').replaceAll(MARK_END, '');
+    const byIndex = cueMatches(db, a, bodyQueryWords('칼슘'));
+    expect(plain(byIndex.matches[0]!.snippet)).toBe(shortCue);
+    expect(plain(byIndex.matches[1]!.snippet).length).toBeLessThan(longCue.length);
+    const byScan = cueMatches(db, a, bodyQueryWords('세포'));
+    expect(plain(byScan.matches[0]!.snippet)).toBe(shortCue);
   });
 
   it('a two-letter query uses the LIKE snippet', () => {

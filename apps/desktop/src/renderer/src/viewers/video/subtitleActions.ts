@@ -26,7 +26,7 @@ export interface SubtitleActionDeps {
 
 /**
  * The video's subtitle actions (spec 5.4, 5.5, 6.5). Those that ask main run one at a time in the order they were asked: a drop or
- * 이 자막 제거 while an attach runs waits for it and then happens, rather than being lost.
+ * 이 자막 제거 while an attach runs waits for it and then happens, rather than being lost. 자막 파일 추가… is the exception: one panel at a time.
  */
 export function createSubtitleActions(d: SubtitleActionDeps): SubtitleHandle {
   const { itemId, store } = d;
@@ -37,6 +37,8 @@ export function createSubtitleActions(d: SubtitleActionDeps): SubtitleHandle {
     return run;
   };
   const queued = (fn: () => Promise<void>): void => void inTurn(fn).catch((e: unknown) => d.failed(e));
+  /** A pick asked for and not yet answered: a second press (a double click, the menu and then the button) asks for no second panel. */
+  let picking = false;
   const select = (assetId: string): void => {
     // A reader that has gone (its handle is cleared on unmount) has no choice to make: an undo after it is a no-op here.
     if (store.getState().handle === null) return;
@@ -62,7 +64,17 @@ export function createSubtitleActions(d: SubtitleActionDeps): SubtitleHandle {
       s.patch({ captionsOn: false });
       d.save();
     },
-    addSubtitles: () => queued(async () => announce(await d.pick(itemId))),
+    addSubtitles: () => {
+      if (picking) return;
+      picking = true;
+      queued(async () => {
+        try {
+          announce(await d.pick(itemId));
+        } finally {
+          picking = false;
+        }
+      });
+    },
     attachPaths: (paths) =>
       queued(async () => {
         const { subtitles, rejected } = splitDroppedPaths(paths);

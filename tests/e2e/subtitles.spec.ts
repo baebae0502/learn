@@ -6,7 +6,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import type { Cue, SubtitleTrack } from '../../packages/domain/src/subtitles';
-import { FIXTURES, importPaths, launch, libraryTab, menuItemEnabled, openItem, rowByTitle, runMenuCommand, stageState, stubOpenDialog, videoReady, videoState } from './helpers';
+import { holdReplies } from './dnd-helpers';
+import { FIXTURES, importPaths, launch, libraryTab, menuItemEnabled, openDialogCalls, openItem, rowByTitle, runMenuCommand, stageState, stubOpenDialog, videoReady, videoState } from './helpers';
 
 const fixture = (name: string): string => path.join(FIXTURES, name);
 const KO = fixture('lecture-60s.ko.srt');
@@ -625,6 +626,27 @@ test('⌘F takes the focus to the transcript search, unfolding the sidebar when 
     await page.keyboard.press('Escape');
     await expect.poll(() => stageState(app)).toEqual({ stage: false, fullScreen: false, pending: false });
     await expect.poll(() => menuItemEnabled(app, 'library.find')).toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
+test('자막 파일 추가… pressed twice before its panel comes opens one panel', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await openLecture(page);
+    await stubOpenDialog(app, [KO]);
+    // The pick is held in main for a while: the second press comes while the first is still on its way, as a double click does.
+    await holdReplies(app, ['subtitles:pick'], 1500);
+    await page.getByTestId('transcript-add').click();
+    await page.getByTestId('transcript-add').click();
+    await expect(page.getByTestId('subtitle-attached')).toBeVisible();
+    await holdReplies(app, ['subtitles:pick'], 0);
+    // 이 자막 제거 runs after whatever was asked before it: once its toast shows, a second panel would have been asked for.
+    await openMenu(page);
+    await page.getByRole('menuitem', { name: '이 자막 제거' }).click();
+    await expect(page.getByTestId('subtitle-removed')).toBeVisible();
+    expect(await openDialogCalls(app)).toBe(1);
   } finally {
     await app.close();
   }

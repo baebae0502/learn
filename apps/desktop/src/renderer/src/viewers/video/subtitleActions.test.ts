@@ -100,6 +100,36 @@ describe('the subtitle actions run one at a time, in the order asked (M8a spec 5
     expect(store.getState()).toMatchObject({ trackId: KO.assetId, captionsOn: true });
   });
 
+  it('자막 파일 추가… pressed again while its panel is asked for or open opens no second panel; pressed after it, one more', async () => {
+    const { calls, attach, actions } = setup();
+    actions.addSubtitles();
+    actions.addSubtitles(); // a double click, or the menu item and then the empty state's button
+    await drain();
+    expect(calls).toEqual(['pick']);
+    actions.addSubtitles(); // the panel is still open
+    attach.resolve({ added: [], already: [], failed: [] });
+    await drain();
+    expect(calls).toEqual(['pick']);
+    actions.addSubtitles();
+    await drain();
+    expect(calls).toEqual(['pick', 'pick']);
+  });
+
+  it('a pick that was refused lets the next press open the panel', async () => {
+    const { calls, deps } = setup();
+    deps.pick = async () => {
+      calls.push('pick');
+      throw new Error('라이브러리를 열 수 없습니다.');
+    };
+    const actions = createSubtitleActions(deps);
+    actions.addSubtitles();
+    await drain();
+    actions.addSubtitles();
+    await drain();
+    expect(calls).toEqual(['pick', 'pick']);
+    expect(deps.failed).toHaveBeenCalledTimes(2);
+  });
+
   it('a refused action says so and the next one still runs', async () => {
     const { calls, deps } = setup();
     const refused = new Error('자막을 찾지 못했습니다.');

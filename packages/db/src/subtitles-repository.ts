@@ -41,7 +41,8 @@ export class SubtitlesRepository {
                     VALUES (@id, @sha256, @storageMode, @relativePath, @externalPath, @originalName, @mime, @size, @availability, @createdAt, @checkedAt, @width, @height)`)
           .run({ ...a, width: a.width ?? null, height: a.height ?? null });
       }
-      this.db.prepare(`INSERT INTO item_assets (item_id, asset_id, role) VALUES (?, ?, 'subtitle')`).run(rec.itemId, a.id);
+      // A link with no track (one no v6 code writes) is already there: the track below makes it a subtitle again.
+      this.db.prepare(`INSERT INTO item_assets (item_id, asset_id, role) VALUES (?, ?, 'subtitle') ON CONFLICT DO NOTHING`).run(rec.itemId, a.id);
       if (rec.revision) {
         this.db
           .prepare(`INSERT INTO source_revisions (id, asset_id, hash, parent_revision_id, renderer_version, created_at) VALUES (?, ?, ?, NULL, NULL, ?)`)
@@ -101,12 +102,9 @@ export class SubtitlesRepository {
     })();
   }
 
+  /** The video has this file as a track. A link with no track counts as none: nothing lists or removes it, so it must not refuse the file. */
   isLinked(itemId: string, sha256: string): boolean {
-    return (
-      this.db
-        .prepare(`SELECT 1 FROM item_assets ia JOIN assets a ON a.id = ia.asset_id WHERE ia.item_id = ? AND ia.role = 'subtitle' AND a.sha256 = ? LIMIT 1`)
-        .get(itemId, sha256) !== undefined
-    );
+    return this.db.prepare(`SELECT 1 FROM subtitle_tracks t JOIN assets a ON a.id = t.asset_id WHERE t.item_id = ? AND a.sha256 = ? LIMIT 1`).get(itemId, sha256) !== undefined;
   }
 
   hasCues(sha256: string): boolean {

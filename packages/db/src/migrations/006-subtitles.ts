@@ -1,6 +1,7 @@
 /**
  * Adds the subtitle tables only, so it runs with foreign keys on. A track is keyed to the item's `subtitle` link
- * through the composite foreign key: deleting the link (or the item) takes the track with it.
+ * through the composite foreign key: deleting the link (or the item) takes the track with it. A `subtitle` link from
+ * before v6 gets no track here (001 allowed the role, nothing wrote it): it is left as it is and counts as no subtitle.
  */
 export const sql = `
 CREATE TABLE subtitle_tracks (

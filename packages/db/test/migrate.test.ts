@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { LearnError } from '@learn/domain';
 import {
-  AnchorsRepository, CollectionsRepository, LATEST_SCHEMA_VERSION, LibraryRepository, MIGRATIONS, TagsRepository, currentVersion, migrate, openDatabase,
+  AnchorsRepository, CollectionsRepository, LATEST_SCHEMA_VERSION, LibraryRepository, MIGRATIONS, SubtitlesRepository, TagsRepository, currentVersion, migrate, openDatabase,
   type AssetRow, type Db,
 } from '../src/index';
 import { newId, nowIso } from '@learn/domain';
@@ -564,7 +564,7 @@ describe('migration v6 (subtitles)', () => {
   it('upgrades a real v5 library: every row and rowid kept, foreign keys whole and on, the subtitle tables empty, a v5 snapshot', () => {
     const { db, file } = tempDb();
     migrate(db, { dbFile: file, migrations: v5 });
-    seedV5(db);
+    const seeded = seedV5(db);
     const names = V5_TABLES(db);
     const before = Object.fromEntries(names.map((t) => [t, snapshotRows(db, t)]));
     expect(migrate(db, { dbFile: file })).toEqual({ from: 5, to: 6, backupFile: `${file}.pre-v6.bak` });
@@ -582,6 +582,18 @@ describe('migration v6 (subtitles)', () => {
     const snap = openDatabase(`${file}.pre-v6.bak`);
     dbs.push(snap);
     expect(currentVersion(snap)).toBe(5);
+
+    // The v5 subtitle link has no track: nothing shows it, nothing calls it attached, and attaching that file makes it a track.
+    const subs = new SubtitlesRepository(db);
+    const sha = '5'.repeat(64);
+    expect(subs.list(seeded.video.itemId)).toEqual([]);
+    expect(subs.isLinked(seeded.video.itemId, sha)).toBe(false);
+    const asset = new LibraryRepository(db).getAsset(seeded.subtitleAsset)!;
+    const cues = [{ startMs: 0, endMs: 1000, text: '안녕하세요' }];
+    expect(subs.attach({ itemId: seeded.video.itemId, asset, assetIsNew: false, revision: null, language: 'ko', cues, createdAt: 'now' })).toMatchObject({ assetId: seeded.subtitleAsset, position: 0, cueCount: 1 });
+    expect(subs.isLinked(seeded.video.itemId, sha)).toBe(true);
+    expect(subs.list(seeded.video.itemId)).toHaveLength(1);
+    expect(db.pragma('foreign_key_check')).toEqual([]);
   });
 
   it('the cue triggers index, update and delete', () => {

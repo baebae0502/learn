@@ -14,9 +14,14 @@ describe('the page a 본문 일치 row leaves for a reader', () => {
   it('lives in the tab\'s store until it is taken', () => {
     const store = createReaderStore();
     expect(store.getState().pendingJump).toBeNull();
-    store.getState().setPendingJump({ pageIndex: 6, query: '형광' });
-    expect(store.getState().pendingJump).toEqual({ pageIndex: 6, query: '형광' });
+    store.getState().setPendingJump({ kind: 'page', pageIndex: 6, query: '형광' });
+    expect(store.getState().pendingJump).toEqual({ kind: 'page', pageIndex: 6, query: '형광' });
     store.getState().setPendingJump(null);
     expect(store.getState().pendingJump).toBeNull();
+  });
+  it('holds a time jump as well: the sentence\'s start, the word to search and the track (null: the one shown)', () => {
+    const store = createReaderStore();
+    store.getState().setPendingJump({ kind: 'time', startMs: 12_000, query: '칼슘', track: 'asset-en' });
+    expect(store.getState().pendingJump).toEqual({ kind: 'time', startMs: 12_000, query: '칼슘', track: 'asset-en' });
   });
 });

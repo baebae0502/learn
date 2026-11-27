@@ -463,10 +463,10 @@ export function MainWindow(_props: { info: AppInfo }) {
   }, []);
   /**
    * A 본문 일치 row (spec 5.8): item.open's way — an open 정보 편집 is asked first, then the tab rules. The reader of the item's tab
-   * is told the page and the query before the tab shows, so a new reader is placed there and one already placed jumps. A
+   * is told the page or time and the query before the tab shows, so a new reader is placed there and one already placed jumps. A
    * refused edit leaves nothing behind.
    */
-  const openAtPage = useCallback((itemId: string, at: PendingJump) => afterEditing(() => {
+  const openAt = useCallback((itemId: string, at: PendingJump) => afterEditing(() => {
     readerScopes.get(itemId).reader.getState().setPendingJump(at);
     useShell.getState().openTabs([itemId]);
   }), []);
@@ -563,7 +563,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     clearTagFilter: () => useLibrary.getState().clearTagFilter(),
     back: () => afterEditing(() => selectTab('library')),
     openItems: (itemIds, opts) => openItems(itemIds, opts?.background === true),
-    openAtPage,
+    openAt,
     closeTab: (itemId) => {
       const shell = useShell.getState();
       const id = itemId ?? shell.tabs.active;
@@ -649,7 +649,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, pdfOpen, imageDrawn, videoReady, videoPlaying, videoMuted, videoStage, videoCaptions, videoCaptionsOn, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, inspectorMode, tutorConsented, tutorHasMessages, tutorStreaming, sessionFocused, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAtPage, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, pdfOpen, imageDrawn, videoReady, videoPlaying, videoMuted, videoStage, videoCaptions, videoCaptionsOn, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, inspectorMode, tutorConsented, tutorHasMessages, tutorStreaming, sessionFocused, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAt, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
   useStageLeaves(videoStage, videoReady && viewKind === 'reader' ? (view.kind === 'reader' ? view.itemId : null) : null);
   useMenuCommands(env);
   useReportContext(env);

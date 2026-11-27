@@ -182,7 +182,7 @@
     margin-left: auto;
     margin-right: -6px; /* local: the glyph on the section's right inset, as the mockup's */
   }
-  /* A section's count at the head's end (본문 일치 "쪽 34개"): tertiary, on the section's right inset. */
+  /* A section's count at the head's end (본문 일치 "쪽 34개", "문장 34개"): tertiary, on the section's right inset. */
   .inspector .section-head > .section-count {
     margin-left: auto;
     color: var(--text-tertiary);
@@ -207,6 +207,10 @@
     font: var(--type-footnote);
     cursor: default;
     outline: none;
+  }
+  /* A video with several subtitles: a row's label is "18:14 · 한국어". */
+  .inspector .match-list.tracks .match-row {
+    grid-template-columns: 92px minmax(0, 1fr); /* local: "18:14 · 한국어" is about 84 wide */
   }
   .inspector .match-row[data-hovered] {
     background: var(--fill-hover);

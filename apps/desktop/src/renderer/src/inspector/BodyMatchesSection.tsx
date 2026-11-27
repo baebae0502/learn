@@ -7,7 +7,9 @@ import { useCommands } from '../commands/CommandProvider';
 import { bodyPagesOptions, useBodyTarget } from '../library/useBodySearch';
 import { t } from '../strings';
 import { Spinner } from '../ui/Spinner';
-import { matchesView, snippetParts } from './bodyText';
+import { useTracks } from '../viewers/video/useSubtitles';
+import { trackNames } from '../viewers/video/trackNames';
+import { matchesView, snippetParts, timeRows, type SnippetPart, type TimeRowView } from './bodyText';
 import { Section } from './Section';
 import { useShownAfter } from './useShownAfter';
 
@@ -15,25 +17,28 @@ import { useShownAfter } from './useShownAfter';
 const LOADING_DELAY_MS = 300;
 
 /**
- * 본문 일치 (spec 5.8): in the library's panel for one PDF while the quick search looks in 정보와 본문 with a body word — the
- * pages whose text has every word, each with its snippet, opening the reader there. While the body is not read (or cannot be),
+ * 본문 일치 (spec 5.8, M8a 8.2): in the library's panel for one PDF or video while the quick search looks in 정보와 본문 with a body
+ * word — the pages (or a video's sentences, each at its start time) whose text has every word, each with its snippet, opening the
+ * reader there. While the body is not read (or cannot be),
  * the state line in their place, unless the original is missing (nothing will read it); an index cut at a limit says so under its
  * rows; a whole index with no match has no section (matchesView).
  */
 export function BodyMatchesSection({ item, text }: { item: LibraryItem; text: BodyTextState | null }) {
   // The query typed now, as the table's body answer has it: the list empties and fills with the table's body rows.
   const { target, settled } = useBodyTarget();
-  const on = target !== '' && item.type === 'pdf';
-  const read = on && text?.state === 'done';
+  // A video's sentences are indexed when its subtitles are attached: there is no state to wait for.
+  const video = item.type === 'video';
+  const on = target !== '' && (item.type === 'pdf' || video);
+  const read = on && (video || text?.state === 'done');
   const pages = useQuery(bodyPagesOptions(item.id, target, settled, read));
   const loading = useShownAfter(read && pages.isPending, LOADING_DELAY_MS);
   // A failed search:matches shows nothing, on purpose: the table's failed body answer claims nothing about the body either.
   useEffect(() => {
     if (pages.isError) console.warn(`[inspector] body pages failed: ${pages.error instanceof ApiError ? pages.error.code : 'INTERNAL'}`);
   }, [pages.isError, pages.error]);
-  if (!on || text === null) return null;
+  if (!on || (!video && text === null)) return null;
   const found = pages.data;
-  if (text.state === 'done' && found === undefined) {
+  if (found === undefined && (video || text?.state === 'done')) {
     return loading ? (
       <Section id="matches" title={t.inspector.sections.matches} testId="matches-section">
         <div className="loading" role="status" data-testid="matches-loading">
@@ -43,7 +48,7 @@ export function BodyMatchesSection({ item, text }: { item: LibraryItem; text: Bo
       </Section>
     ) : null;
   }
-  const view = matchesView(text, item.availability === 'missing', found?.total ?? 0);
+  const view = video ? ((found?.total ?? 0) > 0 ? { rows: true, line: null } : null) : matchesView(text!, item.availability === 'missing', found?.total ?? 0);
   if (view === null) return null;
   const shown = view.rows ? found : undefined;
   return (
@@ -54,15 +59,15 @@ export function BodyMatchesSection({ item, text }: { item: LibraryItem; text: Bo
       extra={
         shown && (
           <span className="section-count num" data-testid="matches-count">
-            {t.inspector.matches.count(shown.total)}
+            {video ? t.inspector.matches.cueCount(shown.total) : t.inspector.matches.count(shown.total)}
           </span>
         )
       }
     >
-      {shown && <MatchList itemId={item.id} query={target} pages={shown.pages} />}
-      {shown && shown.total > shown.pages.length && (
+      {shown && (video ? <TimeList itemId={item.id} query={target} times={shown.times} /> : <MatchList itemId={item.id} query={target} pages={shown.pages} />)}
+      {shown && shown.total > shown.pages.length + shown.times.length && (
         <div className="match-more num" data-testid="matches-more">
-          {t.inspector.matches.more(shown.total - shown.pages.length)}
+          {video ? t.inspector.matches.moreCues(shown.total - shown.times.length) : t.inspector.matches.more(shown.total - shown.pages.length)}
         </div>
       )}
       {view.line !== null && (
@@ -90,13 +95,48 @@ function MatchList({ itemId, query, pages }: { itemId: string; query: string; pa
     [pages],
   );
   return (
-    <ListBox aria-label={t.inspector.sections.matches} className="match-list" data-testid="match-list" onAction={(key) => env.openAtPage(itemId, { pageIndex: Number(key), query: findWord })}>
+    <ListBox aria-label={t.inspector.sections.matches} className="match-list" data-testid="match-list" onAction={(key) => env.openAt(itemId, { kind: 'page', pageIndex: Number(key), query: findWord })}>
       {rows.map((row) => (
         // Named "12쪽, <snippet>". The space between the two columns is no box of the grid, but it keeps the shown words ("12쪽 <snippet>")
         // inside the name, as a label must (axe label-content-name-mismatch).
         <ListBoxItem key={row.pageIndex} id={row.pageIndex} textValue={row.name} aria-label={row.name} className="match-row" data-testid="match-row" data-page={row.pageIndex + 1}>
           <span className="pg num">{t.inspector.matches.page(row.pageIndex + 1)}</span>{' '}
           <span className="snip">{row.parts.map((part, i) => (part.mark ? <mark key={i}>{part.text}</mark> : <span key={i}>{part.text}</span>))}</span>
+        </ListBoxItem>
+      ))}
+    </ListBox>
+  );
+}
+
+const Snippet = ({ parts }: { parts: SnippetPart[] }) => (
+  <span className="snip">{parts.map((part, i) => (part.mark ? <mark key={i}>{part.text}</mark> : <span key={i}>{part.text}</span>))}</span>
+);
+
+/**
+ * A video's sentences as one list, as MatchList is for pages: ↩ or a click opens the video at the row's start, the transcript search on
+ * one word of the query (a sentence holds every word, not always side by side, and the search finds its text as one phrase). With
+ * several tracks a row names its track, and the label column is wider.
+ */
+function TimeList({ itemId, query, times }: { itemId: string; query: string; times: ReadonlyArray<{ startMs: number; snippet: string; track: string | null }> }) {
+  const { env } = useCommands();
+  const tracks = useTracks(itemId);
+  const names = useMemo(() => trackNames(tracks ?? []), [tracks]);
+  const findWord = findWordOf(query);
+  const rows: TimeRowView[] = useMemo(() => timeRows(times, names), [times, names]);
+  return (
+    <ListBox
+      aria-label={t.inspector.sections.matches}
+      className={`match-list${rows.some((r) => r.track !== null) ? ' tracks' : ''}`}
+      data-testid="match-list"
+      onAction={(key) => {
+        const row = rows.find((r) => r.key === key);
+        if (row) env.openAt(itemId, { kind: 'time', startMs: row.startMs, query: findWord, track: row.track });
+      }}
+    >
+      {rows.map((row) => (
+        <ListBoxItem key={row.key} id={row.key} textValue={row.name} aria-label={row.name} className="match-row" data-testid="match-row" data-time={row.startMs}>
+          <span className="pg num">{row.label}</span>{' '}
+          <Snippet parts={row.parts} />
         </ListBoxItem>
       ))}
     </ListBox>

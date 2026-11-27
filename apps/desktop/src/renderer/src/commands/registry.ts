@@ -39,8 +39,8 @@ export interface CommandEnv extends CommandContextState {
   back(): void;
   /** ↩, a double-click and ⌘↩: one tab per item (the first one's shown unless `background`); eleven or more ask first. */
   openItems(itemIds: readonly string[], opts?: { background?: boolean }): void;
-  /** A 본문 일치 row (M7c spec 5.8): item.open's way to the item's tab (an open edit asked first), its reader at that page with the find bar on the query. */
-  openAtPage(itemId: string, at: PendingJump): void;
+  /** A 본문 일치 row (M7c spec 5.8, M8a 8.3): item.open's way to the item's tab (an open edit asked first), its reader at that page or sentence with the search on the query. */
+  openAt(itemId: string, jump: PendingJump): void;
   /** ⌘W and the tab menu: the reader tab of this item, or the shown one (the library's tab closes the window). */
   closeTab(itemId?: string): void;
   /** ⇧⌘T. */

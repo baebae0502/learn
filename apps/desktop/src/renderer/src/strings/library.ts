@@ -44,7 +44,7 @@ export const library = {
     metadata: '정보',
     metadataDescription: SEARCHED_FIELDS,
     fulltext: '정보와 본문',
-    fulltextDescription: 'PDF 본문 포함',
+    fulltextDescription: 'PDF 본문·자막 포함',
     progress: (done: number, total: number) => `본문 색인 ${done}\u00a0/\u00a0${total}`,
   },
   /** Read out politely as the results change; with none, the no-results state speaks instead. */
@@ -57,7 +57,7 @@ export const library = {
    * narrowed the result (spec 3.6).
    */
   searchEmptyBody: (view: string | null, tagCount: number, body: boolean) =>
-    `${view === null ? '' : `‘${view}’\u2060의 `}${SEARCHED_FIELDS}${body ? '\u2060·PDF\u00a0본문' : ''}에서 찾았습니다.${tagCount > 0 ? ` 고른 태그\u00a0${tagCount}개로 거른 결과입니다.` : ''}`,
+    `${view === null ? '' : `‘${view}’\u2060의 `}${SEARCHED_FIELDS}${body ? '\u2060·PDF\u00a0본문\u2060·자막' : ''}에서 찾았습니다.${tagCount > 0 ? ` 고른 태그\u00a0${tagCount}개로 거른 결과입니다.` : ''}`,
   /** In 정보와 본문, a query of one-letter words only: the body was not searched, and why. */
   searchEmptyOneLetter: '본문은 두\u00a0글자 이상인 낱말로 찾습니다.',
   /** In 정보와 본문 while PDFs are still being indexed: the body search may find more later. */

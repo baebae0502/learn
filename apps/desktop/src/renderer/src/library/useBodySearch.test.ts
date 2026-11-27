@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { ApiError } from '../api';
 import { keys } from '../data/queries';
-import { bodyPagesOptions, bodyQueryOptions, bodySearchState, type BodyAnswer, type BodyPages, type BodyPagesCall, type BodySearchCall } from './useBodySearch';
+import { bodyPagesOptions, bodyQueryOptions, bodySearchState, splitMatches, type BodyAnswer, type BodyPages, type BodyPagesCall, type BodySearchCall } from './useBodySearch';
 
 // The hook's own query options and state mapping, driven through React Query as the hook drives them (the same client
 // defaults as the app's query-client.ts), with search:body replaced by a stub.
@@ -65,7 +65,7 @@ describe('the body answer as the readers see it', () => {
 
 describe("본문 일치's pages as the item panel reads them (keyed as the table's body answer)", () => {
   const ITEM = '7d3f3c3e-8a51-4f7e-9d7c-2b1f0f6f8f10';
-  const pages = (n: number): BodyPages => ({ pages: Array.from({ length: n }, (_, i) => ({ pageIndex: i, snippet: `\ue000형광\ue001 ${i}` })), total: n });
+  const pages = (n: number): BodyPages => ({ pages: Array.from({ length: n }, (_, i) => ({ pageIndex: i, snippet: `\ue000형광\ue001 ${i}` })), times: [], total: n });
   /** One reader of the pages of `target` while the settled query is `settled`: what it holds once nothing is fetched any more. */
   async function readPages(c: QueryClient, target: string, settled: string, read: boolean, search: BodyPagesCall) {
     const observer = new QueryObserver(c, bodyPagesOptions(ITEM, target, settled, read, search));
@@ -109,5 +109,19 @@ describe("본문 일치's pages as the item panel reads them (keyed as the table
     await readPages(client(), '형광', '형광', false, search);
     await readPages(client(), '', '', true, search);
     expect(search).not.toHaveBeenCalled();
+  });
+});
+
+describe('splitMatches: what search:matches answers, as page rows and time rows', () => {
+  it('keeps each kind in its order with the total of the whole answer', () => {
+    const answer = splitMatches({
+      matches: [
+        { kind: 'time', startMs: 19_000, snippet: 'a', track: null },
+        { kind: 'time', startMs: 19_000, snippet: 'b', track: 'asset-en' },
+      ],
+      total: 34,
+    });
+    expect(answer).toEqual({ pages: [], times: [{ startMs: 19_000, snippet: 'a', track: null }, { startMs: 19_000, snippet: 'b', track: 'asset-en' }], total: 34 });
+    expect(splitMatches({ matches: [{ kind: 'page', pageIndex: 2, snippet: 's' }], total: 1 })).toEqual({ pages: [{ pageIndex: 2, snippet: 's' }], times: [], total: 1 });
   });
 });

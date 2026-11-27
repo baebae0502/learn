@@ -65,11 +65,14 @@ export interface PdfViewHandle {
 /** How long flashPage outlines its page. */
 export const CITE_FLASH_MS = 1500;
 
-/** A page to show once the reader is placed (a 본문 일치 row, spec 5.8), and what its find bar then searches for (one word of the query). */
-export interface PendingJump {
-  pageIndex: number;
-  query: string;
-}
+/**
+ * Where a 본문 일치 row sends the reader once it is placed, and the word its search then looks for (one word of the query). A PDF goes to
+ * a page (the find bar opens on the word); a video goes to a sentence's start, its transcript search on the word, in `track` (the subtitle's
+ * asset when the video has several, else null: the one shown).
+ */
+export type PendingJump =
+  | { kind: 'page'; pageIndex: number; query: string }
+  | { kind: 'time'; startMs: number; query: string; track: string | null };
 
 /**
  * Whether a reader keeps the page a 본문 일치 row left it: not once its document cannot be opened or shown, so a later open of

@@ -27,7 +27,7 @@ export const inspector = {
   /** Several selected (library.html?state=multi): the title and the "외 N개" line under the first eight titles. */
   multiTitle: (n: number) => `자료 ${n}개 선택`,
   more: (n: number) => `외 ${n}개`,
-  sections: { matches: '본문 일치', reading: '읽기', info: '정보', file: '파일' },
+  sections: { matches: '본문\u00a0일치', reading: '읽기', info: '정보', file: '파일' },
   /** 본문 일치 (M7c spec 5.8, 11): the pages of a PDF whose body has the quick search's words, each with a marked snippet. */
   matches: {
     /** The head's count, in the app's count grammar, so it is not read as a page ("12쪽"): "쪽 34개". */
@@ -36,6 +36,14 @@ export const inspector = {
     page: (n: number) => `${n}쪽`,
     /** The pages past the twenty shown: "외 14쪽". */
     more: (n: number) => `외 ${n}쪽`,
+    /** A video's head count: sentences, not pages ("문장 34개"; two tracks matching at one time are two sentences). */
+    cueCount: (n: number) => `문장\u00a0${n}개`,
+    /** The sentences past the twenty shown: "외 14문장". */
+    moreCues: (n: number) => `외 ${n}문장`,
+    /** A time row's label: "18:20", with the track's name when the video has several ("18:14 · 한국어"). */
+    time: (clock: string, track?: string | null) => (track ? `${clock}\u00a0· ${track}` : clock),
+    /** A time row's name: its label and the snippet's text. */
+    timeRowName: (label: string, snippet: string) => `${label}, ${snippet}`,
     searching: '찾는 중…',
     /** A row's name: its page and the snippet's text (the typeahead's text too). */
     rowName: (page: number, snippet: string) => `${page}쪽, ${snippet}`,

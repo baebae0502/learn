@@ -32,7 +32,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   clearTagFilter: vi.fn(),
   back: vi.fn(),
   openItems: vi.fn(),
-  openAtPage: vi.fn(),
+  openAt: vi.fn(),
   closeTab: vi.fn(),
   reopenClosedTab: vi.fn(),
   selectRelativeTab: vi.fn(),

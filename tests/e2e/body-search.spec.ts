@@ -8,6 +8,8 @@ import { holdReplies } from './dnd-helpers';
 import {
   FIXTURES,
   closeReaderTab,
+  cueTextCount,
+  subtitleAssets,
   expectTooltipText,
   hardKill,
   hoverLikeUser,
@@ -249,7 +251,7 @@ test('the scope button: at the field start in its own Tab stop, a menu by pointe
     await settled(page);
     await expect(scopeMenu(page).locator('[role="menuitemradio"][data-focused]')).toHaveCount(0);
     await expect(scopeRow(page, '정보')).toContainText('제목⁠·저자⁠·태그⁠·출판사⁠·원래 이름⁠·초록⁠·메모');
-    await expect(scopeRow(page, '정보와 본문')).toContainText('PDF 본문 포함');
+    await expect(scopeRow(page, '정보와 본문')).toContainText('PDF 본문·자막 포함');
     await expectNoSeriousA11y(page, 'the search scope menu');
     await scopeRow(page, '정보와 본문').click();
     await expect(scopeMenu(page)).toHaveCount(0);
@@ -334,7 +336,7 @@ test('two Korean letters search the body, one letter does not and says so; an NF
     await expectNoSeriousA11y(page, 'quick search in 정보와 본문, one letter, no results');
     // Two words, searched in the body too: the field list ends in ·PDF 본문, the index is done so nothing more is said.
     await field(page).fill('효소 억제제');
-    await expect(empty.locator('.pe-text')).toHaveText('제목⁠·저자⁠·태그⁠·출판사⁠·원래 이름⁠·초록⁠·메모⁠·PDF 본문에서 찾았습니다.');
+    await expect(empty.locator('.pe-text')).toHaveText('제목⁠·저자⁠·태그⁠·출판사⁠·원래 이름⁠·초록⁠·메모⁠·PDF 본문⁠·자막에서 찾았습니다.');
     await expectNoSeriousA11y(page, 'quick search in 정보와 본문, no results');
     // korean.pdf's page 2 is decomposed (NFD) in the file; the stored text is NFC, so the NFC query finds it there too.
     await field(page).fill('변환기는');
@@ -375,7 +377,7 @@ test('정보와 본문 with nothing else to show: 찾는 중… once the body an
     await field(page).fill('효소 억제제');
     await expect(pending.getByRole('status')).toHaveText('찾는 중…');
     await expectNoSeriousA11y(page, '정보와 본문, waiting for the body');
-    await expect(page.getByTestId('search-empty').locator('.pe-text')).toContainText('PDF 본문에서 찾았습니다.');
+    await expect(page.getByTestId('search-empty').locator('.pe-text')).toContainText('PDF 본문⁠·자막에서 찾았습니다.');
     await expect(pending).toHaveCount(0);
     const second = await page.evaluate(() => (window as unknown as { __pending: { input: number[]; shown: number[] } }).__pending);
     expect(second.shown[1]! - second.input[1]!, 'nothing for the first 300 ms').toBeGreaterThanOrEqual(300);
@@ -403,7 +405,7 @@ test('the index progress: the menu counts the PDFs indexed while some wait, no-r
     await textIdle(app);
     // The last progress notice reaches the page after the queue is empty: the note goes with it.
     await expect(text).not.toContainText('본문 색인이 끝나면');
-    await expect(text).toContainText('PDF 본문에서 찾았습니다.');
+    await expect(text).toContainText('PDF 본문⁠·자막에서 찾았습니다.');
     await scopeButton(page).click();
     await expect(scopeRow(page, '정보와 본문')).toBeVisible();
     await expect(progressRow(page)).toHaveCount(0);
@@ -436,7 +438,7 @@ test('the index progress leaves out a PDF whose original is missing: counted whi
     await chooseScope(page, '정보와 본문');
     await field(page).fill('효소 억제제');
     const text = page.getByTestId('search-empty').locator('.pe-text');
-    await expect(text).toContainText('PDF 본문에서 찾았습니다.');
+    await expect(text).toContainText('PDF 본문⁠·자막에서 찾았습니다.');
     await expect(text).not.toContainText('본문 색인이 끝나면');
     await scopeButton(page).click();
     await expect(scopeRow(page, '정보와 본문')).toBeVisible();
@@ -870,6 +872,158 @@ test('an index cut at a limit says so in 본문 일치: under its rows, and alon
       )
       .toEqual([{ line: '앞 12쪽까지 색인했습니다.', rows: false, count: false }]);
     await expectNoSeriousA11y(page, 'item panel, 본문 일치 of a cut index with no match');
+  } finally {
+    await app.close();
+  }
+});
+
+// ---- Subtitles in the quick search and the item panel (M8a spec 8.2, 8.3): time rows that open the video at that sentence ----------
+
+const KO = pdf('lecture-60s.ko.srt');
+const EN = pdf('lecture-60s.en.vtt');
+const timeRow = (page: Page, label: string) => matchList(page).locator('[data-testid="match-row"]').filter({ has: page.locator('.pg', { hasText: label }) });
+const timeRowTimes = (page: Page) => matchList(page).getByRole('option').evaluateAll((els) => els.map((e) => Number(e.getAttribute('data-time'))));
+const transcriptField = (page: Page) => page.getByTestId('transcript-search').getByRole('searchbox');
+const videoAt = (page: Page) => page.evaluate(() => window.__learnVideo!.state());
+
+/** lecture-60s.mp4 with `files` attached as its subtitles (the page's own API: the screens come later), its row shown in 정보와 본문. */
+async function subtitleLibrary(page: Page, files: string[]) {
+  const [video] = await importPaths(page, [pdf('lecture-60s.mp4')]);
+  const r = await page.evaluate((input) => window.learn.subtitles.attach(input), { itemId: video!.id, paths: files });
+  if (!r.ok) throw new Error(`subtitles.attach failed: ${r.code}`);
+  expect(r.data.added).toHaveLength(files.length);
+  return video!;
+}
+
+test('a word only a subtitle has finds the video in 정보와 본문 and not in 정보; the scope says 자막, and so does a search that found nothing', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const video = await subtitleLibrary(page, [KO]);
+    expect(video.title).toBe('lecture-60s');
+    await chooseScope(page, '정보와 본문');
+    await field(page).fill('칼슘');
+    await expect(rowByTitle(page, video.title)).toBeVisible(); // the positive control for the 정보 run below
+    await scopeButton(page).click();
+    await expect(scopeRow(page, '정보와 본문')).toContainText('PDF 본문·자막 포함');
+    await page.keyboard.press('Escape');
+    await expect(scopeMenu(page)).toHaveCount(0);
+    await field(page).fill('없는낱말입니다');
+    await expect(page.getByTestId('search-empty').locator('.pe-text')).toContainText('PDF 본문⁠·자막에서 찾았습니다.');
+
+    await chooseScope(page, '정보');
+    await field(page).fill('칼슘');
+    await expect(page.getByTestId('search-empty')).toBeVisible();
+    await expect(rowByTitle(page, video.title)).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('본문 일치 of a video: "문장 2개" and a row per sentence with its start time; a click opens the video there, paused, the transcript search holding the word with that sentence the match; the PDF\'s page rows still open their page', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const video = await subtitleLibrary(page, [KO]);
+    const [pdfItem] = await importPaths(page, [pdf('korean.pdf')]);
+    await textExtraction(app, 'now');
+    await textIdle(app);
+    await chooseScope(page, '정보와 본문');
+    await panelFor(app, page, '칼슘 펌프', video.title);
+    await expect(matches(page).getByTestId('matches-count')).toHaveText('문장 2개');
+    // One track: the clock and the snippet, no track name; the phrase's words are marked in the snippet.
+    await expect.poll(() => timeRowTimes(page)).toEqual([19_000, 34_500]);
+    await expect(matchList(page).getByRole('option').nth(0).locator('.pg')).toHaveText('0:19');
+    await expect(matchList(page).getByRole('option').nth(1).locator('.pg')).toHaveText('0:34');
+    await expect(timeRow(page, '0:19')).toHaveAccessibleName(/^0:19, 칼슘 펌프는 칼슘 이온을 세포 밖으로 내보냅니다\./);
+    await expect(timeRow(page, '0:19').locator('mark').first()).toHaveText('칼슘');
+    await expect(matches(page).getByTestId('matches-more')).toHaveCount(0);
+    expect((await panelParts(page)).slice(0, 3)).toEqual(['inspector-head', 'matches-section', 'info-section']);
+    await expectNoSeriousA11y(page, 'item panel, 본문 일치 of a video');
+
+    // A click: the tab opens at the sentence, paused (a row never starts playback), the search holds the word, that sentence is the match.
+    await timeRow(page, '0:34').click();
+    await expect(readerTab(page, video.id)).toBeVisible();
+    await expect(transcriptField(page)).toHaveValue('칼슘');
+    await expect.poll(async () => Math.abs((await videoAt(page))!.timeMs - 34_500)).toBeLessThanOrEqual(80);
+    expect((await videoAt(page))!.paused).toBe(true);
+    expect((await videoAt(page))!.captionsOn).toBe(true);
+    await expect(page.getByTestId('transcript-count')).toHaveText('2개');
+    const hit = page.locator('[data-testid="cue-row"][data-index="9"]');
+    await expect(hit).toBeVisible();
+    await expect(hit.locator('mark.is-current').first()).toBeVisible();
+    await expect(page.locator('[data-testid="transcript"] mark.is-current')).toHaveCount(2); // the cue's two 칼슘, the one match
+    await expect(page.getByTestId('transcript-follow')).toHaveAttribute('data-selected');
+    await expect(hit).toHaveAttribute('data-current', 'true');
+
+    // The tab is open: another row jumps in place (↩ on the focused row), and the search keeps the same word.
+    await libraryTab(page).click();
+    await expect(timeRow(page, '0:19')).toBeVisible();
+    await timeRow(page, '0:19').focus();
+    await page.keyboard.press('Enter');
+    await expect(readerTab(page, video.id)).toHaveAttribute('aria-selected', 'true');
+    await expect.poll(async () => Math.abs((await videoAt(page))!.timeMs - 19_000)).toBeLessThanOrEqual(80);
+    await expect(page.locator('[data-testid="cue-row"][data-index="5"]')).toHaveAttribute('data-current', 'true');
+    await expect(transcriptField(page)).toHaveValue('칼슘');
+    expect((await videoAt(page))!.paused).toBe(true);
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __learnReader: { getState(): { pendingJump: unknown } } }).__learnReader.getState().pendingJump)).toBeNull();
+
+    // The PDF's rows are as they were: a page row opens the reader at that page (regression of the page jump).
+    await libraryTab(page).click();
+    await field(page).fill('메커니즘은');
+    await expect(rowByTitle(page, pdfItem!.title)).toBeVisible();
+    await selectRows(page, [pdfItem!.title]);
+    await expect(matchRow(page, 2)).toBeVisible();
+    await matchRow(page, 2).click();
+    await expectReaderAt(page, 2, '메커니즘은', '2 / 3');
+  } finally {
+    await app.close();
+  }
+});
+
+test('with two subtitles a row names its track ("0:23 · 한국어" and "0:23 · 영어": two rows, two sentences), and a click shows that track', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const video = await subtitleLibrary(page, [KO, EN]);
+    await chooseScope(page, '정보와 본문');
+    await panelFor(app, page, 'ATP', video.title);
+    await expect(matches(page).getByTestId('matches-count')).toHaveText('문장 2개');
+    await expect(matchList(page)).toHaveClass(/tracks/);
+    await expect(matchList(page).getByRole('option').locator('.pg')).toHaveText(['0:23 · 한국어', '0:23 · 영어']);
+    await expect(timeRow(page, '영어')).toHaveAccessibleName(/^0:23\u00a0· 영어, /);
+    await timeRow(page, '영어').click();
+    await expect(readerTab(page, video.id)).toBeVisible();
+    await expect(transcriptField(page)).toHaveValue('ATP');
+    const tracks = await page.evaluate((id) => window.learn.subtitles.list({ itemId: id }), video.id);
+    if (!tracks.ok) throw new Error('subtitles.list failed');
+    const english = tracks.data.tracks.find((t) => t.language === 'en')!;
+    await expect.poll(async () => (await videoAt(page))!.trackId).toBe(english.assetId);
+    expect((await videoAt(page))!.captionsOn).toBe(true);
+    await expect.poll(async () => Math.abs((await videoAt(page))!.timeMs - 23_000)).toBeLessThanOrEqual(80);
+    await expect(page.locator('[data-testid="cue-row"][data-index="6"]')).toHaveAttribute('data-current', 'true');
+    await expect(page.locator('[data-testid="transcript"] mark.is-current')).toHaveCount(1);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a video in the trash is not found by its subtitles, and once deleted for good its sentences are gone from the index', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const video = await subtitleLibrary(page, [KO]);
+    expect(await cueTextCount(app, { itemId: video.id })).toBeGreaterThan(0);
+    await chooseScope(page, '정보와 본문');
+    await field(page).fill('칼슘');
+    await expect(rowByTitle(page, video.title)).toBeVisible(); // the positive control
+    const found = await page.evaluate((id) => window.learn.search.matches({ itemId: id, query: '칼슘' }), video.id);
+    expect(found.ok && found.data.total).toBe(2);
+    // The cue texts are keyed by the subtitle file's content, not the video's.
+    const [asset] = await subtitleAssets(app);
+    const sha256 = asset!.sha256;
+    expect(await cueTextCount(app, { sha256 })).toBeGreaterThan(0);
+    await trashItems(page, [video.id]);
+    await expect(rowByTitle(page, video.title)).toHaveCount(0);
+    const purged = await page.evaluate((itemIds) => window.learn.library.purge({ itemIds, collectionIds: [] }), [video.id]);
+    expect(purged.ok).toBe(true);
+    await expect.poll(() => cueTextCount(app, { sha256 })).toBe(0);
   } finally {
     await app.close();
   }

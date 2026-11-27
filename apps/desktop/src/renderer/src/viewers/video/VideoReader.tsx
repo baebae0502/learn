@@ -5,10 +5,12 @@ import { Spinner } from '../../ui/Spinner';
 import { ratio, restoreVideoSeconds } from '../positionSaver';
 import { CodecNotice } from '../ReaderNotices';
 import { useReaderScope, useReaderShown } from '../readerScope';
+import { keepsPendingJump, useReader } from '../pdf/readerStore';
 import { usePosition } from '../usePosition';
 import { useVideoStage } from '../../shell/videoStage';
 import { SubtitleOverlay } from './SubtitleOverlay';
-import { useCues } from './useSubtitles';
+import { jumpSearch } from './timeJump';
+import { useCues, useTracks } from './useSubtitles';
 import { useStageToasts } from './useStageToasts';
 import { useSubtitleState } from './useSubtitleState';
 import { frameDurationMs } from './frameStep';
@@ -16,7 +18,7 @@ import { useIdleControls } from './useIdleControls';
 import { useVideoSettings } from './useVideoSettings';
 import { VideoControls } from './VideoControls';
 import { VideoToolbar } from './VideoToolbar';
-import { INITIAL_TRANSCRIPT, useVideo, type VideoHandle } from './videoStore';
+import { INITIAL_TRANSCRIPT, patchTranscript, useVideo, type VideoHandle } from './videoStore';
 
 const TIME_SAVE = { kind: 'throttle', ms: 2000 } as const;
 /** A first frame later than this shows the spinner: a quick open never flashes it (design-spec 6, 잠시 지나가는 상태). */
@@ -49,6 +51,7 @@ export function VideoReader({ item }: { item: LibraryItem }) {
   const metadataAt = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null); // kept after unmount so the final time can still be read
   const restored = useRef(false);
+  const [placed, setPlaced] = useState(false);
   const hintId = useId();
   const readerRef = useRef<HTMLDivElement>(null);
   const frames = useRef<number[]>([]);
@@ -86,13 +89,47 @@ export function VideoReader({ item }: { item: LibraryItem }) {
 
   const tryRestore = (v: HTMLVideoElement) => {
     if (restored.current || !pos.loaded || v.readyState < 1) return;
-    const seconds = restoreVideoSeconds(pos.saved?.locator, v.duration);
+    // A 본문 일치 time row opened this reader: it is placed at that sentence, never first at the saved place.
+    const pending = scope.reader.getState().pendingJump;
+    const seconds = pending?.kind === 'time' && Number.isFinite(v.duration) ? clamp(pending.startMs / 1000, 0, v.duration) : restoreVideoSeconds(pos.saved?.locator, v.duration);
     if (seconds > 0) v.currentTime = seconds;
     const savedCaptions = pos.saved?.locator.kind === 'video' ? pos.saved.locator.captions : undefined;
     pos.markRestored({ kind: 'video', timeMs: Math.round(seconds * 1000), ...(savedCaptions ? { captions: savedCaptions } : {}) });
     restored.current = true;
     store.getState().patch({ timeMs: Math.round(seconds * 1000) });
+    setPlaced(true);
   };
+
+  // A 본문 일치 time row (spec 8.3): once the reader is placed and its tracks are settled, the row's track is shown and on, the video stands at
+  // the sentence's start (paused: the row never starts playback), and the transcript search holds the query with that sentence marked,
+  // following on. A reader that cannot show its file drops the row, as the PDF reader does.
+  const jump = useReader((s) => (s.pendingJump?.kind === 'time' ? s.pendingJump : null));
+  const listed = useTracks(item.id);
+  const shownTracks = useVideo((s) => s.tracks);
+  useEffect(() => {
+    if (!jump) return;
+    const reader = scope.reader.getState();
+    if (!keepsPendingJump(error ? 'failed' : 'ready', false)) {
+      reader.setPendingJump(null);
+      return;
+    }
+    if (!placed || !listed || shownTracks !== listed) return;
+    const want = jump.track !== null && listed.some((track) => track.assetId === jump.track) ? jump.track : store.getState().trackId;
+    if (want !== null) {
+      if (trackId !== want) {
+        // The cues of that track come with the next render; the search is made then.
+        subtitleHandle.current.selectTrack(want);
+        return;
+      }
+      if (!store.getState().captionsOn) subtitleHandle.current.selectTrack(want);
+      if (!cues) return;
+    }
+    store.getState().handle?.seekTo(jump.startMs);
+    videoRef.current?.pause();
+    const found = want !== null && cues ? jumpSearch(cues, jump.query, jump.startMs) : { hits: [], hit: -1 };
+    patchTranscript(store, { query: jump.query, hits: found.hits, hit: found.hit, arrived: false, wrapped: false, follow: true, cursor: -1 });
+    reader.setPendingJump(null);
+  }, [jump, placed, listed, shownTracks, trackId, cues, error, scope, store]);
 
   // Metadata can arrive before the saved position does (or the other way round).
   useEffect(() => {

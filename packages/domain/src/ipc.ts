@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { COMMAND_IDS, type CommandContextState, type PickedCommand } from './commands';
 import type { BackupInfo } from './backup';
+import type { BodyMatches } from './body-search';
 import type { LearnEventMap, WindowState } from './events';
 import type {
   AppInfo, Collection, DuplicateGroup, EditedCopy, ItemDetail, KeepOneResult, LibraryItem, PurgedRows, SearchText, Tag, TrashView,
@@ -16,6 +17,7 @@ import { LIBRARY_COLUMN_IDS, LIBRARY_SORT_COLUMNS, type LibraryColumnId } from '
 import { TAG_COLORS, type TagColorId } from './tag-colors';
 import { translationFromSchema, translationToSchema, type TranslationResult } from './translation';
 import type { AgentsReport } from './agents';
+import type { AttachResult, Cue, RemovedTrack, SubtitleTrack } from './subtitles';
 import type {
   RecentSessions, SessionIdInput, SessionsListInput, SessionsRenameInput, SessionSummary, SessionThread, TutorAgentsInput, TutorAskAnswer, TutorAskInput,
   TutorChooseAgentInput, TutorConsentInput, TutorRetryInput, TutorStopInput, TutorViewInput, TutorWarmInput,
@@ -41,11 +43,16 @@ export const importPathsInput = z.object({
   collectionId: importCollectionSchema,
 }).strict();
 export const itemIdInput = z.object({ itemId: z.uuid() });
+/** The subtitles of a video (spec 11): its item, a track by its asset, files to attach (absolute paths, at most 50), and the track to bring back with the place and language it had (P-7). */
+export const subtitlesItemInput = z.object({ itemId: z.uuid() }).strict();
+export const subtitlesTrackInput = z.object({ itemId: z.uuid(), assetId: z.uuid() }).strict();
+export const subtitlesAttachInput = z.object({ itemId: z.uuid(), paths: z.array(absolutePathSchema).min(1).max(50) }).strict();
+export const subtitlesRestoreInput = z.object({ itemId: z.uuid(), assetId: z.uuid(), position: z.number().int().min(0), language: z.string().min(2).max(35).nullable() }).strict();
 export const emptyInput = z.object({}).strict().optional();
 
 /** Body search: the query as typed (words are split in main); a page list wants a query to look for. */
 export const bodySearchInput = z.object({ query: z.string().normalize('NFC').max(200) }).strict();
-export const bodyPagesInput = z.object({ itemId: z.uuid(), query: z.string().normalize('NFC').min(1).max(200) }).strict();
+export const bodyMatchesInput = z.object({ itemId: z.uuid(), query: z.string().normalize('NFC').min(1).max(200) }).strict();
 
 export const itemIdsInput = z.object({ itemIds: z.array(z.uuid()).min(1).max(5000) });
 /**
@@ -119,6 +126,8 @@ export const translateInput = z.object({ text: z.string().min(1).max(20000), fro
 export type TranslateInput = z.input<typeof translateInput>;
 /** ui.themeShown: the theme a page now shows (its own resolution of the pref; T13R4-m1). */
 export const themeShownInput = z.object({ shade: z.enum(['light', 'dark']) }).strict();
+/** ui.stage: the video stage on or off (toggle), or off if it is on (exit); main changes the window's full screen for it. */
+export const stageInput = z.object({ action: z.enum(['toggle', 'exit']) }).strict();
 export const savePositionInput = z.object({
   itemId: z.uuid(),
   revisionId: z.uuid(),
@@ -168,6 +177,16 @@ export const commandContextInput = z
     pdfOpen: z.boolean().optional(),
     /** A reader tab with its picture drawn is shown: the zoom, the two fits and the turns act on it; absent otherwise. */
     imageOpen: z.boolean().optional(),
+    /** A video that can play is shown: the video commands are on; absent otherwise. */
+    videoOpen: z.boolean().optional(),
+    /** The shown video is playing / muted: the toggles' names and the frame steps follow; absent unless a video is open. */
+    videoPlaying: z.boolean().optional(),
+    videoMuted: z.boolean().optional(),
+    /** The window is on the video stage: esc leaves it; absent otherwise. */
+    videoStage: z.boolean().optional(),
+    /** The shown video has a subtitle track / shows it: C and its name follow; absent unless a video is open. */
+    videoCaptions: z.boolean().optional(),
+    videoCaptionsOn: z.boolean().optional(),
     /** How the open PDF scrolls: the spread commands are off while horizontal; absent otherwise. */
     pdfScroll: z.enum(SCROLL_MODES).optional(),
     /** The open PDF can go back / forward in its history (⌘[ ⌘]); absent otherwise. */
@@ -219,7 +238,7 @@ export type SheetResultInput = z.input<typeof sheetResultInput>;
 /** An open sheet's own action (P-17): the library check's, by row; 다시 연결… names the item, never a path. */
 export const sheetActionSchema = z.union([
   z.object({ kind: z.literal('libraryCheck'), act: z.enum(CHECK_ACTS) }).strict(),
-  z.object({ kind: z.literal('libraryCheck'), act: z.literal('relink'), itemId: z.uuid() }).strict(),
+  z.object({ kind: z.literal('libraryCheck'), act: z.literal('relink'), itemId: z.uuid(), assetId: z.uuid().optional() }).strict(),
   z.object({ kind: z.literal('libraryCheck'), act: z.literal('cleanUnreferenced'), keys: z.array(z.string().min(1).max(512)).max(100_000) }).strict(),
   z.object({ kind: z.literal('backupDone'), act: z.literal('reveal') }).strict(),
   z.object({ kind: z.literal('restoreDone'), act: z.literal('reveal') }).strict(),
@@ -281,6 +300,11 @@ export type SettingGetInput = z.input<typeof settingGetInput>;
 export type SettingSetInput = z.input<typeof settingSetInput>;
 export type PrefsSetInput = z.input<typeof prefsSetInput>;
 export type ThemeShownInput = z.input<typeof themeShownInput>;
+export type StageInput = z.input<typeof stageInput>;
+export type SubtitlesItemInput = z.input<typeof subtitlesItemInput>;
+export type SubtitlesTrackInput = z.input<typeof subtitlesTrackInput>;
+export type SubtitlesAttachInput = z.input<typeof subtitlesAttachInput>;
+export type SubtitlesRestoreInput = z.input<typeof subtitlesRestoreInput>;
 export type UpdateMetadataInput = z.input<typeof updateMetadataInput>;
 export type CreateCollectionInput = z.input<typeof createCollectionInput>;
 export type SavePositionInput = z.input<typeof savePositionInput>;
@@ -418,8 +442,8 @@ export interface LearnApi {
   search: {
     /** The items with a page that holds every word. A newer request of the window stops the older one: it answers CANCELLED. */
     body(input: z.input<typeof bodySearchInput>): Promise<Result<{ itemIds: string[]; searched: boolean }>>;
-    /** The matching pages of one PDF item in page order, a snippet each (matches between the private-use marks), and how many match in all. */
-    pages(input: z.input<typeof bodyPagesInput>): Promise<Result<{ pages: Array<{ pageIndex: number; snippet: string }>; total: number }>>;
+    /** The matches of one item: a PDF's pages in page order, a video's cues in time order; a snippet each (matches between the private-use marks), and how many match in all. */
+    matches(input: z.input<typeof bodyMatchesInput>): Promise<Result<BodyMatches>>;
     /** How many PDFs outside the trash have been read for their text. */
     progress(): Promise<Result<{ done: number; total: number }>>;
   };
@@ -460,6 +484,22 @@ export interface LearnApi {
     reportIdle(): Promise<Result<void>>;
     /** The column header menu: the column picked to show or hide, a reset, or null when dismissed. */
     showColumnMenu(input: ShowColumnMenuInput): Promise<Result<{ toggle: LibraryColumnId } | { reset: true } | null>>;
+    /**
+     * The video stage (spec 6.6), the main window only: main changes the window's full screen one step at a time, the
+     * last request winning, and reports the stage in windowState.stage — the page follows that, never this answer.
+     */
+    stage(input: StageInput): Promise<Result<void>>;
+  };
+  /** A video's subtitle tracks (spec 11): the main window only; a change is announced as subtitles:changed. */
+  subtitles: {
+    list(input: SubtitlesItemInput): Promise<Result<{ tracks: SubtitleTrack[] }>>;
+    cues(input: SubtitlesTrackInput): Promise<Result<{ cues: Cue[] }>>;
+    /** The open panel for .srt and .vtt files, then the attach; a cancelled panel answers empty. */
+    pick(input: SubtitlesItemInput): Promise<Result<AttachResult>>;
+    attach(input: SubtitlesAttachInput): Promise<Result<AttachResult>>;
+    /** Takes the track off the video; the answer carries what restore needs to put it back. */
+    remove(input: SubtitlesTrackInput): Promise<Result<RemovedTrack>>;
+    restore(input: SubtitlesRestoreInput): Promise<Result<SubtitleTrack>>;
   };
   /** The tutor (spec 12): the main window only. Nothing runs before consent; the agent is started by main, never by a page. */
   tutor: {

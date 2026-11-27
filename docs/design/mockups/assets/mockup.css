@@ -958,10 +958,12 @@ h2,
 .table-row.is-hover {
   background: var(--fill-hover);
 }
-.table-row.is-selected {
-  background: var(--fill-selected);
+.table-row.is-selected,
+.table-row.is-selected:nth-child(even of .table-row) {
+  background: var(--fill-selected); /* the zebra stripe (0,3,0) must not win over a selected row */
 }
-.table-row.is-selected.is-focused {
+.table-row.is-selected.is-focused,
+.table-row.is-selected.is-focused:nth-child(even of .table-row) {
   background: var(--accent);
 }
 .table-row.is-selected.is-focused .td,
@@ -1513,6 +1515,7 @@ h2,
   grid-template-columns: 20px minmax(0, 1fr);
   column-gap: var(--space-8);
   row-gap: 2px;
+  align-content: start; /* the taller card must not spread its rows: the two titles stay on one line */
 }
 .drop-mode.is-on {
   /* --accent-ring: 3:1 on the raised card in dark, where the accent fill (tuned for white text) is 2.37:1 (critic T11-n1). */
@@ -1523,6 +1526,7 @@ h2,
   margin-top: 1px;
 }
 .drop-mode .dm-title {
+  min-height: 24px; /* local: the ⌥ key chip makes one card's title row taller; both rows are as tall as the chip */
   display: flex;
   align-items: center;
   gap: var(--space-8);
@@ -1903,18 +1907,22 @@ h2,
   aspect-ratio: 16 / 9;
   max-height: 100%;
   overflow: hidden;
+  container-type: size; /* M8a: the subtitle's size follows the video box's height (cqh) */
 }
 .subtitle {
   position: absolute;
-  left: 50%;
+  /* centred with auto margins, not left: 50% + translate: that box could grow only to the remaining half, so max-width never reached 78 % */
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  width: fit-content;
   bottom: 6%;
-  translate: -50% 0;
   max-width: 78%;
-  padding: 4px 12px 5px;
+  padding: 0.2em 0.6em 0.25em; /* local: the 4 / 12 / 5 px of the 22 px subtitle, kept in proportion to the text */
   border-radius: var(--radius-sm);
   background: oklch(0% 0 0 / 0.72);
   color: oklch(100% 0 0);
-  font: 500 22px/32px var(--font-ui); /* local: subtitle size scales with the frame */
+  font: 500 clamp(14px, 3.1cqh, 40px) / 1.45 var(--font-ui); /* local: spec 6.4 — subtitle size is 3.1 % of the video box's height */
   text-align: center;
   word-break: keep-all;
 }
@@ -1954,8 +1962,8 @@ h2,
 }
 .scrubber .hover-pos {
   position: absolute;
-  top: -4px;
-  bottom: -4px;
+  top: 0;
+  bottom: 0; /* inside the 16 px hit area */
   width: 2px;
   margin-left: -1px;
   border-radius: 1px;
@@ -2023,7 +2031,12 @@ h2,
   color: var(--text-primary);
   font-weight: 500;
 }
+.speed-btn.is-pressed {
+  background: var(--fill-pressed);
+}
 .speed-btn {
+  min-width: 44px; /* local: holds "1.75×" so the button's left edge stays put when the speed changes */
+  justify-content: center;
   height: 24px;
   padding: 0 var(--space-8);
   border-radius: var(--radius-sm);
@@ -2047,6 +2060,28 @@ h2,
   background: var(--bg-track);
   position: relative;
 }
+.volume {
+  position: relative;
+}
+.volume.is-folded > .vtrack {
+  display: none;
+}
+.vol-pop {
+  /* M8a: a folded volume bar floats over its button while the pointer is on the button (reader narrower than 560). */
+  position: absolute;
+  z-index: 5;
+  bottom: calc(100% + var(--space-4));
+  left: 50%;
+  translate: -50% 0;
+  padding: var(--space-12) var(--space-12);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-e1);
+}
+.vol-pop .vtrack {
+  display: block;
+  width: 80px; /* local: the bar's length in the pop-up */
+}
 .volume .vtrack i {
   position: absolute;
   inset: 0 30% 0 0;
@@ -2058,6 +2093,46 @@ h2,
   min-height: 0;
   overflow: hidden;
   padding: var(--space-4) var(--space-8) var(--space-8);
+}
+/* M8a: 대본 pane. The head is one line (the panel-head grammar); the placeholder rows stand in while the video opens. */
+.nav-title {
+  display: flex;
+  align-items: center;
+  height: 28px; /* local: one line of the headline role plus the segment's old height */
+  padding: 0 var(--space-4);
+  font: var(--type-headline);
+}
+.transcript.is-placeholder .cue.ph {
+  gap: var(--space-6);
+}
+.transcript.is-placeholder .cue.ph .ts,
+.transcript.is-placeholder .cue.ph .tx {
+  display: block;
+  height: 10px; /* local: a bar the height of a footnote's x-height */
+  border-radius: var(--radius-xs);
+  background: var(--bg-track);
+}
+.transcript.is-placeholder .cue.ph .ts {
+  width: 36px;
+}
+.transcript.is-placeholder .cue.ph .tx {
+  width: 88%;
+  height: 12px; /* local: a bar the height of a paragraph's x-height */
+}
+.nav-search.is-disabled,
+.transcript-foot.is-disabled,
+.video-controls.is-disabled .control-row,
+.video-controls.is-disabled .scrubber {
+  opacity: 0.45;
+}
+.video-controls.is-disabled .knob {
+  display: none;
+}
+.video-stage.is-opening {
+  background: var(--video-stage);
+}
+.subtitle .sub-line + .sub-line {
+  margin-top: 0;
 }
 .cue {
   /* Stacked: time above text, so the cue text gets the full sidebar width (240 px pane). */
@@ -2087,6 +2162,10 @@ h2,
   background: var(--find-match);
   color: inherit;
   border-radius: 2px;
+}
+.cue mark.is-current {
+  background: var(--find-match-current);
+  box-shadow: 0 0 0 1.5px var(--accent); /* the current match's accent edge, as the PDF's .find-hit.current */
 }
 .transcript-foot {
   flex: none;
@@ -2135,6 +2214,8 @@ h2,
 }
 .codec-notice .actions {
   display: flex;
+  flex-wrap: wrap; /* M8a 9.2: two buttons wrap instead of being cut in a narrow stage */
+  justify-content: center;
   gap: var(--space-8);
   margin-top: var(--space-4);
 }
@@ -4568,4 +4649,127 @@ h2,
 }
 .agent-row .inline-flag {
   white-space: nowrap;
+}
+
+/* ── M8a: video reader v2 (spec 6) ───────────────────────────────────────────── */
+/* 무대 모드: the stage and the controls fill the window; idle hides the controls and the pointer, and the box takes their place. */
+.stage-window {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  background: var(--video-stage);
+  overflow: hidden;
+}
+.stage-window > .video-stage {
+  position: absolute;
+  inset: 0; /* the stage is the whole window: the video box does not move when the controls hide */
+}
+.stage-window .subtitle {
+  /* The controls lie over the stage's bottom: while they show, the subtitle stands 16 above them; idle it returns to 6 %. */
+  bottom: max(6%, calc(var(--ctl-h) + var(--space-16) - var(--lb)));
+}
+.stage-window .video-controls::before {
+  /* the scrim: the bar's dark fades out upward over the picture */
+  content: '';
+  position: absolute;
+  inset: auto 0 100% 0;
+  height: 48px; /* local: scrim height */
+  background: linear-gradient(to top, oklch(0% 0 0 / 0.5), transparent);
+  pointer-events: none;
+}
+.stage-window.is-idle .subtitle {
+  bottom: 6%;
+}
+.stage-window .video-controls {
+  /* A fixed dark surface over the picture (the stage is dark in both themes), with a scrim: colours are local, not theme tokens. */
+  position: absolute;
+  inset: auto 0 0 0;
+  border-top: 0;
+  background: oklch(0% 0 0 / 0.86);
+  --text-primary: oklch(97% 0 0); /* local: fixed on the dark bar */
+  --text-secondary: oklch(80% 0.006 250); /* local */
+  --text-tertiary: oklch(68% 0.006 250); /* local */
+  --bg-track: oklch(100% 0 0 / 0.22); /* local */
+  --border: oklch(100% 0 0 / 0.3); /* local */
+  --fill-pressed: oklch(100% 0 0 / 0.16); /* local */
+  --bg-window: oklch(14% 0.003 250); /* local: the knob ring */
+  --meter: oklch(72% 0.11 190); /* local: = the dark theme's meter */
+  --focus: var(--image-focus-dark);
+  color: var(--text-primary);
+}
+.stage-window.is-idle {
+  cursor: none;
+}
+/* The drop overlay of the video tab covers the reader area (right of the sidebar, under the tab strip). */
+.drop-overlay.in-reader {
+  inset: var(--toolbar-height) 0 0 var(--sidebar-w);
+}
+.drop-overlay.in-reader .drop-panel {
+  width: 360px; /* local: two short lines; the window overlay's 520 holds the two mode cards */
+}
+/* Reader toasts rise above the controls so they do not cover the buttons. */
+/* The reader's toast stands away from the controls (it stays until closed): over their right side, or in the stage's top right.
+   Both are drawn for the owner's decision (M8a); the recommended one is the stage's top right. */
+.toasts.at-controls {
+  bottom: calc(var(--ctl-h, 69px) + var(--space-16)); /* local: the controls bar's height, 16 above it */
+}
+.toasts.at-stage-top {
+  top: calc(var(--toolbar-height) + var(--pane-header-height) + var(--space-16));
+  bottom: auto;
+}
+.subtitle.is-lifted {
+  bottom: max(6%, calc(var(--lift) - var(--lb, 0px)));
+}
+.loading.on-stage {
+  color: oklch(85% 0.004 250); /* local: the always-dark stage */
+}
+.loading.on-stage .spinner {
+  border-color: oklch(100% 0 0 / 0.18);
+  border-top-color: oklch(72% 0.11 190);
+  border-right-color: oklch(72% 0.11 190);
+}
+.video-stage.is-focus::after {
+  /* The stage's keyboard ring: the always-dark stage uses the dark-surface ring (--image-focus-dark), all four sides, inside. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  /* Two-tone: the 2 px ring between a 1 px stage-dark line on each side, so it keeps 3:1 against a light slide or sidebar edge
+     (the ring is about 8:1 on the dark lines). */
+  box-shadow: inset 0 0 0 1px var(--video-stage), inset 0 0 0 3px var(--image-focus-dark), inset 0 0 0 4px var(--video-stage);
+}
+.scrubber.is-focus .knob {
+  box-shadow: 0 0 0 2px var(--bg-window), 0 0 0 4px var(--focus);
+}
+.menu.menu-narrow {
+  min-width: 0; /* the speed menu is 112 wide: seven short rows */
+}
+.drop-overlay.after-sidebar {
+  inset: var(--toolbar-height) 0 0 var(--sidebar-w); /* right of the sidebar, under the tab strip */
+}
+.toast .t-fail {
+  display: flex;
+  gap: var(--space-8);
+  min-width: 0;
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.toast .t-fail .n {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.toast .t-fail .c {
+  flex: none;
+  color: var(--text-primary);
+}
+.toast .t-next {
+  text-wrap: pretty;
+  display: block;
+  margin-top: var(--space-4);
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.match-list.tracks .match-row {
+  grid-template-columns: 92px minmax(0, 1fr); /* local: "18:14 · 한국어" is about 84 wide */
 }

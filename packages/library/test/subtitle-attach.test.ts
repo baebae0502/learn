@@ -1,0 +1,281 @@
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
+import path from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { LibraryRepository, SubtitlesRepository, migrate, openDatabase, removeUnusedAssets, type Db } from '@learn/db';
+import { LearnError, SUBTITLE_LIMITS, type AttachResult } from '@learn/domain';
+import { Importer, attachSubtitleFiles, ensureLayout, libraryLayout, resolveAssetPath } from '../src/index';
+import { cleanupTemp, tempDir, writeMp4, writePdf } from './helpers';
+
+const STATIC = path.resolve(import.meta.dirname, '../../../fixtures/static/subtitles');
+/** `count` cues 100 ms apart and 80 ms long, "문장 {n}" each: the shape fixtures/generate.mjs writes for limit-20000.srt. */
+function srtOf(count: number): string {
+  const p = (n: number, w: number): string => String(n).padStart(w, '0');
+  const t = (ms: number): string =>
+    `${p(Math.floor(ms / 3_600_000), 2)}:${p(Math.floor(ms / 60_000) % 60, 2)}:${p(Math.floor(ms / 1000) % 60, 2)},${p(ms % 1000, 3)}`;
+  const parts: string[] = [];
+  for (let n = 1; n <= count; n++) parts.push(`${n}\n${t((n - 1) * 100)} --> ${t((n - 1) * 100 + 80)}\n문장 ${n}\n`);
+  return parts.join('\n');
+}
+const sub = (name: string): string => path.join(STATIC, name);
+
+const dbs: Db[] = [];
+afterEach(() => {
+  vi.restoreAllMocks();
+  for (const db of dbs.splice(0)) db.close();
+  cleanupTemp();
+});
+
+async function setup() {
+  const layout = libraryLayout(path.join(tempDir(), 'Library'));
+  ensureLayout(layout);
+  const db = openDatabase(layout.dbFile);
+  dbs.push(db);
+  migrate(db, { dbFile: layout.dbFile });
+  const repo = new LibraryRepository(db);
+  const subtitles = new SubtitlesRepository(db);
+  const importer = new Importer({ layout, repo });
+  const deps = { repo, subtitles, importer };
+  const video = async (seed: string): Promise<string> => {
+    const out = await importer.importOne(writeMp4(tempDir('src'), `${seed}.mp4`, seed), { mode: 'managed' });
+    if (out.status !== 'imported') throw new Error('video not imported');
+    return out.item.id;
+  };
+  return { layout, db, repo, subtitles, importer, deps, video };
+}
+
+/**
+ * The files attach opens, seen through their handles: how many bytes were read. `size` makes a handle's own stat say that size
+ * (the file was that small when it was asked, and grew before it was read).
+ */
+function watchReads(over: { size?: number } = {}): { bytes: number } {
+  const real = fsp.open.bind(fsp);
+  const seen = { bytes: 0 };
+  vi.spyOn(fsp, 'open').mockImplementation(async (...args: Parameters<typeof fsp.open>) => {
+    const fh = await real(...args);
+    return new Proxy(fh, {
+      get(target, prop) {
+        if (prop === 'read') {
+          return async (...a: Parameters<typeof target.read>) => {
+            const r = await target.read(...a);
+            seen.bytes += r.bytesRead;
+            return r;
+          };
+        }
+        if (prop === 'stat' && over.size !== undefined) return async () => Object.assign(await target.stat(), { size: over.size });
+        const value: unknown = Reflect.get(target, prop);
+        return typeof value === 'function' ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+      },
+    });
+  });
+  return seen;
+}
+
+describe('attachSubtitleFiles', () => {
+  it('adds the ko srt and the en vtt in order with their languages, and reports the broken one', async () => {
+    const { deps, video, layout, repo, subtitles } = await setup();
+    const itemId = await video('a');
+    const r = await attachSubtitleFiles(deps, itemId, [sub('lecture-60s.ko.srt'), sub('lecture-60s.en.vtt'), sub('broken.srt')]);
+    expect(r.added.map((t) => [t.language, t.position, t.originalName])).toEqual([['ko', 0, 'lecture-60s.ko.srt'], ['en', 1, 'lecture-60s.en.vtt']]);
+    expect(r.already).toEqual([]);
+    expect(r.failed).toEqual([{ name: 'broken.srt', reason: 'no-cues' }]);
+    expect(subtitles.list(itemId)).toHaveLength(2);
+    // The managed copy sits at its hash-addressed path with the file's own hash.
+    const asset = repo.getAsset(r.added[0]!.assetId)!;
+    const copy = fs.readFileSync(resolveAssetPath(layout, asset));
+    expect(createHash('sha256').update(copy).digest('hex')).toBe(asset.sha256);
+    expect(asset).toMatchObject({ storageMode: 'managed', mime: 'application/x-subrip', availability: 'available' });
+    expect(repo.getAsset(r.added[1]!.assetId)!.mime).toBe('text/vtt');
+  });
+
+  it('puts a file that is already attached under already, by name', async () => {
+    const { deps, video, subtitles } = await setup();
+    const itemId = await video('a');
+    await attachSubtitleFiles(deps, itemId, [sub('lecture-60s.ko.srt')]);
+    const again = await attachSubtitleFiles(deps, itemId, [sub('lecture-60s.ko.srt')]);
+    expect(again).toEqual<AttachResult>({ added: [], already: ['lecture-60s.ko.srt'], failed: [] });
+    expect(subtitles.list(itemId)).toHaveLength(1);
+  });
+
+  it('refuses a name that is not srt or vtt', async () => {
+    const { deps, video } = await setup();
+    const txt = path.join(tempDir('src'), 'notes.txt');
+    fs.writeFileSync(txt, 'hello');
+    const r = await attachSubtitleFiles(deps, await video('a'), [txt]);
+    expect(r.failed).toEqual([{ name: 'notes.txt', reason: 'not-subtitle' }]);
+  });
+
+  it('says too-large from the size alone, without reading the file', async () => {
+    const { deps, video } = await setup();
+    const big = path.join(tempDir('src'), 'big.srt');
+    fs.writeFileSync(big, Buffer.alloc(SUBTITLE_LIMITS.bytes + 1, 0x20));
+    const itemId = await video('a');
+    const seen = watchReads();
+    const r = await attachSubtitleFiles(deps, itemId, [big]);
+    expect(r.failed).toEqual([{ name: 'big.srt', reason: 'too-large' }]);
+    expect(seen.bytes).toBe(0);
+    // The watch sees attach's reads: a small file is read whole, once.
+    await attachSubtitleFiles(deps, itemId, [sub('lecture-60s.ko.srt')]);
+    expect(seen.bytes).toBe(fs.statSync(sub('lecture-60s.ko.srt')).size);
+  });
+
+  it('a file that grew past the limit after its size was asked is too large, read no further than one byte past the limit', async () => {
+    const { deps, video } = await setup();
+    // Sparse: larger than one read of the whole file may be (2 GiB) without taking the disk.
+    const grown = path.join(tempDir('src'), 'grown.srt');
+    fs.closeSync(fs.openSync(grown, 'w'));
+    fs.truncateSync(grown, 3 * 1024 ** 3);
+    const itemId = await video('a');
+    // Both ways of asking the size answer what the file was before it grew.
+    const realStat = fsp.stat.bind(fsp);
+    vi.spyOn(fsp, 'stat').mockImplementation((async (p: Parameters<typeof fsp.stat>[0], o?: Parameters<typeof fsp.stat>[1]) =>
+      p === grown ? Object.assign(await realStat(p, o), { size: 10 }) : realStat(p, o)) as typeof fsp.stat);
+    const seen = watchReads({ size: 10 });
+    const r = await attachSubtitleFiles(deps, itemId, [grown]);
+    expect(r.failed).toEqual([{ name: 'grown.srt', reason: 'too-large' }]);
+    expect(seen.bytes).toBe(SUBTITLE_LIMITS.bytes + 1);
+  });
+
+  it.skipIf(process.platform === 'win32')('a FIFO named like a subtitle is io at once: nothing waits for a writer', async () => {
+    const { deps, video } = await setup();
+    const fifo = path.join(tempDir('src'), 'pipe.srt');
+    execFileSync('mkfifo', [fifo]);
+    const r = await attachSubtitleFiles(deps, await video('a'), [fifo]);
+    expect(r.failed).toEqual([{ name: 'pipe.srt', reason: 'io' }]);
+  });
+
+  it('refuses the whole call for an item that is not a live video', async () => {
+    const { deps } = await setup();
+    const out = await deps.importer.importOne(writePdf(tempDir('src'), 'p.pdf', 'p'), { mode: 'managed' });
+    if (out.status !== 'imported') throw new Error('not imported');
+    await expect(attachSubtitleFiles(deps, out.item.id, [sub('lecture-60s.ko.srt')])).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(attachSubtitleFiles(deps, '00000000-0000-4000-8000-000000000001', [sub('lecture-60s.ko.srt')])).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('a file read error is io', async () => {
+    const { deps, video } = await setup();
+    const r = await attachSubtitleFiles(deps, await video('a'), [path.join(tempDir('src'), 'gone.srt')]);
+    expect(r.failed).toEqual([{ name: 'gone.srt', reason: 'io' }]);
+  });
+
+  it('gives two videos one asset for the same file', async () => {
+    const { deps, video, db, subtitles } = await setup();
+    const a = await video('a');
+    const b = await video('b');
+    const ra = await attachSubtitleFiles(deps, a, [sub('lecture-60s.ko.srt')]);
+    const rb = await attachSubtitleFiles(deps, b, [sub('lecture-60s.ko.srt')]);
+    expect(rb.added[0]!.assetId).toBe(ra.added[0]!.assetId);
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM assets WHERE mime = 'application/x-subrip'`).get()).toEqual({ n: 1 });
+    expect(subtitles.list(b)).toHaveLength(1);
+  });
+
+  it('puts a missing managed copy back when the asset is reused', async () => {
+    const { deps, video, repo, layout } = await setup();
+    const a = await video('a');
+    const b = await video('b');
+    const ra = await attachSubtitleFiles(deps, a, [sub('lecture-60s.ko.srt')]);
+    const file = resolveAssetPath(layout, repo.getAsset(ra.added[0]!.assetId)!);
+    fs.rmSync(file);
+    await attachSubtitleFiles(deps, b, [sub('lecture-60s.ko.srt')]);
+    expect(fs.existsSync(file)).toBe(true);
+  });
+
+  it('refuses a file that is not a regular file (a folder named like a subtitle) without reading it', async () => {
+    const { deps, video } = await setup();
+    const dir = path.join(tempDir('src'), 'folder.srt');
+    fs.mkdirSync(dir);
+    const itemId = await video('a');
+    const seen = watchReads();
+    const r = await attachSubtitleFiles(deps, itemId, [dir]);
+    expect(r.failed).toEqual([{ name: 'folder.srt', reason: 'io' }]);
+    expect(seen.bytes).toBe(0);
+    await attachSubtitleFiles(deps, itemId, [sub('lecture-60s.ko.srt')]);
+    expect(seen.bytes).toBeGreaterThan(0); // the watch does see attach's reads
+  });
+
+  it('a copy that changed while it was placed (HASH_MISMATCH) is io and adds nothing', async () => {
+    const { deps, video, subtitles } = await setup();
+    const itemId = await video('a');
+    const importer = { placeManaged: async () => { throw new LearnError('HASH_MISMATCH', 'changed'); } };
+    const r = await attachSubtitleFiles({ ...deps, importer }, itemId, [sub('lecture-60s.ko.srt')]);
+    expect(r).toEqual({ added: [], already: [], failed: [{ name: 'lecture-60s.ko.srt', reason: 'io' }] });
+    expect(subtitles.list(itemId)).toEqual([]);
+  });
+
+  it('an error that is no file error is thrown when nothing was added, and leaves no rows', async () => {
+    const { deps, video, subtitles } = await setup();
+    const itemId = await video('a');
+    const importer = { placeManaged: async () => { throw new Error('bug'); } };
+    await expect(attachSubtitleFiles({ ...deps, importer }, itemId, [sub('lecture-60s.ko.srt')])).rejects.toThrow('bug');
+    expect(subtitles.list(itemId)).toEqual([]);
+  });
+
+  it('a failure on the second path still reports the first as added', async () => {
+    const { deps, video, subtitles } = await setup();
+    const itemId = await video('a');
+    let calls = 0;
+    const importer = {
+      placeManaged: (src: string, sha: string, signal?: AbortSignal) => {
+        calls += 1;
+        if (calls === 2) throw new Error('disk full');
+        return deps.importer.placeManaged(src, sha, signal);
+      },
+    };
+    const r = await attachSubtitleFiles({ ...deps, importer }, itemId, [sub('lecture-60s.ko.srt'), sub('lecture-60s.en.vtt'), sub('notes.ko.srt')]);
+    expect(r.added.map((t) => t.language)).toEqual(['ko']);
+    expect(r.failed).toEqual([{ name: 'lecture-60s.en.vtt', reason: 'io' }]);
+    expect(subtitles.list(itemId)).toHaveLength(1);
+  });
+
+  it('a reused asset whose row a purge deletes while the copy is placed gets a new row, and the attach succeeds', async () => {
+    const { deps, video, repo, subtitles, db } = await setup();
+    const a = await video('a');
+    const b = await video('b');
+    const first = await attachSubtitleFiles(deps, a, [sub('lecture-60s.ko.srt')]);
+    const oldId = first.added[0]!.assetId;
+    const importer = {
+      placeManaged: async (src: string, sha: string, signal?: AbortSignal) => {
+        const rel = await deps.importer.placeManaged(src, sha, signal);
+        // The purge of video a commits meanwhile (without the path's lock): its subtitle asset and cues go.
+        db.prepare('DELETE FROM item_assets WHERE item_id = ?').run(a);
+        removeUnusedAssets(db, new Set([oldId]));
+        return rel;
+      },
+    };
+    const r = await attachSubtitleFiles({ ...deps, importer }, b, [sub('lecture-60s.ko.srt')]);
+    expect(r.failed).toEqual([]);
+    expect(r.added).toHaveLength(1);
+    expect(r.added[0]!.assetId).not.toBe(oldId);
+    expect(repo.getAsset(oldId)).toBeUndefined();
+    expect(subtitles.list(b)[0]!.cueCount).toBeGreaterThan(0);
+  });
+
+  it('attaches a 20,000-cue file stays within three times the one-second ceiling (the full suite runs it 2x slower than alone)', async () => {
+    const { deps, video, subtitles } = await setup();
+    const source = srtOf(20_000);
+    const dir = tempDir('src');
+    const wall: number[] = [];
+    const cpu: number[] = [];
+    for (let run = 0; run < 3; run++) {
+      // Another content each run (a file of a known sha keeps its one set of cues and would skip the work being measured).
+      const file = path.join(dir, `limit-20000-${run}.srt`);
+      fs.writeFileSync(file, source.replace(/문장 /g, `문장${run} `));
+      const itemId = await video(`v${run}`);
+      const t0 = performance.now();
+      const c0 = process.cpuUsage();
+      const r = await attachSubtitleFiles(deps, itemId, [file]);
+      const used = process.cpuUsage(c0);
+      wall.push(Math.round(performance.now() - t0));
+      cpu.push(Math.round((used.user + used.system) / 1000));
+      expect(r.added).toHaveLength(1);
+      expect(subtitles.list(itemId)[0]!.cueCount).toBe(20_000);
+    }
+    // Alone it takes about 0.6 s (the cue index's trigger is most of it); beside 40 other test files it is 1.0-1.4 s. The
+    // bound only has to catch a change that makes it grow by a factor, like the near-5 MiB parse bounds do.
+    const ms = Math.min(...wall);
+    console.log('[measure] attach-20000', ms, `(ms, fastest of three; wall ${wall.join(', ')}, cpu ${cpu.join(', ')})`);
+    expect(ms).toBeLessThan(3000);
+  });
+});

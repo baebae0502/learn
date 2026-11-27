@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import { IDLE_IMPORT_STATE, type ImportQueueState, type ImportReport, type Result } from '@learn/domain';
+import { IDLE_IMPORT_STATE, groupForCalls, type ImportQueueState, type ImportReport, type Result } from '@learn/domain';
 import type { ProgressToast } from '../jobs/progressToast';
 import type { ToastData } from '../ui/toasts';
-import { IMPORT_CALL_PATHS, createImportRunner, inImportCalls, type ImportRunnerDeps } from './importRunner';
+import { IMPORT_CALL_PATHS, createImportRunner, type ImportRunnerDeps } from './importRunner';
 
 const ok = <T>(data: T): Result<T> => ({ ok: true, data });
 const running = (over: Partial<ImportQueueState> = {}): ImportQueueState => ({ ...IDLE_IMPORT_STATE, state: 'running', total: 2, ...over });
 const report = (over: Partial<ImportReport> = {}): ImportReport => ({
-  imported: 0, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: 2, cancelled: false, mode: 'managed', collectionId: null, untouched: 0, ...over,
+  imported: 0, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: 2, cancelled: false, mode: 'managed', collectionId: null, untouched: 0, subtitles: { attached: 0, failed: [] }, ...over,
 });
 
 function harness(over: Partial<ImportRunnerDeps> = {}) {
@@ -50,7 +50,7 @@ function harness(over: Partial<ImportRunnerDeps> = {}) {
 describe('a drop goes into the queue (P-2)', () => {
   it('in calls of at most 500 paths, one after another, in order, each with the mode and the collection', async () => {
     expect(IMPORT_CALL_PATHS).toBe(500);
-    expect(inImportCalls(Array.from({ length: 1201 }, (_, i) => i)).map((c) => c.length)).toEqual([500, 500, 201]);
+    expect(groupForCalls(Array.from({ length: 1201 }, (_, i) => `/in/f${i}.pdf`)).map((c) => c.length)).toEqual([500, 500, 201]);
     const h = harness();
     const paths = Array.from({ length: 1201 }, (_, i) => `/in/${i}.pdf`);
     await h.runner.drop(paths, 'linked', { id: 'c1', name: '학회 준비' }, Promise.resolve());

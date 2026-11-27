@@ -58,6 +58,19 @@
     --find-match: light-dark(oklch(72% 0.12 190 / 0.3), oklch(72% 0.12 190 / 0.32));
     --find-match-current: light-dark(oklch(68% 0.11 190 / 0.6), oklch(70% 0.11 190 / 0.62));
     --video-stage: light-dark(oklch(14% 0.003 250), oklch(12% 0.003 250));
+    --video-chrome-bg: light-dark(oklch(0% 0 0 / 0.86), oklch(0% 0 0 / 0.86));
+    --video-chrome-scrim: light-dark(oklch(0% 0 0 / 0.5), oklch(0% 0 0 / 0.5));
+    --video-chrome-text: light-dark(oklch(97% 0 0), oklch(97% 0 0));
+    --video-chrome-text2: light-dark(oklch(80% 0.006 250), oklch(80% 0.006 250));
+    --video-chrome-text3: light-dark(oklch(68% 0.006 250), oklch(68% 0.006 250));
+    --video-chrome-track: light-dark(oklch(100% 0 0 / 0.22), oklch(100% 0 0 / 0.22));
+    --video-chrome-border: light-dark(oklch(100% 0 0 / 0.3), oklch(100% 0 0 / 0.3));
+    --video-chrome-hover: light-dark(oklch(100% 0 0 / 0.1), oklch(100% 0 0 / 0.1));
+    --video-chrome-pressed: light-dark(oklch(100% 0 0 / 0.16), oklch(100% 0 0 / 0.16));
+    --video-chrome-gap: light-dark(oklch(14% 0.003 250), oklch(14% 0.003 250));
+    --video-chrome-meter: light-dark(oklch(72% 0.11 190), oklch(72% 0.11 190));
+    --subtitle-bg: light-dark(oklch(0% 0 0 / 0.72), oklch(0% 0 0 / 0.72));
+    --subtitle-fg: light-dark(oklch(100% 0 0), oklch(100% 0 0));
     /* Tag and annotation colours (positions 1–8, same in both themes) */
     --tag-1: #ffd400;
     --tag-2: #ff6666;

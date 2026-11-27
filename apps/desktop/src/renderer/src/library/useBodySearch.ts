@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useSyncExternalStore } from 'react';
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
-import type { SearchScope } from '@learn/domain';
+import type { BodyMatches, SearchScope } from '@learn/domain';
 import { ApiError, api, unwrap } from '../api';
 import { keys } from '../data/queries';
 import { queryClient } from '../data/query-client';
@@ -139,15 +139,27 @@ export function useQuickBodySearch(): BodySearch {
   return useBodyAnswer(useBodyTarget());
 }
 
-/** What search:pages answers for one item: its first pages that match (twenty at most), a snippet each, and how many match. */
+/** What search:matches answers for one item, as the item panel draws it: a PDF's page rows or a video's time rows (twenty at most), and how many match. */
 export interface BodyPages {
   pages: Array<{ pageIndex: number; snippet: string }>;
+  times: Array<{ startMs: number; snippet: string; track: string | null }>;
   total: number;
 }
 
-/** search:pages for one item and query: the app's IPC, or a stub in a test. */
+/** The answer's rows by kind: an item has only one kind, so one of the two lists is empty. */
+export function splitMatches({ matches, total }: BodyMatches): BodyPages {
+  const pages: BodyPages['pages'] = [];
+  const times: BodyPages['times'] = [];
+  for (const m of matches) {
+    if (m.kind === 'page') pages.push({ pageIndex: m.pageIndex, snippet: m.snippet });
+    else times.push({ startMs: m.startMs, snippet: m.snippet, track: m.track });
+  }
+  return { pages, times, total };
+}
+
+/** search:matches for one item and query: the app's IPC, or a stub in a test. */
 export type BodyPagesCall = (itemId: string, query: string) => Promise<BodyPages>;
-const searchPages: BodyPagesCall = (itemId, query) => unwrap(api().search.pages({ itemId, query }));
+const searchPages: BodyPagesCall = async (itemId, query) => splitMatches(await unwrap(api().search.matches({ itemId, query })));
 
 /**
  * 본문 일치's pages for one item, read as the table reads its body answer (bodyQueryOptions): the entry of `target`, the query

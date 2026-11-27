@@ -113,7 +113,7 @@ export function LibraryCheckSheet({ payload }: { payload: LibraryCheckPayload })
                   asking={asking && view.kind === 'unreferenced' && view.state === 'todo'}
                   failure={failure(view.kind)}
                   onAct={(key) => (key === 'askClean' ? setAsking(true) : void act(view.kind, ACTIONS[key]))}
-                  onRelink={(itemId) => void act(view.kind, { kind: 'libraryCheck', act: 'relink', itemId })}
+                  onRelink={(itemId, assetId) => void act(view.kind, { kind: 'libraryCheck', act: 'relink', itemId, ...(assetId !== null ? { assetId } : {}) })}
                   onConfirm={() => void act('unreferenced', { kind: 'libraryCheck', act: 'cleanUnreferenced', keys: payload.rows.find((r) => r.kind === 'unreferenced')?.keys ?? [] })}
                   onKeep={keepCopies}
                 />
@@ -156,7 +156,7 @@ interface RowProps {
   asking: boolean;
   failure: string | null;
   onAct(key: CheckActKey): void;
-  onRelink(itemId: string): void;
+  onRelink(itemId: string, assetId: string | null): void;
   onConfirm(): void;
   onKeep(): void;
 }
@@ -220,7 +220,7 @@ function CheckRowItem({ view, working, asking, failure, onAct, onRelink, onConfi
                 </span>
               )}
               {e.relinkItemId !== null && (
-                <Button size="small" testId="check-relink" aria-label={t.check.actions.relinkFor(e.label)} onPress={() => onRelink(e.relinkItemId!)}>
+                <Button size="small" testId="check-relink" aria-label={t.check.actions.relinkFor(e.label)} onPress={() => onRelink(e.relinkItemId!, e.relinkAssetId)}>
                   {t.check.actions.relink}
                 </Button>
               )}

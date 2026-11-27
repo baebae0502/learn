@@ -37,6 +37,7 @@ describe('LearnApi inputs are the schema input types', () => {
     expectTypeOf<P<LearnApi['ui']['showContextMenu']>>().toEqualTypeOf<Ipc.ShowContextMenuInput>();
     expectTypeOf<P<LearnApi['ui']['showColumnMenu']>>().toEqualTypeOf<Ipc.ShowColumnMenuInput>();
     expectTypeOf<P<LearnApi['ui']['reportContext']>>().toEqualTypeOf<Ipc.CommandContextInput>();
+    expectTypeOf<P<LearnApi['ui']['stage']>>().toEqualTypeOf<Ipc.StageInput>();
     expectTypeOf<P<LearnApi['sheet']['resolve']>>().toEqualTypeOf<Ipc.SheetResultInput>();
     // A context-menu pick carries its row's value: the renderer runs the command with it.
     expectTypeOf<ReturnType<LearnApi['ui']['showContextMenu']>>().toEqualTypeOf<Promise<Result<PickedCommand | null>>>();

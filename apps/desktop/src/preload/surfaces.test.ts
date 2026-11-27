@@ -39,7 +39,7 @@ const allowedFor = (kind: WindowKind) =>
 const EVENTS: Record<WindowKind, ReadonlyArray<keyof LearnEventMap>> = {
   main: [
     'menuCommand', 'libraryChanged', 'windowState', 'settingsChanged', 'prefsChanged', 'nativeMenu', 'demoShortcut', 'import:progress', 'import:finished', 'item:openRequested',
-    'recovery:show', 'job:progress', 'search:progress', 'tutor:turn', 'sessions:changed',
+    'recovery:show', 'job:progress', 'search:progress', 'tutor:turn', 'sessions:changed', 'subtitles:changed',
   ],
   // Its own window state, menu-bar menus and prefs; menuCommand and demoShortcut for the demo overlay it can show.
   settings: ['windowState', 'nativeMenu', 'prefsChanged', 'settingsChanged', 'menuCommand', 'demoShortcut'],

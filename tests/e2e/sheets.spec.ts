@@ -4,7 +4,7 @@ import { sheetMaxHeight } from '../../apps/desktop/src/main/sheet-geometry';
 import { acceleratorLabel } from '../../packages/domain/src/accelerator';
 import { COMMANDS } from '../../packages/domain/src/commands';
 import { expectNoSeriousA11y } from './a11y';
-import { FIXTURES, clickToCloseSheet, closeSheet, expectWindow, importFiles, importPaths, launch, mainWindow, menuItemEnabled, openSheetPages, runMenuCommand, sheetPrepared, windowKinds, windowReach } from './helpers';
+import { FIXTURES, clickToCloseSheet, closeSheet, expectWindow, importFiles, importPaths, launch, mainWindow, menuItemEnabled, openItem, openSheetPages, runMenuCommand, sheetPrepared, videoReady, windowKinds, windowReach } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 /** The keyboard focus ring (outline) of a button: 'none' or 'solid'. */
@@ -472,6 +472,32 @@ test('the ⌘/ sheet lays its groups out in two columns, read down then across, 
     const [row, box] = await Promise.all([last.boundingBox(), body.boundingBox()]);
     expect(row!.y + row!.height).toBeLessThanOrEqual(box!.y + box!.height + 0.5);
     await closeSheet(short, 'Escape');
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('the ⌘/ sheet opened from a video reader lists the video\'s keys and not the PDF\'s, and fits a 1440 × 900 window', async ({}, testInfo) => {
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await (await mainWindow(s.app)).evaluate((w) => w.setContentSize(1440, 900));
+    await importPaths(s.page, [path.join(FIXTURES, 'lecture-60s.mp4')]);
+    await openItem(s.page, 'lecture-60s');
+    await videoReady(s.page);
+    await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
+    const sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'app.shortcuts'));
+    const titles = await sheet.locator('section[aria-label]').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')));
+    expect(titles).toContain('동영상');
+    // 리더 holds ⌘F alone (the transcript's search): the PDF's and the picture's other rows are not a video's.
+    expect(titles).toContain('리더');
+    const spoken = await sheet.locator('[data-testid="shortcut-row"] .visually-hidden').evaluateAll((els) => els.map((e) => e.textContent ?? ''));
+    expect(spoken.some((x) => x.includes('K'))).toBe(true);
+    expect(spoken.some((x) => x.includes('⌘G') || x.includes('Ctrl+G'))).toBe(false);
+    expect(spoken.some((x) => x.includes('Ctrl+F') || x.includes('⌘F'))).toBe(true);
+    const { natural } = await sheetRule(s.app, sheet, await parentHeightOf(s.app));
+    // 772: two pixels of room are left; the unit pin (shortcuts.test.ts) holds the same number.
+    expect(natural).toBeLessThanOrEqual(774);
+    await closeSheet(sheet, 'Escape');
   } finally {
     await s.app.close();
   }

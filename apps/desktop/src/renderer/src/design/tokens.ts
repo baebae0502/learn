@@ -171,6 +171,25 @@ export const colors = {
   findMatchCurrent: { light: 'oklch(68% 0.11 190 / 0.6)', dark: 'oklch(70% 0.11 190 / 0.62)' },
   /** Letterbox around video in both themes. */
   videoStage: { light: 'oklch(14% 0.003 250)', dark: 'oklch(12% 0.003 250)' },
+  /**
+   * The video controls on the stage (spec 6.4, 6.6): a dark bar over the picture's bottom with a scrim fading up, the same in both themes
+   * because the stage is near-black in both. The text, track, border, pressed fill and the knob's ring gap are what the bar's controls
+   * read in place of the theme's own.
+   */
+  videoChromeBg: { light: 'oklch(0% 0 0 / 0.86)', dark: 'oklch(0% 0 0 / 0.86)' },
+  videoChromeScrim: { light: 'oklch(0% 0 0 / 0.5)', dark: 'oklch(0% 0 0 / 0.5)' },
+  videoChromeText: { light: 'oklch(97% 0 0)', dark: 'oklch(97% 0 0)' },
+  videoChromeText2: { light: 'oklch(80% 0.006 250)', dark: 'oklch(80% 0.006 250)' },
+  videoChromeText3: { light: 'oklch(68% 0.006 250)', dark: 'oklch(68% 0.006 250)' },
+  videoChromeTrack: { light: 'oklch(100% 0 0 / 0.22)', dark: 'oklch(100% 0 0 / 0.22)' },
+  videoChromeBorder: { light: 'oklch(100% 0 0 / 0.3)', dark: 'oklch(100% 0 0 / 0.3)' },
+  videoChromeHover: { light: 'oklch(100% 0 0 / 0.1)', dark: 'oklch(100% 0 0 / 0.1)' },
+  videoChromePressed: { light: 'oklch(100% 0 0 / 0.16)', dark: 'oklch(100% 0 0 / 0.16)' },
+  videoChromeGap: { light: 'oklch(14% 0.003 250)', dark: 'oklch(14% 0.003 250)' },
+  videoChromeMeter: { light: 'oklch(72% 0.11 190)', dark: 'oklch(72% 0.11 190)' },
+  /** The subtitle on the picture (spec 6.4): white on a dim black, the same in both themes — it lies over the video, not over the app. */
+  subtitleBg: { light: 'oklch(0% 0 0 / 0.72)', dark: 'oklch(0% 0 0 / 0.72)' },
+  subtitleFg: { light: 'oklch(100% 0 0)', dark: 'oklch(100% 0 0)' },
 } as const satisfies Record<string, ThemePair>;
 
 export type ColorToken = keyof typeof colors;

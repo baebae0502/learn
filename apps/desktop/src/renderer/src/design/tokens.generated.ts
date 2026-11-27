@@ -42,6 +42,12 @@ export const themeHex = {
     success: '#319751',
     successText: '#197037',
     videoStage: '#08090a',
+    videoChromeText: '#f5f5f5',
+    videoChromeText2: '#bbbec1',
+    videoChromeText3: '#95999c',
+    videoChromeGap: '#08090a',
+    videoChromeMeter: '#39bab4',
+    subtitleFg: '#ffffff',
   },
   dark: {
     bgWindow: '#242527',
@@ -79,6 +85,12 @@ export const themeHex = {
     success: '#54b66e',
     successText: '#83d494',
     videoStage: '#050607',
+    videoChromeText: '#f5f5f5',
+    videoChromeText2: '#bbbec1',
+    videoChromeText3: '#95999c',
+    videoChromeGap: '#08090a',
+    videoChromeMeter: '#39bab4',
+    subtitleFg: '#ffffff',
   },
 } as const;
 

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   IDLE_IMPORT_STATE, LearnError,
-  type DuplicateCard, type ErrorCode, type ImportOutcome, type ImportQueueState, type ImportReport, type LibraryItem,
+  type AttachFailure, type AttachResult, type DuplicateCard, type ErrorCode, type ImportOutcome, type ImportQueueState, type ImportReport, type LibraryItem,
 } from '@learn/domain';
 import type { ImportOptions } from '@learn/library';
 import { createImportQueue, type DuplicateAnswer, type DuplicateQuestion, type ImportBatch, type ImportQueueDeps } from './import-queue';
@@ -87,6 +87,7 @@ function setup(over: {
   sizes?: Record<string, number>;
   lane?: JobLane;
   deps?: Partial<ImportQueueDeps>;
+  attach?: (itemId: string, paths: readonly string[]) => Promise<AttachResult>;
 } = {}) {
   const fake = over.importer ?? fakeImporter();
   const lane = over.lane ?? createJobLane();
@@ -94,6 +95,7 @@ function setup(over: {
   const answers = [...(over.answers ?? [])];
   const filed: Array<[string, string[]]> = [];
   const announced: string[][] = [];
+  const attaches: Array<{ itemId: string; paths: string[] }> = [];
   const queue = createImportQueue({
     lane,
     importer: () => fake.importer,
@@ -110,6 +112,10 @@ function setup(over: {
       return itemIds.length;
     },
     announce: (itemIds) => announced.push(itemIds),
+    attachSubtitles: async (itemId, paths) => {
+      attaches.push({ itemId, paths: [...paths] });
+      return over.attach ? over.attach(itemId, paths) : { added: paths.map((p) => ({ assetId: p } as never)), already: [], failed: [] };
+    },
     stat: async (p) => over.sizes?.[p] ?? 10,
     warn: () => {},
     ...over.deps,
@@ -126,11 +132,11 @@ function setup(over: {
         resolve(r);
       });
     });
-  return { queue, fake, lane, questions, filed, announced, reports, states, nextReport };
+  return { queue, fake, lane, questions, filed, announced, attaches, reports, states, nextReport };
 }
 const batch = (paths: string[], over: Partial<ImportBatch> = {}): ImportBatch => ({ paths, mode: 'managed', collectionId: null, owner: 1, ...over });
 const report = (over: Partial<ImportReport>): ImportReport => ({
-  imported: 0, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: 0, cancelled: false, mode: 'managed', collectionId: null, untouched: 0, ...over,
+  imported: 0, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: 0, cancelled: false, mode: 'managed', collectionId: null, untouched: 0, subtitles: { attached: 0, failed: [] }, ...over,
 });
 
 describe('order and batches (spec 3.1)', () => {
@@ -646,5 +652,82 @@ describe('a batch that adds its duplicates as new items', () => {
     expect(await done).toEqual(report({ imported: 2, requested: 2 }));
     expect(h.fake.calls.map((c) => [c.path, c.opts.allowDuplicate])).toEqual([['/in/again.pdf', true], ['/in/new.pdf', undefined]]);
     expect(h.questions).toEqual([]);
+  });
+});
+
+describe('subtitle files put in with their videos (spec 5.2)', () => {
+  const unpaired = (name: string): AttachFailure => ({ name, reason: 'unpaired' });
+
+  it('attaches a video\'s subtitles once its item is known, and the importer never sees them', async () => {
+    const h = setup();
+    const done = h.nextReport();
+    h.queue.enqueue(batch(['/in/a.mp4', '/in/a.ko.srt', '/in/a.en.vtt']));
+    expect(await done).toEqual(report({ imported: 1, requested: 1, subtitles: { attached: 2, failed: [] } }));
+    expect(h.attaches).toEqual([{ itemId: 'item:/in/a.mp4', paths: ['/in/a.ko.srt', '/in/a.en.vtt'] }]);
+    expect(h.fake.calls.map((c) => c.path)).toEqual(['/in/a.mp4']);
+  });
+
+  it('attaches to the existing item of a duplicate video', async () => {
+    const h = setup({ importer: fakeImporter((p) => duplicate(p, 'item-7')) });
+    const done = h.nextReport();
+    h.queue.enqueue(batch(['/in/a.mp4', '/in/a.srt']));
+    const r = await done;
+    expect(h.attaches).toEqual([{ itemId: 'item-7', paths: ['/in/a.srt'] }]);
+    expect(r.subtitles).toEqual({ attached: 1, failed: [] });
+  });
+
+  it('turns the subtitles of a failed video into video-failed', async () => {
+    const h = setup({ importer: fakeImporter((p) => failed(p, 'UNSUPPORTED_TYPE', 'no')) });
+    const done = h.nextReport();
+    h.queue.enqueue(batch(['/in/a.mp4', '/in/a.ko.srt', '/in/a.en.vtt']));
+    const r = await done;
+    expect(h.attaches).toEqual([]);
+    expect(r.subtitles).toEqual({ attached: 0, failed: [{ name: 'a.ko.srt', reason: 'video-failed' }, { name: 'a.en.vtt', reason: 'video-failed' }] });
+  });
+
+  it('reports a run of subtitle files alone: no files requested, each unpaired', async () => {
+    const h = setup();
+    const done = h.nextReport();
+    const settled = vi.fn();
+    expect(h.queue.enqueue(batch(['/in/notes.ko.srt'], { onSettled: settled }))).toBe(0);
+    expect(await done).toEqual(report({ requested: 0, subtitles: { attached: 0, failed: [unpaired('notes.ko.srt')] } }));
+    expect(settled).toHaveBeenCalledTimes(1);
+    expect(h.queue.state()).toEqual(IDLE_IMPORT_STATE);
+  });
+
+  it('adds the unpaired ones of a mixed batch to the run beside the pair\'s', async () => {
+    const h = setup();
+    const done = h.nextReport();
+    h.queue.enqueue(batch(['/in/a.mp4', '/in/a.srt', '/in/other.srt']));
+    expect((await done).subtitles).toEqual({ attached: 1, failed: [unpaired('other.srt')] });
+  });
+
+  it('marks the subtitles io when the attach rejects, and the run goes on', async () => {
+    const h = setup({ attach: async () => { throw new Error('boom'); } });
+    const done = h.nextReport();
+    h.queue.enqueue(batch(['/in/a.mp4', '/in/a.srt', '/in/b.pdf']));
+    const r = await done;
+    expect(r.imported).toBe(2);
+    expect(r.subtitles).toEqual({ attached: 0, failed: [{ name: 'a.srt', reason: 'io' }] });
+  });
+
+  it('keeps what the attach reports as failed, and counts only what it added', async () => {
+    const h = setup({ attach: async (_i, paths) => ({ added: [{ assetId: 'x' } as never], already: [], failed: [{ name: 'b.srt', reason: 'no-cues' }] }) });
+    const done = h.nextReport();
+    h.queue.enqueue(batch(['/in/a.mp4', '/in/a.srt', '/in/a.ko.srt']));
+    expect((await done).subtitles).toEqual({ attached: 1, failed: [{ name: 'b.srt', reason: 'no-cues' }] });
+  });
+
+  it('reports no subtitle of a stopped run that never started its video', async () => {
+    const h = setup();
+    const held = h.fake.hold('/in/a.pdf');
+    const done = h.nextReport();
+    h.queue.enqueue(batch(['/in/a.pdf', '/in/b.mp4', '/in/b.srt']));
+    await held.started;
+    h.queue.cancel();
+    const r = await done;
+    expect(r.cancelled).toBe(true);
+    expect(r.subtitles).toEqual({ attached: 0, failed: [] });
+    expect(h.attaches).toEqual([]);
   });
 });

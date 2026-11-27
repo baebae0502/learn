@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { acceleratorKeys, acceleratorLabel } from '../src/accelerator';
+import { acceleratorKeys, acceleratorLabel, keySpecKeys } from '../src/accelerator';
 import {
   ACCELERATOR_SYNTAX, COMMANDS, IMAGE_BACKGROUNDS, COMMAND_IDS, CONTEXT_MENU_KINDS, MAIN_OWNED_COMMANDS, NO_LIBRARY_VIEW, SUBMENUS, availableMenuCommands, commandById, commandLabel, commandMention, inPalette, isCommandAvailable, paletteLabel,
   READER_NAVS, SESSION_TARGET, TRASH_TARGET, sameCommandContext, selectionTargets, submenuProblems, type CommandContextState, type CommandId, type CommandSpec, type CommandTargetInfo, type ItemTargetInfo,
@@ -58,7 +58,7 @@ describe('command registry', () => {
       if (!c.accelerator) continue;
       for (const platform of ['linux', 'win32']) expect(acceleratorKeys(c.accelerator, platform), c.id).not.toContain('Super');
     }
-    const keys = COMMANDS.flatMap((c) => (c.key ? [`${c.key.shift ? 'Shift+' : ''}${c.key.code}`] : []));
+    const keys = COMMANDS.flatMap((c) => [c.key, c.alsoKey].flatMap((k) => (k ? [`${k.shift ? 'Shift+' : ''}${k.code}`] : [])));
     expect(new Set(keys).size).toBe(keys.length);
     // ⌘[ / ⌘] belong to PDF history (M7b, design-spec 7.4): these two commands hold them, and nothing else does.
     const holders = (label: string) => COMMANDS.filter((c) => c.accelerator && acceleratorLabel(c.accelerator, 'darwin') === label).map((c) => c.id);
@@ -164,6 +164,7 @@ describe('command registry', () => {
       'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.goToPage', 'reader.imageBackgroundChecker', 'reader.imageBackgroundDark', 'reader.imageBackgroundLight', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.scrollHorizontal', 'reader.scrollPage', 'reader.scrollVertical', 'reader.showOutline', 'reader.showSessions', 'reader.showThumbnails', 'reader.spreadEven', 'reader.spreadNone', 'reader.spreadOdd', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
       'session.rename', 'tab.close', 'tab.closeOthers', 'tab.goTo2', 'tab.goTo3', 'tab.goTo4', 'tab.goTo5', 'tab.goTo6', 'tab.goTo7', 'tab.goTo8', 'tab.last', 'tab.moveLeft', 'tab.moveRight', 'tab.next', 'tab.previous', 'tab.reopenClosed', 'tab.revealInLibrary',
       'tag.clearColor', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'tag.delete', 'tag.rename', 'tag.setColor', 'tags.clearFilter', 'translation.translateSelection', 'trash.empty', 'tutor.chooseAgent', 'tutor.newSession', 'tutor.stop',
+      'video.addSubtitles', 'video.back10', 'video.back5', 'video.exitFullScreen', 'video.faster', 'video.forward10', 'video.forward5', 'video.frameBack', 'video.frameForward', 'video.playPause', 'video.slower', 'video.toggleCaptions', 'video.toggleFullScreen', 'video.toggleMute',
       'view.inspectorInfo', 'view.inspectorTutor', 'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
     ]);
     expect(commandById('file.importManaged')).toMatchObject({ label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' });
@@ -974,5 +975,158 @@ describe('the session list (T1a spec 8.9, 11)', () => {
   });
   it('the reported focus is part of the context and renames the menu bar\'s ⌘⌫ line', () => {
     expect(sameCommandContext(PDF, { ...PDF, sessionFocused: true })).toBe(false);
+  });
+});
+
+describe('the video stage commands (M8a spec 6.6, P-16)', () => {
+  const OPEN: CommandContextState = { ...VIEWER, videoOpen: true };
+  const STAGE: CommandContextState = { ...OPEN, videoStage: true };
+
+  it('F toggles the stage and esc leaves it, esc yielding to an open menu', () => {
+    expect(commandById('video.toggleFullScreen')).toMatchObject({ label: '전체 화면', key: { code: 'KeyF', noRepeat: true }, contexts: ['video'] });
+    expect(commandById('video.exitFullScreen')).toMatchObject({ label: '전체 화면 끝내기', key: { code: 'Escape', yields: true }, contexts: ['video'], palette: false });
+    for (const id of ['video.toggleFullScreen', 'video.exitFullScreen'] as const) {
+      expect(commandById(id).menu, id).toBeUndefined();
+      expect(commandById(id).accelerator, id).toBeUndefined();
+    }
+    expect(inPalette(commandById('video.toggleFullScreen'))).toBe(true);
+    expect(inPalette(commandById('video.exitFullScreen'))).toBe(false);
+  });
+  it('the toggle is on with a playable video (also in the stage), the exit only in the stage', () => {
+    expect(isCommandAvailable('video.toggleFullScreen', OPEN)).toBe(true);
+    expect(isCommandAvailable('video.toggleFullScreen', STAGE)).toBe(true);
+    expect(isCommandAvailable('video.toggleFullScreen', VIEWER)).toBe(false);
+    expect(isCommandAvailable('video.toggleFullScreen', { ...OPEN, blocked: true })).toBe(false);
+    expect(isCommandAvailable('video.exitFullScreen', STAGE)).toBe(true);
+    expect(isCommandAvailable('video.exitFullScreen', OPEN)).toBe(false);
+    expect(isCommandAvailable('video.exitFullScreen', { ...VIEWER, videoStage: true })).toBe(true); // a video that went unplayable still lets the stage go
+    expect(isCommandAvailable('video.exitFullScreen', { ...LIB, videoStage: true })).toBe(false);
+  });
+  it('the toggle is named by what it does now', () => {
+    const c = commandById('video.toggleFullScreen');
+    expect(commandLabel(c, 'linux', { videoStage: true })).toBe('전체 화면 끝내기');
+    expect(commandLabel(c, 'linux', { videoStage: false })).toBe('전체 화면으로 보기');
+    expect(commandLabel(c, 'linux')).toBe('전체 화면');
+  });
+  it('carries the stage like the other flat fields', () => {
+    expect(sameCommandContext(STAGE, { ...OPEN, videoStage: true })).toBe(true);
+    expect(sameCommandContext(STAGE, OPEN)).toBe(false);
+  });
+});
+
+describe('video commands (M8a spec 6.3, 10)', () => {
+  const IDS = ['video.playPause', 'video.back10', 'video.forward10', 'video.back5', 'video.forward5', 'video.frameBack', 'video.frameForward', 'video.slower', 'video.faster', 'video.toggleMute'] as const;
+  const OPEN: CommandContextState = { ...VIEWER, videoOpen: true };
+  const PLAYING: CommandContextState = { ...OPEN, videoPlaying: true };
+
+  it('names the keys as the table says: one key each, two for play/pause, the focused control first on Space and the arrows', () => {
+    expect(commandById('video.playPause')).toMatchObject({ label: '재생/일시정지', key: { code: 'KeyK', noRepeat: true }, alsoKey: { code: 'Space', yields: true, noRepeat: true }, contexts: ['video'] });
+    expect(commandById('video.back10')).toMatchObject({ label: '10초 뒤로', key: { code: 'KeyJ' } });
+    expect(commandById('video.forward10')).toMatchObject({ label: '10초 앞으로', key: { code: 'KeyL' } });
+    expect(commandById('video.back5')).toMatchObject({ label: '5초 뒤로', key: { code: 'ArrowLeft', yields: true } });
+    expect(commandById('video.forward5')).toMatchObject({ label: '5초 앞으로', key: { code: 'ArrowRight', yields: true } });
+    expect(commandById('video.frameBack')).toMatchObject({ label: '한 프레임 뒤로', key: { code: 'Comma' } });
+    expect(commandById('video.frameForward')).toMatchObject({ label: '한 프레임 앞으로', key: { code: 'Period' } });
+    expect(commandById('video.slower')).toMatchObject({ label: '재생 속도 느리게', key: { code: 'Comma', shift: true } });
+    expect(commandById('video.faster')).toMatchObject({ label: '재생 속도 빠르게', key: { code: 'Period', shift: true } });
+    expect(commandById('video.toggleMute')).toMatchObject({ label: '음소거', key: { code: 'KeyM', noRepeat: true } });
+    // A held key repeats a seek or a frame step, never a toggle.
+    for (const id of ['video.back10', 'video.forward10', 'video.back5', 'video.forward5', 'video.frameBack', 'video.frameForward']) expect(commandById(id as CommandId).key?.noRepeat, id).toBeUndefined();
+    for (const id of IDS) {
+      const c = commandById(id);
+      expect(c.contexts, id).toEqual(['video']);
+      expect(c.menu, id).toBeUndefined(); // a bare letter is never a menu accelerator (J9)
+      expect(c.accelerator, id).toBeUndefined();
+      expect(inPalette(c), id).toBe(true);
+      expect(c.keywords?.some((k) => /[가-힣]/.test(k)), `${id}: a Korean keyword`).toBe(true);
+    }
+  });
+  it('a video command is available only with a playable video shown, in the reader and not in the library', () => {
+    for (const id of IDS) {
+      if (id === 'video.frameBack' || id === 'video.frameForward') continue;
+      expect(isCommandAvailable(id, OPEN), id).toBe(true);
+      expect(isCommandAvailable(id, VIEWER), id).toBe(false);
+      expect(isCommandAvailable(id, { ...VIEWER, videoOpen: false }), id).toBe(false);
+      expect(isCommandAvailable(id, { ...OPEN, blocked: true }), id).toBe(false);
+      expect(isCommandAvailable(id, { ...LIB, videoOpen: true }), id).toBe(false); // the library view has no video, whatever a stale flag says
+    }
+  });
+  it('a frame step needs the video paused', () => {
+    for (const id of ['video.frameBack', 'video.frameForward'] as const) {
+      expect(isCommandAvailable(id, OPEN), id).toBe(true);
+      expect(isCommandAvailable(id, PLAYING), id).toBe(false);
+      expect(isCommandAvailable(id, VIEWER), id).toBe(false);
+    }
+    expect(isCommandAvailable('video.slower', PLAYING)).toBe(true);
+  });
+  it('names a toggle by what it does now', () => {
+    const play = commandById('video.playPause');
+    const mute = commandById('video.toggleMute');
+    expect(commandLabel(play, 'darwin', { videoPlaying: true })).toBe('일시정지');
+    expect(commandLabel(play, 'darwin', { videoPlaying: false })).toBe('재생');
+    expect(commandLabel(play, 'darwin')).toBe('재생/일시정지');
+    expect(commandLabel(mute, 'linux', { videoMuted: true })).toBe('음소거 해제');
+    expect(commandLabel(mute, 'linux', { videoMuted: false })).toBe('음소거');
+    expect(commandLabel(mute, 'linux')).toBe('음소거');
+  });
+  it('carries the video fields like the other flat fields', () => {
+    expect(sameCommandContext(OPEN, { ...VIEWER, videoOpen: true })).toBe(true);
+    expect(sameCommandContext(OPEN, VIEWER)).toBe(false);
+    expect(sameCommandContext(OPEN, PLAYING)).toBe(false);
+  });
+  it('the keycaps spell the space bar, the arrows and the punctuation', () => {
+    expect(keySpecKeys({ code: 'Space' }, 'darwin')).toEqual(['스페이스']);
+    expect(keySpecKeys({ code: 'ArrowLeft' }, 'linux')).toEqual(['←']);
+    expect(keySpecKeys({ code: 'Comma', shift: true }, 'darwin')).toEqual(['⇧', ',']);
+    expect(keySpecKeys({ code: 'Period' }, 'linux')).toEqual(['.']);
+    expect(keySpecKeys({ code: 'KeyK' }, 'linux')).toEqual(['K']);
+  });
+});
+
+describe('the subtitle commands (M8a spec 6.5, 10)', () => {
+  const OPEN: CommandContextState = { ...VIEWER, videoOpen: true };
+  const WITH_TRACK: CommandContextState = { ...OPEN, videoCaptions: true };
+
+  it('C turns the shown track on or off and has no menu item; the picker has no key', () => {
+    expect(commandById('video.toggleCaptions')).toMatchObject({ label: '자막 켜기/끄기', key: { code: 'KeyC', noRepeat: true }, contexts: ['video'] });
+    expect(commandById('video.addSubtitles')).toMatchObject({ label: '자막\u00a0파일 추가…', contexts: ['video'] });
+    expect(commandById('video.addSubtitles').key).toBeUndefined();
+    for (const id of ['video.toggleCaptions', 'video.addSubtitles'] as const) {
+      expect(commandById(id).menu, id).toBeUndefined();
+      expect(commandById(id).accelerator, id).toBeUndefined();
+      expect(inPalette(commandById(id)), id).toBe(true);
+    }
+  });
+  it('C needs a track, the picker needs only a video', () => {
+    expect(isCommandAvailable('video.toggleCaptions', WITH_TRACK)).toBe(true);
+    expect(isCommandAvailable('video.toggleCaptions', OPEN)).toBe(false);
+    expect(isCommandAvailable('video.toggleCaptions', { ...WITH_TRACK, blocked: true })).toBe(false);
+    expect(isCommandAvailable('video.toggleCaptions', { ...VIEWER, videoCaptions: true })).toBe(false);
+    expect(isCommandAvailable('video.addSubtitles', OPEN)).toBe(true);
+    expect(isCommandAvailable('video.addSubtitles', WITH_TRACK)).toBe(true);
+    expect(isCommandAvailable('video.addSubtitles', VIEWER)).toBe(false);
+    expect(isCommandAvailable('video.addSubtitles', { ...OPEN, blocked: true })).toBe(false);
+  });
+  it('⌘F finds in a video once it has a track (its transcript search), and not before; the PDF-only finds stay off', () => {
+    expect(isCommandAvailable('library.find', WITH_TRACK)).toBe(true);
+    expect(isCommandAvailable('library.find', OPEN)).toBe(false);
+    expect(isCommandAvailable('library.find', { ...WITH_TRACK, blocked: true })).toBe(false);
+    expect(isCommandAvailable('library.find', { ...VIEWER, videoCaptions: true })).toBe(false);
+    for (const id of ['reader.findNext', 'reader.findPrevious', 'reader.findSelection'] as const) expect(isCommandAvailable(id, WITH_TRACK), id).toBe(false);
+  });
+  it('⌘F is off on the stage, which hides the sidebar and its transcript search, and back once the stage ends', () => {
+    expect(isCommandAvailable('library.find', { ...WITH_TRACK, videoStage: false })).toBe(true);
+    expect(isCommandAvailable('library.find', { ...WITH_TRACK, videoStage: true })).toBe(false);
+  });
+  it('the toggle is named by what it does now', () => {
+    const c = commandById('video.toggleCaptions');
+    expect(commandLabel(c, 'linux', { videoCaptionsOn: true })).toBe('자막 끄기');
+    expect(commandLabel(c, 'linux', { videoCaptionsOn: false })).toBe('자막 켜기');
+    expect(commandLabel(c, 'linux')).toBe('자막 켜기/끄기');
+  });
+  it('carries the two flags like the other flat fields', () => {
+    expect(sameCommandContext({ ...WITH_TRACK, videoCaptionsOn: true }, { ...WITH_TRACK, videoCaptionsOn: true })).toBe(true);
+    expect(sameCommandContext({ ...WITH_TRACK, videoCaptionsOn: true }, { ...WITH_TRACK, videoCaptionsOn: false })).toBe(false);
+    expect(sameCommandContext(WITH_TRACK, OPEN)).toBe(false);
   });
 });

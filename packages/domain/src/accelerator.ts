@@ -8,6 +8,10 @@ export interface KeySpec {
   shift?: boolean;
   /** Also handled while a text field has focus (function keys such as F6). Letters never are. */
   inText?: boolean;
+  /** The focused control's own use of this key comes first (Space on a button, arrows on a slider, a tab or a list). */
+  yields?: true;
+  /** A held key does not run this again and again: a toggle (play, mute) would flicker. Seeks and frame steps leave it off and repeat. */
+  noRepeat?: true;
 }
 
 const MAC_SYMBOL: Readonly<Record<string, string>> = {
@@ -78,7 +82,12 @@ export function ariaKeyShortcuts(accelerator: string, platform: string): string 
   return [...names, key.length === 1 ? key.toUpperCase() : key].join('+');
 }
 
+/** What a single-key shortcut's keycap says where the code is not the letter or digit on it. */
+const CODE_NAME: Readonly<Record<string, string>> = {
+  Space: '스페이스', Comma: ',', Period: '.', ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓', Escape: 'esc',
+};
+
 export function keySpecKeys(key: KeySpec, platform: string): string[] {
-  const name = key.code.startsWith('Key') ? key.code.slice(3) : key.code.startsWith('Digit') ? key.code.slice(5) : key.code;
+  const name = CODE_NAME[key.code] ?? (key.code.startsWith('Key') ? key.code.slice(3) : key.code.startsWith('Digit') ? key.code.slice(5) : key.code);
   return key.shift ? [platform === 'darwin' ? '⇧' : 'Shift', name] : [name];
 }

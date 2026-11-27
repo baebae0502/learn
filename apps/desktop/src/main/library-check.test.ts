@@ -4,7 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CheckAction, ImportReport, LibraryCheck, LibraryCheckPayload, SheetPayload } from '@learn/domain';
-import { managedRelativePath, resolveAssetPath } from '@learn/library';
+import type { PurgedAsset } from '@learn/db';
+import { attachSubtitleFiles, managedRelativePath, removePurgedFiles, resolveAssetPath } from '@learn/library';
 import type { ImportBatch } from './jobs/import-queue';
 import { AUTO_POLL_MS, LAST_SHOWN, autoShowDue, checkPayload, clearToShow, createCheckSheets, importAndWait, runCheck, startLibraryCheck, type AutoGate, type CheckSheetsDeps } from './library-check';
 import { openLibraryContext, type LibraryContext } from './library-context';
@@ -29,6 +30,11 @@ async function library(): Promise<LibraryContext> {
 function pdf(dir: string, name: string, text: string): string {
   const p = path.join(dir, name);
   fs.writeFileSync(p, `%PDF-1.4\n% ${text}\n%%EOF\n`);
+  return p;
+}
+function mp4(dir: string, name: string, seed: string): string {
+  const p = path.join(dir, name);
+  fs.writeFileSync(p, Buffer.concat([Buffer.from([0, 0, 0, 0x18, ...Buffer.from('ftypisom'), 0, 0, 2, 0, ...Buffer.from('isomiso2')]), Buffer.from(seed)]));
   return p;
 }
 async function add(ctx: LibraryContext, src: string, mode: 'managed' | 'linked' = 'managed') {
@@ -66,7 +72,7 @@ function queueOf(ctx: LibraryContext) {
             await batch.afterCommit?.(o);
           }
         }
-        const report: ImportReport = { imported, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: batch.paths.length, cancelled: false, untouched: 0, mode: batch.mode, collectionId: null };
+        const report: ImportReport = { imported, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: batch.paths.length, cancelled: false, untouched: 0, mode: batch.mode, collectionId: null, subtitles: { attached: 0, failed: [] } };
         for (const cb of [...finished]) cb(report, null);
         batch.onSettled?.();
       })();
@@ -112,7 +118,7 @@ const rowOf = (p: LibraryCheckPayload, kind: string) => p.rows.find((r) => r.kin
 
 describe('the automatic sheet\'s rules (spec 7.1)', () => {
   const check = (over: Partial<LibraryCheck>): LibraryCheck => ({
-    checkedAt: '2026-10-31T00:00:00.000Z', items: 1, staging: { count: 0, bytes: 0 }, unreferenced: { keys: [], bytes: 0 }, missingManaged: { itemIds: [] },
+    checkedAt: '2026-10-31T00:00:00.000Z', items: 1, staging: { count: 0, bytes: 0 }, unreferenced: { keys: [], bytes: 0 }, missingManaged: { itemIds: [], copies: [] },
     missingLinked: { itemIds: [] }, corrupt: { count: 0, bytes: 0, files: [] }, orphanEdits: { count: 0, bytes: 0, copies: [] }, fingerprint: 'f'.repeat(64), actionable: false, ...over,
   });
   it('is due for something to act on whose list was not the last one shown', () => {
@@ -246,6 +252,67 @@ describe('the tutor repair at startup (P-8)', () => {
   });
 });
 
+describe('the sweep of unlinked subtitle copies at startup (P-8)', () => {
+  /** A video with one subtitle attached, then taken off: its asset is linked to nothing. */
+  async function orphaned(ctx: Awaited<ReturnType<typeof library>>) {
+    const video = await add(ctx, mp4(temp('src'), 'v.mp4', 'v'));
+    const file = path.join(temp('sub'), 'a.ko.srt');
+    fs.writeFileSync(file, '1\n00:00:01,000 --> 00:00:02,000\n안녕\n');
+    const r = await attachSubtitleFiles(ctx, video.id, [file]);
+    const track = r.added[0]!;
+    ctx.subtitles.remove(video.id, track.assetId);
+    return { video, track, asset: ctx.repo.getAsset(track.assetId)! };
+  }
+
+  it('sweeps before it waits for anything, hands the assets to removeFiles, and only at startup', async () => {
+    const ctx = await library();
+    const { asset } = await orphaned(ctx);
+    const calls: string[] = [];
+    const linked = vi.spyOn(ctx.repo, 'assetsByMode').mockImplementation((mode) => { calls.push(`linked ${mode}`); return []; });
+    const removeFiles = vi.fn((assets: Array<{ id: string }>) => void calls.push(`files ${assets.map((a) => a.id).join(',')}`));
+    await runCheck(ctx, () => {}, { removeFiles });
+    expect(removeFiles).not.toHaveBeenCalled();
+    expect(ctx.repo.getAsset(asset.id)).toBeDefined();
+    calls.length = 0;
+    await runCheck(ctx, () => {}, { startup: true, removeFiles });
+    expect(calls.slice(0, 1)).toEqual([`files ${asset.id}`]);
+    expect(calls.some((c) => c.startsWith('linked'))).toBe(true);
+    expect(ctx.repo.getAsset(asset.id)).toBeUndefined();
+    expect(ctx.subtitles.cueTextCount({ sha256: asset.sha256 })).toBe(0);
+    linked.mockRestore();
+  });
+
+  it('reads the folder once the swept copies are gone: none of them is reported as 쓰이지 않는 사본, though another stray copy is', async () => {
+    const ctx = await library();
+    const { asset } = await orphaned(ctx);
+    const file = resolveAssetPath(ctx.layout, asset);
+    expect(fs.existsSync(file)).toBe(true);
+    const stray = put(path.join(ctx.layout.assetsDir, 'ab', 'stray'), 4);
+    // A slow disk: each copy goes a while after the sweep's commit, behind the purges before it.
+    const removeFiles = (assets: PurgedAsset[]) =>
+      new Promise<void>((resolve) => setTimeout(resolve, 50)).then(() => removePurgedFiles(ctx.layout, assets, { inUse: (key) => ctx.repo.managedPathInUse(key) })).then(() => {});
+    const check = await runCheck(ctx, () => {}, { startup: true, removeFiles });
+    expect(check.unreferenced.keys).toEqual([path.relative(ctx.layout.root, stray).split(path.sep).join('/')]);
+    expect(fs.existsSync(file)).toBe(false);
+  });
+
+  it('leaves a linked subtitle alone, and records only the code when the sweep throws', async () => {
+    const ctx = await library();
+    const { video, track } = await orphaned(ctx);
+    ctx.subtitles.restore(video.id, track.assetId, { position: 0, language: 'ko' }, new Date().toISOString());
+    const removeFiles = vi.fn();
+    await runCheck(ctx, () => {}, { startup: true, removeFiles });
+    expect(removeFiles).not.toHaveBeenCalled();
+    expect(ctx.subtitles.list(video.id)).toHaveLength(1);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fake = { ...ctx, subtitles: { sweepOrphans: () => { throw new Error('secret path /home/x'); } } as never } as typeof ctx;
+    const check = await runCheck(fake, () => {}, { startup: true, removeFiles });
+    expect(check).toBe(fake.check);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('INTERNAL'));
+    expect(warn.mock.calls.flat().join(' ')).not.toContain('secret');
+  });
+});
+
 describe('the check sheet (spec 7.1–7.2, P-17, P-26)', () => {
   it('from the menu: a fresh check, the rows there are with two names, the list recorded as shown, the automatic one called off', async () => {
     const ctx = await library();
@@ -289,6 +356,25 @@ describe('the check sheet (spec 7.1–7.2, P-17, P-26)', () => {
     expect(rowOf(p, 'missingLinked')!.entries).toEqual([{ itemId: linked.id, label: 'paper', path: paper }]);
     expect(rowOf(p, 'corrupt')).toMatchObject({ count: 1, bytes: 42, entries: [{ itemId: null, label: 'sample', path: null }] });
     expect(rowOf(p, 'orphanEdits')).toMatchObject({ count: 1, bytes: 31, entries: [{ itemId: null, label: EDIT, path: null }] });
+  });
+  it('a corrupt copy whose sha is a video\'s subtitle names that video', async () => {
+    const ctx = await library();
+    const sha = 'd'.repeat(64);
+    const now = '2026-11-10T10:00:00.000Z';
+    const base = { storageMode: 'managed', externalPath: null, availability: 'available', createdAt: now, checkedAt: now, size: 9 } as const;
+    ctx.repo.insertImported({
+      item: { id: '11111111-1111-4111-8111-111111111111', type: 'video', title: '강의 영상', createdAt: now },
+      asset: { ...base, id: 'a1', sha256: 'e'.repeat(64), relativePath: `assets/ee/${'e'.repeat(64)}`, originalName: 'v.mp4', mime: 'video/mp4' },
+      assetIsNew: true, revision: { id: 'r1', createdAt: now }, job: null,
+    });
+    ctx.subtitles.attach({
+      itemId: '11111111-1111-4111-8111-111111111111',
+      asset: { ...base, id: 'a2', sha256: sha, relativePath: `assets/dd/${sha}`, originalName: 'v.ko.srt', mime: 'application/x-subrip' },
+      assetIsNew: true, revision: { id: 'r2', createdAt: now }, language: 'ko', cues: [{ startMs: 0, endMs: 500, text: '안녕' }], createdAt: now,
+    });
+    put(path.join(ctx.layout.stagingDir, `corrupt-${sha}-44444444-4444-4444-8444-444444444444`), 42);
+    const p = await shown(sheets(ctx));
+    expect(rowOf(p, 'corrupt')).toMatchObject({ count: 1, entries: [{ itemId: null, label: '강의 영상', path: null }] });
   });
   it('임시 파일 정리: the .part files go — not one an import is writing, not .DS_Store, not a corrupt copy — and the row turns ok in place', async () => {
     const ctx = await library();
@@ -365,6 +451,40 @@ describe('the check sheet (spec 7.1–7.2, P-17, P-26)', () => {
     p = await relink(linked.id);
     expect(rowOf(p, 'missingLinked')).toMatchObject({ state: 'done', fix: 'relinked' });
     expect(ctx.repo.getAsset(linked.assetId)).toMatchObject({ externalPath: moved, availability: 'available' });
+  });
+  it('다시 연결… of a video\'s lost subtitle copy: its line names the subtitle\'s asset, the panel takes SRT and VTT, the same bytes only, and that copy is back', async () => {
+    const ctx = await library();
+    const video = await add(ctx, mp4(temp('src'), 'v.mp4', 'v'));
+    const other = await add(ctx, mp4(temp('src'), 'w.mp4', 'w'));
+    const dir = temp('sub');
+    const srt = path.join(dir, 'v.ko.srt');
+    fs.writeFileSync(srt, '1\n00:00:01,000 --> 00:00:02,000\n안녕\n');
+    const wrong = path.join(dir, 'w.ko.srt');
+    fs.writeFileSync(wrong, '1\n00:00:01,000 --> 00:00:02,000\n다른 문장\n');
+    const track = (await attachSubtitleFiles(ctx, video.id, [srt])).added[0]!;
+    const sub = ctx.repo.getAsset(track.assetId)!;
+    fs.rmSync(resolveAssetPath(ctx.layout, sub));
+    let answer: string | null = wrong;
+    const accepts: string[] = [];
+    const h = sheets(ctx, { pickFile: async (_owner, _words, accept) => { accepts.push(accept); return answer; } });
+    let p = await shown(h);
+    // Reported with the video's title (spec 4.3); the line carries the copy its button restores.
+    expect(rowOf(p, 'missingManaged')).toMatchObject({ state: 'todo', count: 1, entries: [{ itemId: video.id, label: video.title, path: null, assetId: sub.id }] });
+    const relink = (itemId: string) => act(h, p, { kind: 'libraryCheck', act: 'relink', itemId, assetId: sub.id });
+    await expect(relink(video.id)).rejects.toMatchObject({ code: 'HASH_MISMATCH' });
+    await expect(relink(other.id)).rejects.toMatchObject({ code: 'NOT_FOUND' }); // not that video's subtitle
+    answer = srt;
+    p = await relink(video.id);
+    expect(accepts).toEqual(['subtitles', 'subtitles']);
+    expect(fs.readFileSync(resolveAssetPath(ctx.layout, sub)).equals(fs.readFileSync(srt))).toBe(true);
+    expect(ctx.repo.getAsset(sub.id)).toMatchObject({ availability: 'available' });
+    expect(ctx.repo.getAsset(video.assetId)).toMatchObject({ availability: 'available' });
+    expect(rowOf(p, 'missingManaged')).toMatchObject({ state: 'done', fix: 'relinked' });
+    expect(h.relinked).toEqual([[video.id]]);
+    // The next check has nothing left to say about it.
+    const next = await runCheck(ctx, () => {});
+    expect(next.missingManaged.itemIds).toEqual([]);
+    expect(next.actionable).toBe(false);
   });
   it('Finder에서 보기 shows the first corrupt copy and the first orphan edited copy, and changes nothing', async () => {
     const ctx = await library();

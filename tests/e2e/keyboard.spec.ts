@@ -6,10 +6,10 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import { expectNoSeriousA11y } from './a11y';
 import { beginDrag, cancelDrag, hover } from './dnd-helpers';
 import {
-  FIXTURES, addToCollection, closeSheet, createCollection, distinctPdfs, drag, dropSource, enabledMenuCommands, expectWindow, holdCopies, holdOpenDialog, holdSaveDialog, importFiles, importPause, importPaths, importResume, importWaiting, launch, libraryTab, mainWindow, readerTab, runMenuAccelerator,
+  FIXTURES, addToCollection, closeSheet, displayRoom, createCollection, distinctPdfs, drag, dropSource, enabledMenuCommands, expectWindow, holdCopies, holdOpenDialog, holdSaveDialog, importFiles, importPause, importPaths, importResume, importWaiting, launch, libraryTab, mainWindow, readerTab, runMenuAccelerator,
   makeTags, menuItemEnabled, openItem, organizeSnapshot, releaseCopies, releaseOpenDialog, releaseSaveDialog, rowAt, rowByTitle, runMenuCommand, selectRows, sheetReleased, showItemPanel,
   specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, tagChip, trashItems, translationFake, treeRow, waitImportIdle,
-  selectInPage, textExtraction, textIdle, imageState, quiet,
+  selectInPage, textExtraction, textIdle, imageState, quiet, videoReady,
 } from './helpers';
 import { consentAndChoose } from './tutor-helpers';
 
@@ -953,7 +953,7 @@ test('the settings window is one pane: F6 neither throws nor moves the focus to 
   }
 });
 
-test('the video reader: axe (captions arrive in M8, so video-caption is off) and F6 lands on the player', async ({}, testInfo) => {
+test('the video reader: axe (Learn draws the subtitles itself, so video-caption is off) and F6 lands on the stage', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await importPaths(page, [MP4]);
@@ -961,8 +961,110 @@ test('the video reader: axe (captions arrive in M8, so video-caption is off) and
     await expect(page.getByTestId('video')).toBeVisible();
     await expectNoSeriousA11y(page, 'video reader');
     await page.keyboard.press('F6'); // sidebar
-    await page.keyboard.press('F6'); // content: the player
-    expect(await focusedTestId(page)).toBe('video');
+    await page.keyboard.press('F6'); // content: the stage
+    expect(await focusedTestId(page)).toBe('video-stage');
+  } finally {
+    await app.close();
+  }
+});
+
+const LECTURE_MP4 = path.join(FIXTURES, 'lecture-60s.mp4');
+const LECTURE_KO = path.join(FIXTURES, 'lecture-60s.ko.srt');
+const LECTURE_EN = path.join(FIXTURES, 'lecture-60s.en.vtt');
+
+test('the video reader by keyboard: F6 to the stage, Tab through the controls in order, on to the transcript, ↓ and ↩ on a sentence go to its time; axe at each state', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const [item] = await importPaths(page, [LECTURE_MP4]);
+    await openItem(page, 'lecture-60s');
+    await videoReady(page);
+    const state = async () => (await page.evaluate(() => window.__learnVideo!.state()))!;
+    // No subtitles: the transcript's empty state and the menu with only 자막 파일 추가….
+    await expect(page.getByTestId('transcript-empty')).toBeVisible();
+    await expectNoSeriousA11y(page, 'video reader, no subtitles');
+    await page.getByTestId('subtitles-menu').click();
+    await expect(page.getByRole('menu')).toBeVisible();
+    await expectNoSeriousA11y(page, 'video reader, the 자막 menu with no track');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('menu')).toHaveCount(0);
+
+    const attached = await page.evaluate((input) => window.learn.subtitles.attach(input), { itemId: item!.id, paths: [LECTURE_KO, LECTURE_EN] });
+    expect(attached.ok).toBe(true);
+    await expect(page.getByTestId('subtitles-menu')).toHaveText('한국어');
+    const tracks = await page.evaluate((id) => window.learn.subtitles.list({ itemId: id }).then((r) => (r.ok ? r.data.tracks : [])), item!.id);
+    const cues = await page.evaluate((input) => window.learn.subtitles.cues(input).then((r) => (r.ok ? r.data.cues : [])), { itemId: item!.id, assetId: tracks[0]!.assetId });
+    await expectNoSeriousA11y(page, 'video reader, subtitles and the transcript');
+
+    // F6: sidebar, then the stage. Tab: the scrubber, the controls in their order (the speed button is the fifth stop), and on past
+    // them into the transcript's search field, its switch and the list.
+    await page.keyboard.press('F6');
+    await page.keyboard.press('F6');
+    expect(await focusedTestId(page)).toBe('video-stage');
+    const order: string[] = [];
+    for (let i = 0; i < 30; i++) {
+      await page.keyboard.press('Tab');
+      const id = await focusedTestId(page);
+      if (id === null || order.at(-1) === id) continue;
+      order.push(id);
+      if (id === 'cue-row') break;
+    }
+    expect(order.slice(0, 5)).toEqual(['video-scrubber', 'video-back10', 'video-play', 'video-forward10', 'video-speed']);
+    expect(order.indexOf('transcript-search'), 'the search field comes after the controls').toBeGreaterThan(4);
+    expect(order.at(-1)).toBe('cue-row');
+    expect(await inPane(page), 'the transcript is the sidebar\'s: Tab left the content pane for it').toBe('sidebar');
+    await expectNoSeriousA11y(page, 'video reader, the keyboard in the transcript list');
+
+    // ↓ moves the cursor one sentence down, ↩ goes there (paused stays paused).
+    const first = Number(await page.evaluate(() => document.activeElement?.getAttribute('data-index')));
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-index'))).toBe(String(first + 1));
+    await page.keyboard.press('Enter');
+    await expect.poll(async () => Math.abs((await state()).timeMs - cues[first + 1]!.startMs)).toBeLessThanOrEqual(80);
+    expect((await state()).paused).toBe(true);
+    await expect(page.locator(`[data-testid="cue-row"][data-index="${first + 1}"]`)).toBeFocused();
+  } finally {
+    await app.close();
+  }
+});
+
+test('the video reader\'s other states pass axe: the stage mode, the 1024 window, the unplayable notice and the video-tab drop overlay', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const [item] = await importPaths(page, [LECTURE_MP4, path.join(FIXTURES, 'sample-mpeg4part2.mp4')]);
+    const attached = await page.evaluate((input) => window.learn.subtitles.attach(input), { itemId: item!.id, paths: [LECTURE_KO] });
+    expect(attached.ok).toBe(true);
+    await openItem(page, 'lecture-60s');
+    await videoReady(page);
+
+    // The overlay of a subtitle dragged over the tab (the file is real, so the drop gate reads its type as it does for Finder).
+    await dropSource(page, [LECTURE_EN]);
+    await drag(page, 'dragenter', 'source');
+    await expect(page.getByTestId('subtitle-drop-overlay')).toBeVisible();
+    await expectNoSeriousA11y(page, 'video tab, the subtitle drop overlay');
+    await drag(page, 'dragleave', 'source');
+    await expect(page.getByTestId('subtitle-drop-overlay')).toHaveCount(0);
+
+    // The stage mode: the controls on the dark bar and a sentence on the picture.
+    await page.getByTestId('video-fullscreen').click();
+    await expect.poll(() => app.evaluate(() => (globalThis as unknown as { __learnTest: { stageState(): { stage: boolean; fullScreen: boolean; pending: boolean } } }).__learnTest.stageState())).toMatchObject({ stage: true, fullScreen: true, pending: false });
+    await expectNoSeriousA11y(page, 'video reader, the stage mode');
+    await page.getByTestId('video-stage').focus();
+    await page.keyboard.press('Escape');
+    await expect.poll(() => app.evaluate(() => (globalThis as unknown as { __learnTest: { stageState(): { stage: boolean; pending: boolean } } }).__learnTest.stageState())).toMatchObject({ stage: false, pending: false });
+
+    // The 1024 window: the reader and the transcript at their narrowest.
+    const win = await mainWindow(app);
+    const room = await displayRoom(app); // a 1024 wide display leaves a pixel less than 1024
+    const width = Math.min(1024, room.width);
+    await win.evaluate((w, [cw, ch]) => w.setContentSize(cw!, ch!), [width, Math.min(768, room.height)] as const);
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBeGreaterThanOrEqual(width - 2); // Xvfb at 1024 takes a pixel for a frame
+    await expectNoSeriousA11y(page, 'video reader, a 1024 window');
+
+    // The notice for a video the player cannot decode.
+    await libraryTab(page).click();
+    await openItem(page, 'sample-mpeg4part2');
+    await expect(page.getByTestId('video-error')).toBeVisible();
+    await expectNoSeriousA11y(page, 'video reader, the unplayable notice');
   } finally {
     await app.close();
   }

@@ -9,6 +9,15 @@ import { useFind } from './findStore';
 import { focusPageField } from './pageField';
 import type { ImageZoom } from '../image/imageFit';
 import { useReader, type ZoomValue } from './readerStore';
+import { useVideo } from '../video/videoStore';
+
+/** A folded sidebar opens (the same fold ⌃⌘S undoes); the focus it held is carried across. */
+function unfoldSidebar(): void {
+  const { sidebar, setSidebar } = useShell.getState();
+  if (!sidebarHidden(sidebar, innerWidth)) return;
+  keepFocusAcross(false);
+  setSidebar(toggledSidebar(sidebar, innerWidth));
+}
 
 /** The PDF's fit names as the picture's: a whole page is the whole picture, the page's width the picture's; a picture has no automatic fit. */
 const imageZoomOf = (zoom: ZoomValue): ImageZoom | null => (zoom === 'page-fit' ? 'fit' : zoom === 'page-width' ? 'width' : zoom === 'auto' ? null : zoom);
@@ -47,6 +56,13 @@ export const readerActions: Pick<CommandEnv, 'zoom' | 'setZoom' | 'rotate' | 'se
     else handle?.historyForward();
   },
   openFind: () => {
+    // A video's find is its transcript's search field, in the sidebar: it opens if folded, and the field takes the focus (J8).
+    const video = useVideo.getState();
+    if (video.handle) {
+      unfoldSidebar();
+      video.patch({ transcriptFocus: video.transcriptFocus + 1 });
+      return;
+    }
     if (useReader.getState().handle) useFind.getState().openBar();
   },
   findAgain: (previous) => {
@@ -67,10 +83,7 @@ export const readerActions: Pick<CommandEnv, 'zoom' | 'setZoom' | 'rotate' | 'se
   },
   showReaderNav: (kind) => {
     saveSetting('reader.nav', kind);
-    // The list is for looking at: a folded sidebar opens (the same fold ⌃⌘S undoes).
-    const { sidebar, setSidebar } = useShell.getState();
-    if (!sidebarHidden(sidebar, innerWidth)) return;
-    keepFocusAcross(false);
-    setSidebar(toggledSidebar(sidebar, innerWidth));
+    // The list is for looking at: a folded sidebar opens.
+    unfoldSidebar();
   },
 };

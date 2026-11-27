@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ERROR_COPY, IDLE_BACKUP_PROGRESS, IDLE_IMPORT_STATE, IDLE_RESTORE_PROGRESS, itemMetadataSchema, newId, nowIso, toLearnError, type ImportReport, type LibraryItem } from '@learn/domain';
-import { CollectionsRepository, ConversationsRepository, LibraryRepository, TagsRepository, migrate, openDatabase, readOrganizeSnapshot, type Db } from '@learn/db';
+import { CollectionsRepository, ConversationsRepository, LibraryRepository, SubtitlesRepository, TagsRepository, migrate, openDatabase, readOrganizeSnapshot, type Db } from '@learn/db';
 import { checkLibrary, ensureLayout, libraryLayout, managedRelativePath, refreshLinkedAvailability, type BackupHooks } from '@learn/library';
 import {
   createImportPause, fsyncProbe, installTestHooks, readFakeLog, seedAssets, seedItems, seedOrganize, seedSessions, stageCommitFailures,
@@ -60,6 +60,50 @@ describe('E2E seeding hook (P-22)', () => {
     expect(inserted).toHaveLength(1);
     expect(broadcast.mock.calls).toEqual([['libraryChanged', { reason: 'import' }]]);
     delete (globalThis as { __learnTest?: unknown }).__learnTest;
+  });
+  it("stageState reads the main window's stage as index.ts gives it, and says so when there is none to read", () => {
+    const g = globalThis as { __learnTest?: LearnTestHooks };
+    const state = { stage: true, fullScreen: true, pending: false };
+    installTestHooks({ importCommits: () => ({}) as never, repo: () => ({}) as never, organize: () => { throw new Error('not used'); }, broadcast: vi.fn(), stage: () => state });
+    try {
+      expect(g.__learnTest!.stageState()).toEqual(state);
+      installTestHooks({ importCommits: () => ({}) as never, repo: () => ({}) as never, organize: () => { throw new Error('not used'); }, broadcast: vi.fn() });
+      expect(() => g.__learnTest!.stageState()).toThrow('stageState');
+    } finally {
+      delete g.__learnTest;
+    }
+  });
+  it('subtitleAssets lists the subtitle assets with their links and whether the managed copy is on disk; cueTextCount counts by item or by file content', () => {
+    const g = globalThis as { __learnTest?: LearnTestHooks };
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-subhooks-'));
+    const layout = libraryLayout(path.join(root, 'Library'));
+    ensureLayout(layout);
+    const db = openDatabase(layout.dbFile);
+    migrate(db, { dbFile: layout.dbFile });
+    try {
+      const repo = new LibraryRepository(db);
+      const subtitles = new SubtitlesRepository(db);
+      const now = nowIso();
+      const sha = 'b'.repeat(64);
+      const video = { id: newId(), type: 'video' as const, title: 'v', createdAt: now };
+      const videoAsset = { id: newId(), sha256: 'c'.repeat(64), storageMode: 'managed' as const, relativePath: managedRelativePath('c'.repeat(64)), externalPath: null, originalName: 'v.mp4', mime: 'video/mp4', size: 3, availability: 'available' as const, createdAt: now, checkedAt: now };
+      repo.insertImported({ item: video, asset: videoAsset, assetIsNew: true, revision: { id: newId(), createdAt: now }, job: null });
+      const asset = { id: newId(), sha256: sha, storageMode: 'managed' as const, relativePath: managedRelativePath(sha), externalPath: null, originalName: 'a.srt', mime: 'application/x-subrip', size: 3, availability: 'available' as const, createdAt: now, checkedAt: now };
+      subtitles.attach({ itemId: video.id, asset, assetIsNew: true, revision: { id: newId(), createdAt: now }, language: 'ko', cues: [{ startMs: 0, endMs: 1, text: 'a' }, { startMs: 2, endMs: 3, text: 'b' }], createdAt: now });
+      installTestHooks({ importCommits: () => ({}) as never, repo: () => ({}) as never, organize: () => { throw new Error('not used'); }, broadcast: vi.fn(), subtitles: () => ({ db, subtitles, layout }) });
+      expect(g.__learnTest!.subtitleAssets()).toEqual([{ id: asset.id, sha256: sha, links: 1, file: false }]);
+      fs.mkdirSync(path.dirname(path.join(layout.root, asset.relativePath)), { recursive: true });
+      fs.writeFileSync(path.join(layout.root, asset.relativePath), 'x');
+      expect(g.__learnTest!.subtitleAssets()[0]!.file).toBe(true);
+      subtitles.remove(video.id, asset.id);
+      expect(g.__learnTest!.subtitleAssets()[0]!.links).toBe(0);
+      expect(g.__learnTest!.cueTextCount({ sha256: sha })).toBe(2);
+      expect(g.__learnTest!.cueTextCount({ itemId: video.id })).toBe(0);
+    } finally {
+      delete g.__learnTest;
+      db.close();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
   it('also installs the IPC call counter createHandle fills', () => {
     const g = globalThis as { __learnIpcCalls?: Record<string, number> };
@@ -273,7 +317,7 @@ describe('the import pause and queue hooks (P-6)', () => {
     expect(setHooks).toHaveBeenCalledTimes(1);
     expect(hooks.enqueueImport({ paths: ['/in/a.pdf', '/in/b.pdf'] })).toBe(2);
     expect(enqueue).toHaveBeenCalledWith({ paths: ['/in/a.pdf', '/in/b.pdf'], mode: 'managed', collectionId: null, owner: 41 });
-    const report: ImportReport = { imported: 2, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: 2, cancelled: false, mode: 'managed', collectionId: null, untouched: 0 };
+    const report: ImportReport = { imported: 2, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: 2, cancelled: false, mode: 'managed', collectionId: null, untouched: 0, subtitles: { attached: 0, failed: [] } };
     finished[0]!(report, null);
     expect(hooks.importReports()).toEqual([report]);
     expect(hooks.importQueueState()).toEqual(IDLE_IMPORT_STATE);

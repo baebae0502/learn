@@ -17,6 +17,24 @@ import { compareShots, isTranslucent, sidebarFallback, type Pixels } from './sho
 import { describeTextState, jobCounts, type TextStateSnapshot } from './text-state';
 
 /** What the image reader shows (viewers/readerScope.tsx learnImageHook): its state, whose it is, and the picture point at the stage's centre. */
+/** What the video reader reports of its element (viewers/video/videoStore.ts VideoProbe, with the tab's item). */
+export interface VideoProbe {
+  status: 'opening' | 'ready' | 'unplayable' | 'failed';
+  timeMs: number;
+  paused: boolean;
+  /** The store's play state, which the keys' rules read: it follows the element's play and pause events a task later. */
+  playing: boolean;
+  rate: number;
+  volume: number;
+  muted: boolean;
+  frameMs: number;
+  /** The subtitle track chosen, whether it shows, and the text the overlay draws (the cues on, one line each; null for none). */
+  trackId: string | null;
+  captionsOn: boolean;
+  cueText: string | null;
+  itemId: string;
+}
+
 export interface ImageReaderState {
   status: 'loading' | 'shown' | 'error';
   zoom: 'fit' | 'width' | number;
@@ -35,6 +53,8 @@ declare global {
     __learnQuietImports?: number;
     /** E2E only: the image reader of the shown tab, or of the tab of `itemId` (a hidden one too). */
     __learnImage?: { getState(itemId?: string): ImageReaderState | null };
+    /** E2E only: the video reader of the shown tab, or of the tab of `itemId`; null where no video reader is mounted. */
+    __learnVideo?: { state(itemId?: string): VideoProbe | null };
   }
 }
 
@@ -1234,6 +1254,15 @@ export async function closeReaderTab(page: Page): Promise<void> {
 /** The image reader's state: the shown tab's, or the tab of `itemId` (hidden or not); null where no picture is open. */
 export const imageState = (page: Page, itemId?: string): Promise<ImageReaderState | null> => page.evaluate((id) => window.__learnImage!.getState(id ?? undefined), itemId ?? null);
 
+/** The video reader's state: the shown tab's, or the tab of `itemId`; null where no video reader is mounted. */
+export const videoState = (page: Page, itemId?: string): Promise<VideoProbe | null> => page.evaluate((id) => window.__learnVideo!.state(id ?? undefined), itemId ?? null);
+
+/** Waits for the shown video's first frame (the controls are on) and gives its state. */
+export async function videoReady(page: Page): Promise<VideoProbe> {
+  await expect.poll(async () => (await videoState(page))?.status).toBe('ready');
+  return (await videoState(page))!;
+}
+
 /** The tab strip's first tab: the library (a window with no reader tab has no strip, so none). */
 export const libraryTab = (page: Page): Locator => page.locator('[data-testid="tab"][data-item-id="library"]');
 
@@ -1916,6 +1945,7 @@ type TextJobRow = { sha256: string; state: string; attempts: number; nextPage: n
 type WithTextSchedulerHooks = {
   __learnTest: {
     seedBodyText(input: SeedBodyTextInput): { itemIds: string[]; sha256: string[] };
+    seedCues(input: { videos: number; cuesEach: number; lateTracks?: number }): { itemIds: string[] };
     textExtraction(mode: 'pause' | 'resume' | 'now'): void;
     textIdle(): Promise<void>;
     pageTextCount(input: { itemId: string } | { sha256: string }): number;
@@ -1928,6 +1958,8 @@ type WithTextSchedulerHooks = {
 };
 /** PDF items with their body text already stored, without waiting for the worker; announces one import. */
 export const seedBodyText = (app: ElectronApplication, input: SeedBodyTextInput) => app.evaluate((_e, arg) => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.seedBodyText(arg), input);
+/** Video items with one subtitle track of `cuesEach` cues each (the first `lateTracks` a second one, written last), without files; announces one import. */
+export const seedCues = (app: ElectronApplication, input: { videos: number; cuesEach: number; lateTracks?: number }) => app.evaluate((_e, arg) => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.seedCues(arg), input);
 /** Under E2E the body-text scheduler starts paused: 'now' runs it without the five-second delay (the startup check is still waited for). */
 export const textExtraction = (app: ElectronApplication, mode: 'pause' | 'resume' | 'now') => app.evaluate((_e, arg) => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textExtraction(arg), mode);
 /** textIdle's longest wait unless a test says otherwise: search-perf reads 2,000 pages, 28 s on a Mac runner. */
@@ -2117,3 +2149,29 @@ export async function readerToolbarMin(page: Page, sizes: readonly (12 | 13 | 14
   }
   return out;
 }
+
+// ---- M8a video stage (main/video-stage.ts, main/test-hooks.ts) -----------------------------------------------------------
+
+/** The main window's video stage, its full screen, and whether a full-screen change of the stage controller is in flight. */
+export interface StageState {
+  stage: boolean;
+  fullScreen: boolean;
+  pending: boolean;
+}
+type WithStageHooks = { __learnTest: { stageState(): StageState } };
+export const stageState = (app: ElectronApplication): Promise<StageState> => app.evaluate(() => (globalThis as unknown as WithStageHooks).__learnTest.stageState());
+
+// ---- M8a subtitles (main/test-hooks.ts) -----------------------------------------------------------------------------------
+
+type WithSubtitleHooks = {
+  __learnTest: {
+    cueTextCount(input: { itemId: string } | { sha256: string }): number;
+    subtitleAssets(): Array<{ id: string; sha256: string; links: number; file: boolean }>;
+  };
+};
+/** How many cue texts are stored for an item's subtitle files, or for one file content. */
+export const cueTextCount = (app: ElectronApplication, input: { itemId: string } | { sha256: string }): Promise<number> =>
+  app.evaluate((_e, arg) => (globalThis as unknown as WithSubtitleHooks).__learnTest.cueTextCount(arg), input);
+/** The subtitle assets of the library: how many items link each, and whether its managed copy is on disk. */
+export const subtitleAssets = (app: ElectronApplication): Promise<Array<{ id: string; sha256: string; links: number; file: boolean }>> =>
+  app.evaluate(() => (globalThis as unknown as WithSubtitleHooks).__learnTest.subtitleAssets());

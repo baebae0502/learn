@@ -17,6 +17,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   selection: () => [],
   targetsOf: (target) => (target.itemIds ?? []).map(() => missingLinked),
   importFiles: vi.fn(),
+  video: vi.fn(),
   backup: vi.fn(),
   restoreBackup: vi.fn(),
   checkLibrary: vi.fn(),
@@ -31,7 +32,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   clearTagFilter: vi.fn(),
   back: vi.fn(),
   openItems: vi.fn(),
-  openAtPage: vi.fn(),
+  openAt: vi.fn(),
   closeTab: vi.fn(),
   reopenClosedTab: vi.fn(),
   selectRelativeTab: vi.fn(),
@@ -111,6 +112,39 @@ describe('renderer command registry', () => {
   it('reports only the context fields, never the handlers', () => {
     expect(contextOf(env({ view: 'viewer' }))).toEqual({ view: 'viewer', blocked: false, textSize: 13, ...COUNTS });
     expect(contextOf(env({ textSize: 15, sidebar: 'hidden' }))).toEqual({ view: 'library', blocked: false, textSize: 15, sidebar: 'hidden', ...COUNTS });
+  });
+  it('reports the video fields only while a video can play, and runs a video command through its handler', () => {
+    expect(contextOf(env({ view: 'viewer' }))).not.toHaveProperty('videoOpen');
+    expect(contextOf(env({ view: 'viewer', videoOpen: true, videoPlaying: true }))).toMatchObject({ videoOpen: true, videoPlaying: true, videoMuted: false });
+    const e = env({ view: 'viewer', videoOpen: true });
+    expect(runCommand('video.back10', e)).toBe(true);
+    expect(e.video).toHaveBeenCalledWith('back10');
+    expect(runCommand('video.frameForward', env({ view: 'viewer', videoOpen: true, videoPlaying: true }))).toBe(false);
+    expect(runCommand('video.playPause', env({ view: 'viewer' }))).toBe(false);
+  });
+  it('reports the stage only while the window is on it; the stage commands ask main through the video handler', () => {
+    expect(contextOf(env({ view: 'viewer' }))).not.toHaveProperty('videoStage');
+    expect(contextOf(env({ view: 'viewer', videoOpen: true }))).toMatchObject({ videoStage: false });
+    expect(contextOf(env({ view: 'viewer', videoOpen: true, videoStage: true }))).toMatchObject({ videoStage: true });
+    const off = env({ view: 'viewer', videoOpen: true });
+    expect(runCommand('video.toggleFullScreen', off)).toBe(true);
+    expect(off.video).toHaveBeenCalledWith('toggleFullScreen');
+    expect(runCommand('video.exitFullScreen', off)).toBe(false); // esc is a command on the stage only
+    const on = env({ view: 'viewer', videoOpen: true, videoStage: true });
+    expect(runCommand('video.exitFullScreen', on)).toBe(true);
+    expect(on.video).toHaveBeenCalledWith('exitFullScreen');
+  });
+  it('reports the subtitle flags only with a video open; both commands go through the video handler', () => {
+    expect(contextOf(env({ view: 'viewer' }))).not.toHaveProperty('videoCaptions');
+    expect(contextOf(env({ view: 'viewer', videoOpen: true }))).toMatchObject({ videoCaptions: false, videoCaptionsOn: false });
+    expect(contextOf(env({ view: 'viewer', videoOpen: true, videoCaptions: true, videoCaptionsOn: true }))).toMatchObject({ videoCaptions: true, videoCaptionsOn: true });
+    const none = env({ view: 'viewer', videoOpen: true });
+    expect(runCommand('video.toggleCaptions', none)).toBe(false); // no track: C is no command
+    expect(runCommand('video.addSubtitles', none)).toBe(true);
+    expect(none.video).toHaveBeenCalledWith('addSubtitles');
+    const some = env({ view: 'viewer', videoOpen: true, videoCaptions: true });
+    expect(runCommand('video.toggleCaptions', some)).toBe(true);
+    expect(some.video).toHaveBeenCalledWith('toggleCaptions');
   });
   it('reports the library and selection counts and the item panel state, never the selected ids (P-2)', () => {
     const e = env({ inspector: 'shown', libraryCount: 48, selectionCount: 3, selectionAvailable: 2, selectionRelinkable: 1, selection: () => [ID, OTHER] });
@@ -449,6 +483,12 @@ describe('renderer command registry', () => {
     expect(lib.openFind).not.toHaveBeenCalled();
     for (const off of [env({ view: 'viewer' }), env({ view: 'viewer', pdfOpen: true, blocked: true })]) expect(runCommand('library.find', off)).toBe(false);
     expect(runCommand('reader.findNext', env({ libraryCount: 3 }))).toBe(false);
+  });
+  it('⌘F in a video with a track runs the same find handler (the reader\'s action takes it to the transcript search); with no track it is off', () => {
+    const e = env({ view: 'viewer', videoOpen: true, videoCaptions: true });
+    expect(runCommand('library.find', e)).toBe(true);
+    expect(e.openFind).toHaveBeenCalledTimes(1);
+    expect(runCommand('library.find', env({ view: 'viewer', videoOpen: true }))).toBe(false);
   });
   it('item commands use the targets of the given items', () => {
     const e = env();

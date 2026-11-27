@@ -20,6 +20,12 @@ export interface ExtractPayload { sha256: string; type: 'pdf'; nextPage: number;
 export const MARK_START = '';
 export const MARK_END = '';
 
+/** A matching page of a PDF, and a matching cue of a video (the time it starts at; `track` is the subtitle's asset id when the video has several). */
+export interface PageMatch { kind: 'page'; pageIndex: number; snippet: string }
+export interface TimeMatch { kind: 'time'; startMs: number; snippet: string; track: string | null }
+export type BodyMatch = PageMatch | TimeMatch;
+export interface BodyMatches { matches: BodyMatch[]; total: number }
+
 /** Body words: three or more code points go to the trigram index, exactly two to a scan. */
 export interface BodyWords { fts: string[]; like: string[] }
 
@@ -85,12 +91,14 @@ function matchRanges(text: string, words: readonly string[]): Array<[number, num
 
 const isSpace = (c: string | undefined): boolean => c === undefined || /\s/u.test(c);
 
-export function likeSnippet(text: string, words: readonly string[]): string {
+/** `whole`: a text of up to this many characters is kept whole (a cue is a sentence: its row's own clamp cuts it). */
+export function likeSnippet(text: string, words: readonly string[], whole = 0): string {
   const all = matchRanges(text, words);
   const first = all[0];
-  if (!first) return text.slice(0, SNIPPET_BEFORE + SNIPPET_AFTER);
-  let start = Math.max(0, first[0] - SNIPPET_BEFORE);
-  let end = Math.min(text.length, first[1] + SNIPPET_AFTER);
+  if (!first) return text.slice(0, Math.max(SNIPPET_BEFORE + SNIPPET_AFTER, whole));
+  const keep = text.length <= whole;
+  let start = keep ? 0 : Math.max(0, first[0] - SNIPPET_BEFORE);
+  let end = keep ? text.length : Math.min(text.length, first[1] + SNIPPET_AFTER);
   // Cuts fall between words, never inside the first match.
   if (start > 0) {
     while (start < first[0] && !isSpace(text[start - 1])) start++;

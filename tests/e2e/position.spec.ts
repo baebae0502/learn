@@ -2,15 +2,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import type { LibraryItem } from '../../packages/domain/src/library';
-import { FIXTURES, backFromReader, hardKill, importPaths, launch, mainWindow, openItem, rowByTitle, runMenuCommand, setPdfZoom } from './helpers';
+import { FIXTURES, backFromReader, hardKill, importPaths, launch, mainWindow, openItem, rowByTitle, runMenuCommand, selectRows, setPdfZoom, showItemPanel, videoReady } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf'); // 3 pages
 const PAPER = path.join(FIXTURES, 'paper-100.pdf'); // 100 pages
 const MP4 = path.join(FIXTURES, 'sample-h264-aac.mp4'); // 10 s (fixtures/generate.mjs)
+const LECTURE = path.join(FIXTURES, 'lecture-60s.mp4'); // 60 s
 const RESUME_AT = 7; // seconds; 70 % of the clip, below the 95 % "finished, start over" cutoff
 
 test.beforeAll(() => {
-  for (const f of [PDF, PAPER, MP4]) if (!fs.existsSync(f)) throw new Error(`fixture missing: ${f} — run \`pnpm fixtures\``);
+  for (const f of [PDF, PAPER, MP4, LECTURE]) if (!fs.existsSync(f)) throw new Error(`fixture missing: ${f} — run \`pnpm fixtures\``);
 });
 
 /** The item as `library.list` reports it (progress and openedAt come from the stored reading position). */
@@ -144,6 +145,46 @@ test('video resumes at the paused time after a SIGKILL and relaunch; progress re
     expect((await listed(page, 'sample-h264-aac')).progress).toBeCloseTo(pausedAt / duration, 2);
   } finally {
     if (!killed) await app.close().catch(() => {}); // never mask a failed relaunch's own error
+  }
+});
+
+test('a video played to 0:18 reads "0:18에서 멈춤 · 오늘 …" with its progress bar in the item panel (spec 9.3)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, [LECTURE]);
+    await openItem(page, 'lecture-60s');
+    await videoReady(page);
+    const video = page.getByTestId('video');
+    // Played from 17 s, paused by the page itself on the first shown frame at or past 18 s: a poll from outside could miss the second on a loaded host.
+    await video.evaluate(
+      (v: HTMLVideoElement) =>
+        new Promise<void>((resolve) => {
+          v.muted = true;
+          v.currentTime = 17;
+          const on = () => {
+            // The element's own clock, not the frame's: the clock reads a little behind the frame just presented.
+            if (v.currentTime >= 18) {
+              v.pause();
+              resolve();
+            } else v.requestVideoFrameCallback(on);
+          };
+          v.requestVideoFrameCallback(on);
+          void v.play();
+        }),
+    );
+    await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
+    expect(Math.floor(await video.evaluate((v: HTMLVideoElement) => v.currentTime)), 'paused within the second of 18').toBe(18);
+    await backFromReader(page);
+    await showItemPanel(app, page);
+    await selectRows(page, ['lecture-60s']);
+    await expect(page.getByTestId('reading-section')).toBeVisible();
+    await expect.poll(async () => ((await page.getByTestId('reading-line').textContent()) ?? '').replace(/\u00a0/g, ' ')).toMatch(/^0:18에서 멈춤 · 오늘 /u);
+    await expect(page.getByTestId('reading-bar')).toHaveAttribute('role', 'progressbar');
+    const bar = Number(await page.getByTestId('reading-bar').getAttribute('aria-valuenow'));
+    expect(bar).toBeGreaterThanOrEqual(30); // 18 s of 60, up to 19
+    expect(bar).toBeLessThanOrEqual(32);
+  } finally {
+    await app.close();
   }
 });
 

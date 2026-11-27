@@ -1,6 +1,6 @@
 # macOS 검증 기록 (M0 증거 레인)
 
-- 갱신: 2026-11-10(mac-index-hang PR #15의 `perf` run 42774413580이 성공 — 아래 "mac-index-hang") · 2026-11-10(M7c — 아래 "M7c": Linux CI run 42654046397의 값, 중간 `e2e` run 42660475115는 러너를 받지 못해 취소, 최종 `all` 두 번(42704566004 · 42716660692)은 기능 E2E 녹색, 증거는 매번 다른 시험 하나 실패; mac-flakes PR #13의 `all` run 42479810434가 전부 녹색 — 아래 "mac-flakes") · 2026-11-05(M7a 최종 `all` run 41917866220, c83064d가 전부 녹색 — 아래 "M7a"; 중간 `e2e` run 41740397794) · 2026-10-30(M5 정리, 최종 `all` run 41024983289, af807d6이 전부 녹색 — 아래 "M5 정리") · 2026-10-28(M5 정리, run 40708161452) · 2026-10-26(M4 라이브러리, 최종 `all` run 40242680541이 전부 녹색 — 아래 "M4 라이브러리") · 2026-10-23(M3 셸 Task 14 반영, 5차 run 39920413383까지 — 아래 "M3 셸 (Task 14)") · 처음: 2026-10-20(수정 1회차 반영) · 브랜치 `m0-evidence` · 계획: [`superpowers/plans/2026-10-20-m0-macos-evidence.md`](superpowers/plans/2026-10-20-m0-macos-evidence.md)
+- 갱신: 2026-11-27(M8a — 아래 "M8a": 중간 `e2e` run 45899814765, 전체 화면 해제 멈춤은 무대 모드로 해결, 최종 `all` 두 번(run 45968030204, 45985418322)과 그 뒤 `e2e` run 46000403137) · 2026-11-10(mac-index-hang PR #15의 `perf` run 42774413580이 성공 — 아래 "mac-index-hang") · 2026-11-10(M7c — 아래 "M7c": Linux CI run 42654046397의 값, 중간 `e2e` run 42660475115는 러너를 받지 못해 취소, 최종 `all` 두 번(42704566004 · 42716660692)은 기능 E2E 녹색, 증거는 매번 다른 시험 하나 실패; mac-flakes PR #13의 `all` run 42479810434가 전부 녹색 — 아래 "mac-flakes") · 2026-11-05(M7a 최종 `all` run 41917866220, c83064d가 전부 녹색 — 아래 "M7a"; 중간 `e2e` run 41740397794) · 2026-10-30(M5 정리, 최종 `all` run 41024983289, af807d6이 전부 녹색 — 아래 "M5 정리") · 2026-10-28(M5 정리, run 40708161452) · 2026-10-26(M4 라이브러리, 최종 `all` run 40242680541이 전부 녹색 — 아래 "M4 라이브러리") · 2026-10-23(M3 셸 Task 14 반영, 5차 run 39920413383까지 — 아래 "M3 셸 (Task 14)") · 처음: 2026-10-20(수정 1회차 반영) · 브랜치 `m0-evidence` · 계획: [`superpowers/plans/2026-10-20-m0-macos-evidence.md`](superpowers/plans/2026-10-20-m0-macos-evidence.md)
 - 이 문서의 수치는 모두 아래 실행 기록의 artifact(`env.json`, `baseline.json`, `spikes.json`, Playwright 리포트)에서 옮겼다. GitHub 러너는 M1 **가상 머신**이므로 성능·코덱 값은 참고값이고, AC16 판정은 기준 장비(Apple Silicon 16 GB 실기)에서 한다.
 
 ## 목적
@@ -99,6 +99,8 @@ macOS 분은 잡마다 분 단위로 올림되고, 비공개 저장소는 macOS 
 | 6 | 서버로의 artifact 다운로드 속도 | **문제 없음** — 6.56 MB를 4.90초/5.06초(1.34 / 1.30 MB/s). 작은 artifact는 고정 지연(약 2–3초)이 지배: 1.77 MB 3.24초, 1.41 MB 3.37초, 2.92 MB 3.37초, 3.56 MB 3.59초, 3.02 MB 3.60초 | `evidence/<label>/<run_id>/run.json`. 릴리스 다운로드에서 보던 연결당 20–60 KB/s 제한은 artifact(blob)에는 없다. 참고로 오늘은 GitHub 릴리스 자산(actionlint 2.4 MB)도 1초 안에 받아져 그 제한이 재현되지 않았다 |
 
 ### 추가 발견: HTML 전체 화면 해제 멈춤 (macOS 전용)
+
+- **해결(M8a): 무대 모드로 — 빠른 토글 시험 Mac 통과.** 앱이 HTML 전체 화면 API를 쓰지 않는다. 아래 "M8a"를 본다.
 
 - 기존 기능 E2E `first-session.spec.ts`가 macOS 15·26 모두에서 `video.requestFullscreen()` 직후 `document.exitFullscreen()`의 Promise가 끝나지 않아 120초 시간 초과로 실패했다(run 1·4, trace: 마지막 Evaluate에 끝 이벤트 없음). 나머지 5개 E2E는 macOS에서 통과. Linux에서는 6/6 통과.
 - 스파이크(`x-html-fullscreen`, run 3·4)로 특성 확인:
@@ -897,6 +899,36 @@ tutor-perf p95(`tutor-perf.json`), **모두 예산 안**:
 - 보고 줄: 새 세션 첫 글 200.1 ms, 끝의 다시 그리기 긴 작업 0 · 최장 간격 34 ms.
 - 스트리밍 프레임은 287개 가운데 두 프레임 간격 11개다(1회차 277개 가운데 35개, p95 33.3). P-53은 닫혔다.
 
+## M8a (2026-11-27, macos-15 arm64, 브랜치 `m8a-video`)
+
+M8a의 macOS 실행. 계획은 영상 리더와 자막이 끝난 중간 지점의 `e2e` 한 번과 끝의 `all`이다(M8a 명세 15절). `all`은 최종 코드에서 두 번까지 보내고 서로 다른 간헐 실패는 줄마다 적는다. 새 증거 spec `m8a-shots.evidence.ts`(suite `m8a`, `@m8a`)는 13절 ①–⑦의 상태를 라이트 · 다크로 찍는다.
+
+### HTML 전체 화면 해제 멈춤 — M8a에서 무대 모드로 해결 (빠른 토글 시험 Mac 통과)
+- 위 "추가 발견"의 원인은 HTML 전체 화면 API(`requestFullscreen`/`exitFullscreen`)와 네이티브 전환 애니메이션의 경합이었다. M8a는 그 API를 쓰지 않는다: F · 단추 · esc · ⌃⌘F는 main의 무대 제어기(`video-stage.ts`)가 `BrowserWindow.setFullScreen`을 한 번에 하나씩, 마지막 바람이 이기게 처리하고, 렌더러는 창 상태(`windowState`의 `stage`)만 따라 무대 모드를 그린다. 페이지가 들어갈 길도 막았다 — `APP_PERMISSIONS`에서 `fullscreen`을 뺐고 Electron 44에서 `requestFullscreen()`은 거절도 오류도 없이 보류로 남는다(시험은 아무것도 바뀌지 않음을 본다).
+- **중간 `e2e` run 45899814765**(`93d0649` — Task 13까지, 청구 53분 · 3,169초): 기능 E2E 716 통과 · 0 실패 · 0 불안정 · 57 건너뜀. `first-session.spec.ts`의 "quick toggles settle: five F presses 50 ms apart end on the stage with the window in full screen"와 `video-stage.spec.ts`의 넷이 **macOS에서 통과했고**, 옛 darwin 전용 특성 시험(`test.fail()`)은 지웠다.
+- 같은 실행에서 `will-change: transform`을 준 대본 사이드바의 vibrancy는 기능 E2E로 보이지 않는다(그림 시험의 일). 그 판단은 아래 최종 `all`의 `m8a` 창 사진이다.
+
+### 최종 `all`
+- **실행 1: run [45968030204](https://github.com/baebae0502/learn/actions/runs/45968030204)**(`d5d6e65`): 증거 95 통과 · 2 실패 · 2 건너뜀(28.1분), 기능 E2E 695 통과 · 3 건너뜀 · 98 못 돎 · **0 실패**(61분 한도에 걸림). 실패는 셋이고 모두 고쳤다.
+  - 데모(`demo.evidence.ts`): 라이브러리 드롭 요약이 "파일 2개(동영상 1 · 기타 1)"였다. macOS는 끄는 중의 `.srt`에 형식을 주지 않는다(`m8a-drop-types.json`: `.srt` → 빈 값, `.vtt` → `text/vtt`, `.mp4` → `video/mp4`, `.pdf` → `application/pdf`, `.txt` → `text/plain`). **Mac의 제품 버그**였다: 영상과 함께 끌린, 형식이 빈 파일을 '자막'으로 센다(`5dbb2a0`, spec-amendments §16 "Mac의 빈 MIME"). 영상 탭 드롭은 빈 형식을 처음부터 받아 Mac에서도 됐다.
+  - 목업(`mockups.evidence.ts`): 무대 장면 넷(`reader-video--m8a-full*`)은 글꼴을 잴 탭 · 툴바 제목이 없어 빈 목록이었다 → 탐침이 무대의 자막을 잰다(`5dbb2a0`).
+  - 기능 E2E: 796개를 그 러너는 개당 5.27초로 돌렸다 → 전체 한도 88분(5280초), 단계 89분, 잡 142분.
+- **실행 2: run [45985418322](https://github.com/baebae0502/learn/actions/runs/45985418322)**(`5dbb2a0`): 증거 **97 통과 · 2 건너뜀 · 0 실패**(33.3분), 기능 E2E 735 통과 · 60 건너뜀 · 1 실패(1.1시간, 새 한도 안). 앞서 같은 커밋에서 suite `demo` run 45983189797과 `mockups` run 45984505608이 성공했다.
+  - 실패: `settings.spec.ts:454`(R-22, 1회차에서는 3.2초에 통과). 설정 창만 남긴 뒤 곧바로 온 `activate`에서 `new BrowserWindow({ name: 'main' })`이 "Window name 'main' is already in use"를 던졌다 — Electron은 창이 없어진 뒤 잠시 있다가 창 상태 이름을 놓는다. 창을 닫자마자 Dock을 누르면 창이 안 열리고 main에 잡히지 않은 오류가 나는 **좁은 제품 경합**이었다 → activate 게이트가 25ms마다, 모두 약 1초 동안 다시 시도한다(`00bf482`).
+- **`all` 두 번 뒤 확인: suite `e2e` run [46000403137](https://github.com/baebae0502/learn/actions/runs/46000403137)**(`00bf482`): 기능 E2E **736 통과 · 60 건너뜀 · 0 실패**(42.7분). `00bf482`는 main의 activate 게이트만 바꿨고 R-22는 darwin 전용이라 `all` 대신 기능 묶음으로 확인했다. 그 뒤 커밋은 대본 아래 선의 vibrancy CSS 한 줄(`cff01c2`, M8b의 Mac 실행에서 본다)과 시험 · 문서다.
+- **무대 재실행(`stage-relaunch.evidence.ts`, 1회차)**: 무대에서 끈 앱은 다음 실행에서 창으로, 사용자가 직접 연 전체 화면은 그대로 복원(창을 보인 뒤 +1006ms에 전체 화면 진입 — 최종 검토가 걱정한 순서라 창을 만들 때 복원을 끄는 고침이 맞았다), 무대에서 죽은 앱도 창으로 돌아온다.
+- **Mac 성능(1회차)**: 자막 일치 `cueMatches` p95 33.4ms · 늦게 붙인 트랙 36ms(예산 100), `search.body` 187.5ms(300), 대본 검색 → 강조 p95 33.2ms(50, 입력부터는 195.4ms — 디바운스 150ms 포함), 문장 바뀜 → 오버레이 0ms. 대본 스크롤과 2× 재생의 프레임 p95는 18.1ms로 예산 16.7ms를 넘는다 — 같은 실행의 라이브러리 스크롤도 19.1ms이고, 러너가 60Hz를 지키지 못하는 앞 마일스톤들과 같은 모습이다. 실제 Mac에서 다시 잰다.
+- **데모 `m8a-demo.mov`(2회차)**: 299.8초(5:00) · 장 열한 개 · 1600×900. Linux 1440×900의 같은 대본은 전체 속도 198.3초(3:18)였고, 명세 15절의 3–4분을 넘는다 → M8b의 데모에서 장 사이 쉼을 줄인다.
+- **Mac 디자인 비평**(1회차 창 사진, `m8a-shots` 39 상태 × 라이트 · 다크): blocker 0 · major 1 · minor 2. **vibrancy는 문제없다** — `will-change: transform`과 −12px 아래 여백을 준 대본 사이드바가 같은 실행의 라이브러리 · PDF 사이드바와 같은 재질(라이트 #F6F6F6, 다크 #383838)이고 이음매가 없다. major: 다크에서 "현재 위치 따라가기" 막대 위 선이 재질 위에서 1.04:1로 사라졌다 → `--separator-on-surface`(`cff01c2`, M5 태그 선택기와 같은 고침). minor(→ M8b): 마우스만 있는 Mac의 고전 스크롤 막대 트랙이 재질 위에 불투명한 띠로 그려진다, 라이트 `scrubber-hover` 창 사진에 말풍선이 늦게 그려졌다(증거만). 러너 화면이 1×라 Retina와, 전체 화면 무대 위의 토스트는 이 실행으로 보지 못했다. 데모 프레임은 따로 비평하지 않았다.
+
+### Mac `all`이 재고 정하는 것
+- **실제 영상 재생과 한 프레임 이동**: Mac의 Chromium이 H.264/AAC 재생 · 프레임 단위 이동(`,` `.`)과 `requestVideoFrameCallback`의 프레임 간격 추정이 Linux와 같은지(명세 18절). `video-perf` 줄의 Mac 값과 함께 본다.
+- **실제 창 전체 화면 전환**: 무대 모드의 들어가기 · 나오기와 빠른 다섯 번 토글이 `all`에서도 서는지(위 중간 실행은 통과). 들어가기 · 나가기 사건이 2초 넘게 늦으면 창이 전체 화면인 채 무대 없이 남을 수 있다(Task 9 리뷰의 남은 minor) — 이 실행에서 보인 바가 없는지.
+- **무대로 끝낸 창(최종 리뷰 M6 · 재검토 N1)**: `stage-relaunch.evidence.ts`(`@m8a`)의 세 시험이 판정한다 — 무대에서 끝내면 다음 실행은 창이고 무대는 꺼져 있다, 사용자가 연 전체 화면(main의 `setFullScreen(true)`)은 끝낸 뒤에도 5초 동안 전체 화면이고 F · esc는 무대만 켜고 끈다, 무대에서 main을 SIGKILL하면 다음 실행은 창이고 진행 중인 것이 없다. `stage-relaunch.json`의 `stageLines`에 실행마다 창을 만들 때의 `isFullScreen`과 `show` · `enter-full-screen`의 순서가 있다. Linux Xvfb에서 이 앱의 창은 전체 화면으로 끝내도 창으로 저장되므로 둘째 시험의 되살리기는 Linux에서 기록만 한다(`restored: false`).
+- **대본 사이드바의 vibrancy**: `will-change: transform`과 하단 −12 px 여백이 macOS의 사이드바 재질을 깨지 않는지(`m8a-shots`의 창 사진).
+- **끌기 종류**: 플랫폼이 끌기 중에 보고하는 파일 형식(`DataTransferItem.type` — Linux는 `.vtt`를 `text/vtt`, `.srt`를 `application/x-subrip`으로 보고한다)을 `m8a-drop-types.json`이 Mac에서 읽는다. 값이 비면 끌기 관문(5.3)이 영상 탭의 자막 드롭을 놓칠 수 있다.
+- **데모**: 열한 장(첫 장 끌어 놓기 · 열기와 재생 키 · 자막 오버레이 · 대본 · 영어 자막 끌어 놓기 · 자막 고르기와 C · F 전체 화면 · 라이브러리 검색 · 시간 행 · 제거와 실행 취소 · 다시 실행)이 `RECORD_SECONDS`(300초) 안에 끝나는지. 두 끌어 놓기는 Finder가 아니라 합성 끌기 사건이며 자막과 태그가 그렇게 말한다.
+
 ## 알려진 한계
 
 - 러너는 M1 가상 머신(3 vCPU, 가상 GPU, 1024×768 @1x)이다. 콜드 시간은 run마다 2–3배 차이가 나고, Retina(@2x) 렌더링·실제 GPU·트랙패드는 확인할 수 없다.
@@ -926,7 +958,7 @@ tutor-perf p95(`tutor-perf.json`), **모두 예산 안**:
 - HEVC 재생 확정(실제 하드웨어 디코더, 캔버스 읽기 포함).
 - AC16 기준 장비(Apple Silicon 16 GB)에서 첫 PDF·첫 MP4·냉시작 시간.
 - Retina @2x에서 PDF 캔버스 선명도와 글꼴 렌더링.
-- 전체 화면 빠른 토글 시 멈춤이 실기에서도 나는지.
+- 전체 화면 빠른 토글 시 멈춤이 실기에서도 나는지(M8a에서 앱이 HTML 전체 화면 API를 쓰지 않게 해 러너에서는 풀렸다 — 아래 "M8a". 실기에서의 신호등과 ⌃⌘F 섞어 누르기는 `next-session.md` "실기에서만 확인할 것 (M8a)"에 있다).
 - 서명·공증된 패키지(P6)에서 PDF·영상(AC20).
 - **M4 라이브러리**:
   - VoiceOver: 표(grid — 행, 열 머리, 정렬 상태, 선택 알림), 항목 패널 폼(칸 이름, 오류 문구가 읽히는지), 팔레트 자료 결과;

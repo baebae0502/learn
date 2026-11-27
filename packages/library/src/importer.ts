@@ -115,7 +115,7 @@ export class Importer {
     const { repo } = this.deps;
     const hooks = this.hooks;
     const existing = repo.findAssetsBySha(sha256);
-    const existingItemId = existing.map((a) => repo.itemIdsForAsset(a.id)[0]).find((id) => id !== undefined);
+    const existingItemId = existing.map((a) => repo.itemIdsForAsset(a.id, 'original')[0]).find((id) => id !== undefined);
     if (existingItemId && !opts.allowDuplicate) return { status: 'duplicate', path: src, existingItemId };
 
     // The size is read before the commit from the first MiB only; a file it cannot read is imported without one.
@@ -156,6 +156,16 @@ export class Importer {
     if (!saved) throw new LearnError('INTERNAL', '가져온 항목을 다시 읽지 못했습니다.');
     // The outcome names the collection only when the membership really exists: the renderer counts from it.
     return filed && collectionId !== null ? { status: 'imported', path: src, item: saved, collectionId } : { status: 'imported', path: src, item: saved };
+  }
+
+  /**
+   * A verified managed copy of a file that is not an item (a subtitle), through the import's staging → hash → rename. The
+   * hash is the one the caller read the bytes with: a file that changed since fails as HASH_MISMATCH. Under the path's
+   * lock, which a purge's file removal waits for; a purge's rows commit without it, so the caller re-reads what it reuses.
+   * Returns the library-relative path.
+   */
+  placeManaged(src: string, sha256: string, signal?: AbortSignal): Promise<string> {
+    return withManagedPath(managedRelativePath(sha256), () => this.place(src, sha256, signal));
   }
 
   /** Reused managed asset: make sure a verified file sits at the hash-addressed target. */

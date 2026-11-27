@@ -26,12 +26,14 @@ export const Channels = {
   settings: { get: 'settings:get', set: 'settings:set' },
   prefs: { get: 'prefs:get', set: 'prefs:set' },
   reader: { open: 'reader:open', getPosition: 'reader:getPosition', savePosition: 'reader:savePosition' },
-  search: { body: 'search:body', pages: 'search:pages', progress: 'search:progress' },
+  search: { body: 'search:body', matches: 'search:matches', progress: 'search:progress' },
   backup: { create: 'backup:create', cancel: 'backup:cancel', restore: 'backup:restore' },
   ui: {
     showContextMenu: 'ui:showContextMenu', windowState: 'ui:windowState', reportContext: 'ui:reportContext', confirm: 'ui:confirm', confirmPurge: 'ui:confirmPurge',
     showShortcuts: 'ui:showShortcuts', openSettings: 'ui:openSettings', themeShown: 'ui:themeShown', reportIdle: 'ui:reportIdle', showColumnMenu: 'ui:showColumnMenu',
+    stage: 'ui:stage',
   },
+  subtitles: { list: 'subtitles:list', cues: 'subtitles:cues', pick: 'subtitles:pick', attach: 'subtitles:attach', remove: 'subtitles:remove', restore: 'subtitles:restore' },
   translation: { translate: 'translation:translate', cancel: 'translation:cancel' },
   tutor: {
     consent: 'tutor:consent', agents: 'tutor:agents', chooseAgent: 'tutor:chooseAgent', view: 'tutor:view', warm: 'tutor:warm', ask: 'tutor:ask',

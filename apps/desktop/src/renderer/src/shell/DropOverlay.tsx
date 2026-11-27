@@ -9,9 +9,9 @@ import { Kbd } from '../ui/Kbd';
 import { dropSummaryText, windowDropTarget, type DropState, type WindowDropHandler } from './drop';
 
 /** The sidebar column (Shell marks it): a file drag inside it is the tree's to take or refuse, not the overlay's. */
-const inSidebar = (e: DragEvent) => e.target instanceof Element && e.target.closest('[data-sidebar-area]') !== null;
+export const inSidebar = (e: DragEvent) => e.target instanceof Element && e.target.closest('[data-sidebar-area]') !== null;
 /** Where the overlay starts: the sidebar's right edge, 0 when it is folded (the folded column keeps its 1 px boundary padding, and is inert). */
-function sidebarRight(): number {
+export function sidebarRight(): number {
   const area = document.querySelector('[data-sidebar-area]');
   return area && !area.hasAttribute('inert') ? Math.max(0, Math.round(area.getBoundingClientRect().right)) : 0;
 }
@@ -106,7 +106,7 @@ export function DropOverlay({ enabled, onDrop, intoName }: { enabled: boolean; o
               {/* ⌥ on macOS, Alt elsewhere: the key that switches to this card. */}
               <Kbd accelerator="Alt" />
             </span>
-            <span className="dm-text ui-prose">{t.drop.linkBody}</span>
+            <span className="dm-text ui-prose">{state.summary.subtitles > 0 ? `${t.drop.linkBody}\n${t.drop.linkSubtitles}` : t.drop.linkBody}</span>
           </div>
         </div>
       </div>

@@ -178,6 +178,18 @@ test('spike 3+4: native context menu and menu bar capture', TAG, async () => {
 
 // Not one of the six planned spikes: run 39442173392 (macos-15) hung in tests/e2e/first-session.spec.ts at
 // `document.exitFullscreen()` right after `requestFullscreen()`. Characterise it without touching the app.
+/**
+ * With the permission gone Electron neither enters nor rejects: the request promise stays pending (the spike's 15 s bound reports 'timeout')
+ * and the window stays as it was. A rejection counts as a refusal too; anything else keeps the old reading of the exit.
+ */
+function refusal(attempts: Array<Record<string, unknown>>): string {
+  const entered = (a: Record<string, unknown>) => (a['afterEnter'] as { window: { isFullScreen: boolean } }).window.isFullScreen;
+  const outcome = (a: Record<string, unknown>) => String((a['enter'] as { outcome: string }).outcome);
+  if (attempts.every((a) => !entered(a) && outcome(a) === 'timeout')) return 'requestFullscreen stays pending (refused): the permission is removed, the window does not change';
+  if (attempts.every((a) => !entered(a) && outcome(a).startsWith('rejected'))) return 'requestFullscreen rejected (refused): the permission is removed, the window does not change';
+  return attempts.every((a) => (a['exit'] as { outcome: string }).outcome === 'resolved') ? 'enter and exit resolve (HTML full screen is available)' : 'HTML full screen behaved otherwise (see attempts)';
+}
+
 test('extra: HTML video fullscreen enter/exit', TAG, async () => {
   const s = await freshSession();
   const within = async (fn: () => Promise<unknown>, ms: number) => {
@@ -220,7 +232,8 @@ test('extra: HTML video fullscreen enter/exit', TAG, async () => {
     }
     const after = await fullScreenShot('spikeX-fullscreen-after', 'after both fullscreen attempts');
     saveSpike('x-html-fullscreen', {
-      result: attempts.every((a) => (a['exit'] as { outcome: string }).outcome === 'resolved') ? 'exit resolves' : 'exitFullscreen did not resolve (see attempts)',
+      // A historical record (spec 9.1): the `fullscreen` permission is gone since M8a, so the request is now refused and that refusal is the value.
+      result: refusal(attempts),
       attempts,
       after: after.file,
     });

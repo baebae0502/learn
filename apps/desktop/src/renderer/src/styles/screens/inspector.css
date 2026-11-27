@@ -182,7 +182,7 @@
     margin-left: auto;
     margin-right: -6px; /* local: the glyph on the section's right inset, as the mockup's */
   }
-  /* A section's count at the head's end (본문 일치 "쪽 34개"): tertiary, on the section's right inset. */
+  /* A section's count at the head's end (본문 일치 "쪽 34개", "문장 34개"): tertiary, on the section's right inset. */
   .inspector .section-head > .section-count {
     margin-left: auto;
     color: var(--text-tertiary);
@@ -207,6 +207,29 @@
     font: var(--type-footnote);
     cursor: default;
     outline: none;
+  }
+  /* A video with several subtitles: a row's label is "18:14 · 한국어". The label column takes the widest label of the list (92 at least,
+     "18:14 · 한국어" is about 84; 144 at most), the rows sharing it by subgrid; past the cap only the track's name is cut. */
+  .inspector .match-list.tracks {
+    display: grid;
+    grid-template-columns: fit-content(144px) minmax(0, 1fr); /* local: the label column's cap */
+  }
+  .inspector .match-list.tracks .match-row {
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+  }
+  .inspector .match-list.tracks .match-row .pg {
+    display: flex;
+    min-width: 92px; /* local: the label column's floor */
+  }
+  .inspector .match-row .clk {
+    flex: none;
+  }
+  .inspector .match-row .trk {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .inspector .match-row[data-hovered] {
     background: var(--fill-hover);

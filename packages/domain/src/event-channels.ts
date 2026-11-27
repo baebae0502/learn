@@ -15,6 +15,7 @@ export const EventChannels = {
   'search:progress': 'evt:search-progress',
   'tutor:turn': 'evt:tutor-turn',
   'sessions:changed': 'evt:sessions-changed',
+  'subtitles:changed': 'evt:subtitles-changed',
 } as const;
 
 export type EventChannel = (typeof EventChannels)[keyof typeof EventChannels];

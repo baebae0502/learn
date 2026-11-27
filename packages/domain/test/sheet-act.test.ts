@@ -12,6 +12,8 @@ describe('an open sheet\'s own actions (P-17)', () => {
   it('takes the library check\'s actions by row, and a relink by item id only — never a path or a key', () => {
     for (const act of CHECK_ACTS) expect(sheetActInput.parse({ action: { kind: 'libraryCheck', act } })).toEqual({ action: { kind: 'libraryCheck', act } });
     expect(sheetActInput.parse({ action: { kind: 'libraryCheck', act: 'relink', itemId: ID } })).toEqual({ action: { kind: 'libraryCheck', act: 'relink', itemId: ID } });
+    // A video's lost subtitle copy is restored by its own asset id.
+    expect(sheetActInput.parse({ action: { kind: 'libraryCheck', act: 'relink', itemId: ID, assetId: ID } })).toEqual({ action: { kind: 'libraryCheck', act: 'relink', itemId: ID, assetId: ID } });
     const keys = ['assets/ab/x'];
     expect(sheetActInput.parse({ action: { kind: 'libraryCheck', act: 'cleanUnreferenced', keys } })).toEqual({ action: { kind: 'libraryCheck', act: 'cleanUnreferenced', keys } });
     const bad = [
@@ -19,6 +21,7 @@ describe('an open sheet\'s own actions (P-17)', () => {
       { action: { kind: 'libraryCheck', act: 'relink' } },
       { action: { kind: 'libraryCheck', act: 'relink', itemId: 'not-a-uuid' } },
       { action: { kind: 'libraryCheck', act: 'relink', itemId: ID, path: '/tmp/a.pdf' } },
+      { action: { kind: 'libraryCheck', act: 'relink', itemId: ID, assetId: 'assets/ab/x' } },
       { action: { kind: 'libraryCheck', act: 'cleanUnreferenced' } },
       { action: { kind: 'libraryCheck', act: 'cleanUnreferenced', keys: [7] } },
       { action: { kind: 'libraryCheck', act: 'cleanUnreferenced', keys: ['assets/ab/x'], path: '/tmp' } },

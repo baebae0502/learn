@@ -16,7 +16,8 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
     // The one row that is not a registry command: the system's 전체 화면 (design-spec 7.4), marked as such.
     const system = groups.flatMap((g) => g.rows).filter((r) => r.system);
     expect(system).toEqual([{ label: '전체 화면', keys: ['⌃', '⌘', 'F'], spoken: '⌃⌘F', system: true }]);
-    expect(COMMANDS.some((c) => c.label === '전체 화면')).toBe(false);
+    // The registry's 전체 화면 is the video stage's key F (a video sheet's own line), never the window's ⌃⌘F.
+    expect(COMMANDS.filter((c) => c.label === '전체 화면').map((c) => [c.id, c.accelerator])).toEqual([['video.toggleFullScreen', undefined]]);
   });
   it('lists the tab keys in their own 탭 group as the pair lines of the key map (design-spec 7.4)', () => {
     const tabs = (platform: string) => shortcutGroups(platform).find((g) => g.title === '탭')!.rows;
@@ -61,11 +62,44 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
     expect(where()).toMatchObject({ 라이브러리: 3, 리더: 0 });
   });
   it('keeps the sheet within a real 1440 × 900 room (774) in both views: 772 from the library since the ⌥⌘5 line, over the 770 it kept to, so a smaller room scrolls its list (sheets.spec); the natural height is the taller column plus 136 px of title, foot and padding', () => {
-    const height = (view?: 'library' | 'viewer') => Math.max(...shortcutColumns(shortcutGroups('darwin', view)).map((c) => c.reduce((h, g, i) => h + 31 + 29 * g.rows.length + (i > 0 ? 16 : 0), 0)));
+    const height = (view?: 'library' | 'viewer' | 'video') => Math.max(...shortcutColumns(shortcutGroups('darwin', view)).map((c) => c.reduce((h, g, i) => h + 31 + 29 * g.rows.length + (i > 0 ? 16 : 0), 0)));
     expect(height()).toBe(height('library'));
     expect(height('library') + 136).toBe(772);
     expect(height('viewer') + 136).toBe(754);
-    for (const view of ['library', 'viewer'] as const) expect(height(view) + 136, view).toBeLessThanOrEqual(774);
+    // It lists only the keys a video uses (the PDF's and the picture's rows are left out); ⌘F, the transcript search, opens its 리더 group
+    // (a header and a line), which leaves two pixels of the room: a later video row must make room first.
+    expect(height('video') + 136).toBe(772);
+    for (const view of ['library', 'viewer', 'video'] as const) expect(height(view) + 136, view).toBeLessThanOrEqual(774);
+  });
+  it('lists the video keys under 동영상 from a video reader only, a pair to a line, K and the space bar as one', () => {
+    const rows = (view?: 'library' | 'viewer' | 'video') => shortcutGroups('darwin', view).find((g) => g.title === '동영상')?.rows;
+    expect(rows()).toBeUndefined();
+    expect(rows('library')).toBeUndefined();
+    expect(rows('viewer')).toBeUndefined(); // a PDF's or a picture's reader
+    expect(rows('video')).toEqual([
+      { label: '재생/일시정지', keys: ['K', '스페이스'], spoken: 'K · 스페이스', alternatives: true },
+      { label: '10초 뒤로 / 앞으로', keys: ['J'], pairKeys: ['L'], spoken: 'J / L' },
+      { label: '5초 뒤로 / 앞으로', keys: ['←'], pairKeys: ['→'], spoken: '← / →' },
+      { label: '한 프레임 뒤로 / 앞으로', keys: [','], pairKeys: ['.'], spoken: ', / .' },
+      { label: '재생 속도 느리게 / 빠르게', keys: ['⇧', ','], pairKeys: ['⇧', '.'], spoken: '⇧, / ⇧.' },
+      { label: '음소거', keys: ['M'], spoken: 'M' },
+      { label: '자막 켜기/끄기', keys: ['C'], spoken: 'C' },
+      { label: '전체 화면', keys: ['F'], spoken: 'F' },
+      { label: '전체 화면 끝내기', keys: ['esc'], spoken: 'esc' },
+    ]);
+    const titles = shortcutGroups('darwin', 'video').map((g) => g.title);
+    expect(titles).toEqual(['앱', '라이브러리', '자료', '정리', '탭', '리더', '동영상', '팔레트·대화상자']);
+    // The reader group of a video's sheet is ⌘F alone: the transcript's search (the PDF's find bar is not its).
+    expect(shortcutGroups('darwin', 'video').find((g) => g.title === '리더')!.rows).toEqual([{ label: '찾기', keys: ['⌘', 'F'], spoken: '⌘F' }]);
+  });
+  it('lists the keys of the reader it was opened from: a video\'s sheet leaves the PDF\'s and the picture\'s rows out, theirs leave 동영상 out', () => {
+    const rows = (view: 'library' | 'viewer' | 'video') => shortcutGroups('darwin', view).flatMap((g) => g.rows.map((r) => r.spoken));
+    const pdfOnly = ['⌘G', '⌘E', '⌥⌘G', '⌘R', '⌥⌘2', '⌥⌘5', '⌃⌘1', '⌘+', '⌘['];
+    for (const key of pdfOnly) expect(rows('viewer').some((r) => r.startsWith(key)), `PDF sheet: ${key}`).toBe(true);
+    const video = rows('video');
+    for (const key of pdfOnly) expect(video.some((r) => r.startsWith(key)), `video sheet: ${key}`).toBe(false);
+    expect(rows('viewer').some((r) => r.startsWith('K'))).toBe(false);
+    expect(video.some((r) => r.startsWith('K'))).toBe(true);
   });
   it('lists 세션 보기 ⌥⌘5 under 리더, after the thumbnails / outline line', () => {
     const rows = shortcutGroups('darwin', 'viewer').find((g) => g.title === '리더')!.rows;

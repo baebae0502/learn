@@ -12,6 +12,8 @@ export interface MainWindowOptions {
   url: string;
   /** Title bar, traffic lights, vibrancy and the first-frame colour (window-options.ts). */
   chrome: ChromeOptions;
+  /** false: the window does not take back the full screen it was quit in (the last run quit on the video stage). Its bounds come back. */
+  restoreDisplayMode?: boolean;
 }
 
 /** The main window in the M3 chrome (design-spec 2.1): hidden title bar, traffic lights or the controls overlay. */
@@ -20,7 +22,7 @@ export function createMainWindow(opts: MainWindowOptions): BrowserWindow {
     // Electron 44: bounds and maximized/fullscreen restored across restarts (stored per name in userData); a saved
     // state wins over the default frame below.
     name: 'main',
-    windowStatePersistence: { bounds: true, displayMode: true },
+    windowStatePersistence: { bounds: true, displayMode: opts.restoreDisplayMode !== false },
     // 1440 × 900 inside the work area, centred (R3-1: never larger than the screen).
     ...defaultFrame(screen.getPrimaryDisplay().workArea),
     minWidth: layout.windowMinWidth,

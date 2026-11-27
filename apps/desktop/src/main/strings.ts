@@ -23,8 +23,8 @@ export const mainStrings = {
     /** The fatal screen's Finder에서 보기 (spec 9.4) for a pre-update backup that is gone since the screen was drawn. */
     updateBackupMissing: '업데이트 전 백업 파일을 찾을 수 없습니다. 옮기거나 지웠는지 확인하세요.',
   },
-  /** The open panels of 파일 가져오기… and 다시 연결… (the filter names; middots bound as VIDEO_FORMATS, T14-n1). */
-  importFilters: { media: 'PDF\u00a0·\u00a0동영상\u00a0·\u00a0이미지', all: '모든\u00a0파일' },
+  /** The open panels of 파일 가져오기…, 다시 연결… and 자막 파일 추가… (the filter names; middots bound as VIDEO_FORMATS, T14-n1). */
+  importFilters: { media: 'PDF\u00a0·\u00a0동영상\u00a0·\u00a0이미지', subtitles: '자막(SRT\u00a0·\u00a0VTT)', all: '모든\u00a0파일' },
   /**
    * The open panels' titles: 파일 가져오기… and 다시 연결… (ipc/library.ts). macOS shows no title on a sheet, so each
    * panel also has a one-line message (shown on top) and its own button name: ⌘O, ⌥⌘O and 다시 연결 do not look alike.

@@ -2,6 +2,7 @@ import { BrowserWindow } from 'electron';
 import type { WindowState } from '@learn/domain';
 import { sendEvent } from './events';
 import { releaseWhenKey } from './sheet-release';
+import { stageOf } from './video-stage';
 
 /**
  * Each window's state as its renderer sees it (the main and the settings window alike): full screen, key, and whether
@@ -45,22 +46,23 @@ function keyElsewhere(win: BrowserWindow): boolean {
 export const windowStateOf = (win: BrowserWindow): WindowState => {
   const focused = win.isFocused() && !nativeSheets.has(win);
   const sheetOpen = sheets.has(win);
-  return { fullscreen: win.isFullScreen(), focused, sheetOpen, main: focused || (sheetOpen && !keyElsewhere(win)) };
+  return { fullscreen: win.isFullScreen(), focused, sheetOpen, main: focused || (sheetOpen && !keyElsewhere(win)), stage: stageOf(win) };
 };
 
 /** Whether one of our sheets is attached to `win` now. */
 export const isSheetOpen = (win: BrowserWindow): boolean => sheets.get(win) === 'open';
 
 /**
- * The windowState push for `win`: its own state, sent to its own renderer on an actual change of full screen, focus or
- * sheet. Each window has its own; another window's focus reaches it only through resyncAllWindowStates.
+ * The windowState push for `win`: its own state, sent to its own renderer on an actual change of full screen, focus,
+ * sheet or video stage. Each window has its own; another window's focus reaches it only through resyncAllWindowStates.
+ * The stage changes through resyncWindowState (video-stage.ts).
  */
 export function trackWindowState(win: BrowserWindow): void {
   let last: WindowState | null = null;
   const pushState = () => {
     if (win.isDestroyed()) return;
     const next = windowStateOf(win);
-    if (last && last.fullscreen === next.fullscreen && last.focused === next.focused && last.sheetOpen === next.sheetOpen && last.main === next.main) return;
+    if (last && last.fullscreen === next.fullscreen && last.focused === next.focused && last.sheetOpen === next.sheetOpen && last.main === next.main && last.stage === next.stage) return;
     last = next;
     sendEvent(win.webContents, 'windowState', next);
   };

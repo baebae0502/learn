@@ -87,7 +87,7 @@ export const CHANNEL_KINDS: Readonly<Record<Channel, readonly WindowKind[]>> = {
   'reader:savePosition': MAIN,
 
   'search:body': MAIN,
-  'search:pages': MAIN,
+  'search:matches': MAIN,
   'search:progress': MAIN,
 
   'translation:translate': MAIN,
@@ -110,6 +110,13 @@ export const CHANNEL_KINDS: Readonly<Record<Channel, readonly WindowKind[]>> = {
   'sessions:delete': MAIN,
   'sessions:restore': MAIN,
 
+  'subtitles:list': MAIN,
+  'subtitles:cues': MAIN,
+  'subtitles:pick': MAIN,
+  'subtitles:attach': MAIN,
+  'subtitles:remove': MAIN,
+  'subtitles:restore': MAIN,
+
   'ui:showContextMenu': MAIN,
   'ui:windowState': MAIN_AND_SETTINGS,
   'ui:reportContext': MAIN,
@@ -120,6 +127,7 @@ export const CHANNEL_KINDS: Readonly<Record<Channel, readonly WindowKind[]>> = {
   'ui:themeShown': MAIN_AND_SETTINGS,
   'ui:showColumnMenu': MAIN,
   'ui:reportIdle': MAIN,
+  'ui:stage': MAIN,
 
   'sheet:payload': SHEET,
   'sheet:resolve': SHEET,

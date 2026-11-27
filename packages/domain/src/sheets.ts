@@ -76,8 +76,11 @@ export interface RestoreDoneSheet {
 export type SheetPayload =
   /** `remaining`: the other duplicates of this import still to settle; above 0 the sheet offers one answer for all. */
   | { kind: 'duplicate'; fileName: string; existing: DuplicateCard; remaining: number }
-  /** `view`: the view the list is read in, so ⌘+ ⌘− ⌘0 are named as that view's menu names them (P-9). */
-  | { kind: 'shortcuts'; view?: 'library' | 'viewer' }
+  /**
+   * `view`: the view the list is read in, so ⌘+ ⌘− ⌘0 are named as that view's menu names them (P-9). `video`: the reader of a video that
+   * can play: a viewer's list with the video's keys added.
+   */
+  | { kind: 'shortcuts'; view?: 'library' | 'viewer' | 'video' }
   /**
    * `name`: the one row's title or name when exactly one is chosen; the sheet's title names it. `sessions`: the tutor sessions that go
    * with the items, as main counted them, and `sessionItems` the items they belong to (T1a spec 6.2): the text says so when there are some.
@@ -110,6 +113,8 @@ export interface CheckEntry {
   label: string;
   /** A linked item's original location, as recorded; the sheet shows it home-relative with the whole path as its tooltip. */
   path: string | null;
+  /** The lost copy is not the item's own file but one of its other assets (a video's subtitle): 다시 연결… restores this one. */
+  assetId?: string;
 }
 export interface CheckRow {
   kind: CheckRowKind;
@@ -140,12 +145,12 @@ export interface LibraryCheckPayload {
   homeDir: string;
   failed: CheckFailure | null;
 }
-/** The check sheet's row actions; 다시 연결… names an item, never a path (R4). */
+/** The check sheet's row actions; 다시 연결… names an item (and the asset of a line that is not its own file), never a path (R4). */
 export const CHECK_ACTS = ['cleanStaging', 'revive', 'revealCorrupt', 'importOrphanEdits', 'revealOrphanEdit'] as const;
 /** 지우기 names the copies the row listed when the user was asked; one that came later is left for the next check. */
 export type CheckAction =
   | { kind: 'libraryCheck'; act: (typeof CHECK_ACTS)[number] }
-  | { kind: 'libraryCheck'; act: 'relink'; itemId: string }
+  | { kind: 'libraryCheck'; act: 'relink'; itemId: string; assetId?: string }
   | { kind: 'libraryCheck'; act: 'cleanUnreferenced'; keys: string[] };
 /** The backup result sheet's own action: Finder에서 보기 on the folder it made (main has its path). */
 export type BackupAction = { kind: 'backupDone'; act: 'reveal' };

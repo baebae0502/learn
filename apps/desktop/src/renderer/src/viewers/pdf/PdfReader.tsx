@@ -34,6 +34,8 @@ import { ViewMenu } from './ViewMenu';
 import { ZoomField } from './ZoomField';
 import { clampZoom } from './zoom';
 
+type PageJump = Extract<PendingJump, { kind: 'page' }>;
+
 const PAGE_SAVE = { kind: 'debounce', ms: 300 } as const;
 
 /** The PDF reader: the 44 px toolbar (page field and page turns) over the stage that the pdf.js viewer fills. */
@@ -55,7 +57,8 @@ export function PdfReader({ item }: { item: LibraryItem }) {
   const ready = pdf?.ready === true && handle !== null;
   const findOpen = useFind((s) => s.open);
   const history = useReader((s) => s.history);
-  const pendingJump = useReader((s) => s.pendingJump);
+  // A time jump is a video's: this reader takes only the page ones.
+  const pendingJump = useReader((s) => (s.pendingJump?.kind === 'page' ? s.pendingJump : null));
   const { run } = useCommands();
   const locked = open.status === 'password';
   const broken = open.status === 'failed' || viewFailed;
@@ -176,7 +179,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
    * A 본문 일치 row's page is shown: the find bar opens on its query and searches, and pdf.js starts at the current page, so its
    * first match is on this one. Taken once.
    */
-  const showMatch = (j: PendingJump) => {
+  const showMatch = (j: PageJump) => {
     scope.reader.getState().setPendingJump(null);
     scope.find.getState().openBar(j.query);
     const bus = handle?.eventBus();
@@ -192,7 +195,8 @@ export function PdfReader({ item }: { item: LibraryItem }) {
     if (!shown || !ready || !pdf?.sized || !stageSettled || !pos.loaded || restored || !handle) return;
     const saved = pos.saved?.locator.kind === 'pdf' ? pos.saved.locator : undefined;
     // A 본문 일치 row opened this reader: it is placed at that page (in the saved zoom, rotation and modes), never first at the saved place.
-    const jump = scope.reader.getState().pendingJump;
+    const pending = scope.reader.getState().pendingJump;
+    const jump = pending?.kind === 'page' ? pending : null;
     const index = jump ? restorePageIndex({ kind: 'pdf', pageIndex: jump.pageIndex }, pdf.pagesCount) : restorePageIndex(pos.saved?.locator, pdf.pagesCount);
     place.current = null;
     // restore() ends in viewer.update(), which dispatches updateviewarea at once (pdf.js 6.4.299), so `place` is the real place here.

@@ -59,6 +59,8 @@ describe('settings.set: keys main writes itself (Q-8e)', () => {
   const set = (raw: unknown) => handlers.get('settings:set')!({ sender: MAIN_PAGE, senderFrame: { url: 'learn://app/index.html' } }, raw);
   it('refuses recovery.lastShown from a page and writes a page\'s own key', async () => {
     expect(await set({ key: 'recovery.lastShown', value: 'a'.repeat(64) })).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+    // Whether the window's full screen is the stage's: a page that set it would make the next launch leave the user's own.
+    expect(await set({ key: 'ui.stageFullScreen', value: true })).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
     expect(await set({ key: 'ui.lastOpenItemId', value: null })).toMatchObject({ ok: true });
     expect(written).toEqual([['ui.lastOpenItemId', null]]);
   });

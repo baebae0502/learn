@@ -125,6 +125,79 @@ window.MockupData = (() => {
     ['19:40', '다음 시간에는 2차 전령을 하나씩 자세히 보겠습니다.'],
   ];
 
+  // ── M8a (docs/superpowers/specs/2026-11-23-m8a-video-subtitles-design.md) ─────────────────────────────────────────
+  // Two subtitle tracks of 강의 04 (한국어 first, 영어 second). The Korean track is `cues` up to 19:28, then two cues about the
+  // calcium pump (the ?state=match scene) and the rest of the lecture, closing with the old last cue; `cueLong` is one cue of more
+  // than three lines in the 240 px pane. The English track is a translation, not a copy: it has its own cue times.
+  const NBSP = ' ';
+  const cues8a = [
+    ...cues.slice(0, 14),
+    ['19:34', '칼슘 펌프는 ATP를 써서 칼슘을 세포 밖으로 다시 내보냅니다.'],
+    ['19:47', '칼슘 펌프가 멈추면 세포질의 칼슘이 오래 높게 유지됩니다.'],
+    ['20:03', '칼슘 이온도 같은 원리로 신호를 전달하는데요, 이쪽은 속도가 훨씬 빠릅니다.'],
+    ['20:16', '소포체에 저장된 칼슘이 한꺼번에 방출되기 때문입니다.'],
+    ['20:29', '이때 IP₃가 소포체 막의 수용체에 붙어 통로를 엽니다.'],
+    ['20:44', cues[14][1]],
+  ];
+  const cueLong = [
+    '18:29',
+    '교과서 42쪽 그림 6-4를 같이 보시면 단계마다 화살표가 굵어지는데요, 이건 수용체 하나가 G 단백질 수백 개를 켜고, 그 하나하나가 다시 효소를 수백 개씩 켜기 때문에 생기는 차이라고 생각하시면 됩니다.',
+  ];
+  // 18:14 and 18:20 are on screen together (the two-line subtitle): the English 18:14 cue runs to 18:26 as well.
+  const cuesEn = [
+    ['17:02', 'So, let me show you what happens once the receptor is activated.'],
+    ['17:09', 'The activated receptor meets a G protein on the inner side of the membrane.'],
+    ['17:18', 'The G protein gives up GDP, binds GTP and switches on.'],
+    ['17:31', 'The key point is that one receptor does not switch on just one G protein.'],
+    ['17:44', 'While it stays bound, it keeps activating several of them in turn.'],
+    ['18:02', 'The next step, adenylyl cyclase, works the same way.'],
+    ['18:14', 'One enzyme makes hundreds of cAMP molecules each time it fires.'],
+    ['18:20', 'So this step turns one cAMP signal into hundreds more.'],
+    ['18:29', 'See Figure 6-4 on page 42: the arrows get thicker at every step.'],
+    ['18:41', 'That is what it means for the amplification factors to multiply.'],
+    ['18:52', 'But we also have to think about how the signal is switched off.'],
+    ['19:03', 'When GTP is hydrolysed to GDP, the G protein turns off again.'],
+    ['19:15', 'And phosphodiesterase breaks down cAMP.'],
+    ['19:28', 'The balance between turning on and turning off sets the size of the response.'],
+    ['19:34', 'The calcium pump uses ATP to push calcium back out of the cell.'],
+    ['19:47', 'If the pump stops, cytosolic calcium stays high for a long time.'],
+    ['20:03', 'Calcium ions relay signals in the same way, only much faster.'],
+    ['20:16', 'That is because the calcium stored in the ER is released all at once.'],
+    ['20:29', 'IP3 binds a receptor on the ER membrane and opens the channel.'],
+    ['20:44', 'Next time we will look at each second messenger in detail.'],
+  ];
+  // The item panel's 본문 일치 rows are subtitle cues, whole (a snippet is cut from one cue's text only; the line clamp adds the
+  // ellipsis when it does not fit): [time, text with <mark>, track]. 증폭 (one track) — the first three are the "time" scene.
+  const timeMany = [
+    ['3:12', '오늘은 신호가 단계마다 <mark>증폭</mark>되는 원리를 먼저 보겠습니다.'],
+    ['5:48', '수용체 하나가 만드는 <mark>증폭</mark> 효과가 왜 중요한지 생각해 봅시다.'],
+    ['9:30', '<mark>증폭</mark>이 없다면 세포는 아주 많은 수용체를 가져야 할 겁니다.'],
+    ['12:04', '그림 6-3은 <mark>증폭</mark>이 일어나는 첫 단계를 보여 줍니다.'],
+    ['14:51', `G${NBSP}단백질 단계의 <mark>증폭</mark> 배율은 대략 백 배라고 보면 됩니다.`],
+    ['16:20', `이${NBSP}<mark>증폭</mark> 과정에 쓰이는 효소를 효과기라고 부릅니다.`],
+    ['18:20', '그래서 이 단계에서 신호가 수백 배로 <mark>증폭</mark>됩니다.'],
+    ['18:41', '이게 바로 <mark>증폭</mark> 배율이 곱해진다는 뜻입니다.'],
+    ['21:07', '<mark>증폭</mark>된 cAMP는 단백질 인산화효소 A를 깨웁니다.'],
+    ['23:45', '인산화효소 쪽에서 한 번 더 <mark>증폭</mark>이 일어납니다.'],
+    ['25:18', '여기까지 합치면 <mark>증폭</mark> 배율이 수만 배에 이릅니다.'],
+    ['27:35', '<mark>증폭</mark>된 신호는 핵까지 전달되어 유전자 발현을 바꿉니다.'],
+    ['29:02', '칼슘 경로에서도 <mark>증폭</mark>의 원리는 같습니다.'],
+    ['31:08', '단계마다 <mark>증폭</mark> 효소를 두는 편이 훨씬 효율적입니다.'],
+    ['32:40', '<mark>증폭</mark>이 지나치면 세포가 과하게 반응하게 됩니다.'],
+    ['34:52', '신호가 <mark>증폭</mark>되는 만큼 잡음도 같이 커집니다.'],
+    ['36:10', '그래서 <mark>증폭</mark> 단계마다 억제 장치가 함께 있습니다.'],
+    ['38:14', '칼슘으로 <mark>증폭</mark>되는 경로는 속도가 빨라서 근육 수축에 쓰입니다.'],
+    ['41:27', '<mark>증폭</mark> 배율을 직접 재는 실험은 다음 주에 해 보겠습니다.'],
+    ['44:03', '오늘 배운 <mark>증폭</mark>의 원리를 정리하면 세 가지입니다.'],
+  ];
+  // Two tracks (the query cAMP): a match is one cue of one track, so two tracks matching at the same start are two rows.
+  const timeTwoTracks = [
+    ['18:14', '효소 하나가 <mark>cAMP</mark>를 수백, 수천 개씩 만들어 냅니다.', '한국어'],
+    ['18:14', 'One enzyme makes hundreds of <mark>cAMP</mark> molecules each time it fires.', '영어'],
+    ['18:20', 'So this step turns one <mark>cAMP</mark> signal into hundreds more.', '영어'],
+    ['19:15', '그리고 포스포다이에스터레이스가 <mark>cAMP</mark>를 분해하죠.', '한국어'],
+  ];
+
   const memos = [
     { at: 0.16, color: 1 },
     { at: 0.33, color: 2 },
@@ -306,5 +379,5 @@ window.MockupData = (() => {
   ];
   const matchPages = [12, 14, 15, 21, 22, 27, 28, 30, 31, 33, 35, 36, 38, 40, 41, 44, 47, 49, 52, 55];
 
-  return { imageRows, imageItem, snippets, matchPages, tags, plainTags, dimTags, collections, items, selectedItem, outline, cues, memos, tutor, trash, duplicates, edited };
+  return { imageRows, imageItem, snippets, matchPages, tags, plainTags, dimTags, collections, items, selectedItem, outline, cues, cues8a, cueLong, cuesEn, timeMany, timeTwoTracks, memos, tutor, trash, duplicates, edited };
 })();

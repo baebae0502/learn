@@ -1,4 +1,4 @@
-import type { ImportPathsInput, ImportQueueState, ImportReport, PickAndImportInput, Result, StorageMode } from '@learn/domain';
+import { groupForCalls, type ImportPathsInput, type ImportQueueState, type ImportReport, type PickAndImportInput, type Result, type StorageMode } from '@learn/domain';
 import { unwrap } from '../api';
 import type { ProgressToast } from '../jobs/progressToast';
 import type { ImportTarget } from '../sidebar/importTarget';
@@ -10,11 +10,6 @@ import { failureLines, importToast } from './import-flow';
 /** importPathsInput's limit (P-2): a bigger drop goes in as several calls, one after another, into the one queue. */
 export const IMPORT_CALL_PATHS = 500;
 
-export function inImportCalls<T>(list: readonly T[], size = IMPORT_CALL_PATHS): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
-  return out;
-}
 
 export interface ImportRunnerDeps {
   importPaths(input: ImportPathsInput): Promise<Result<{ queued: number }>>;
@@ -91,7 +86,7 @@ export function createImportRunner(d: ImportRunnerDeps): ImportRunner {
         // would otherwise start a second run with a second toast.
         const cancels = d.cancelCount();
         const here = d.askedHere();
-        for (const call of inImportCalls(paths)) {
+        for (const call of groupForCalls(paths, IMPORT_CALL_PATHS)) {
           if (d.cancelCount() !== cancels || d.askedHere() !== here) break;
           await unwrap(d.importPaths({ paths: call, mode, ...(into ? { collectionId: into.id } : {}) }));
           left -= call.length;
@@ -133,9 +128,9 @@ export function createImportRunner(d: ImportRunnerDeps): ImportRunner {
         await d.screenSettled();
         const name = report.collectionId === null ? null : d.collectionName(report.collectionId);
         d.toast.settle(key, importToast(report, name === null ? null : { name }));
-        if (report.failed.length > 0) {
-          const { lines, hints } = failureLines(report.failed);
-          d.showToast({ kind: 'error', title: t.toast.failedTitle(report.failed.length), lines, body: hints.join(' ') || undefined, testId: 'import-failures' });
+        if (report.failed.length + report.subtitles.failed.length > 0) {
+          const { lines, hints } = failureLines(report.failed, 3, report.subtitles.failed);
+          d.showToast({ kind: 'error', title: t.toast.failedTitle(report.failed.length + report.subtitles.failed.length), lines, body: hints.join(' ') || undefined, testId: 'import-failures' });
         }
       } finally {
         d.mark('import:end');

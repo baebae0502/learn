@@ -108,7 +108,10 @@ export async function checkLibrary(layout: LibraryLayout, repo: LibraryRepositor
     if (!there && a.availability !== 'missing') repo.setAvailability(a.id, 'missing', now);
     if (there && a.availability === 'missing') repo.setAvailability(a.id, 'available', now);
   }
-  const missingManaged = missingAssets.flatMap((id) => repo.itemIdsForAsset(id)).sort();
+  const missingCopies = missingAssets
+    .flatMap((assetId) => repo.itemIdsForAsset(assetId).map((itemId) => ({ itemId, assetId })))
+    .sort((a, b) => (a.itemId < b.itemId ? -1 : a.itemId > b.itemId ? 1 : a.assetId < b.assetId ? -1 : a.assetId > b.assetId ? 1 : 0));
+  const missingManaged = missingCopies.map((c) => c.itemId);
   const missingLinked = repo
     .assetsByMode('linked')
     .filter((a) => a.availability === 'missing')
@@ -133,7 +136,7 @@ export async function checkLibrary(layout: LibraryLayout, repo: LibraryRepositor
     items: repo.counts().items,
     staging: { count: parts.length, bytes: partBytes },
     unreferenced: { keys: unreferenced, bytes: unreferencedBytes },
-    missingManaged: { itemIds: missingManaged },
+    missingManaged: { itemIds: missingManaged, copies: missingCopies },
     missingLinked: { itemIds: missingLinked },
     corrupt: { count: corrupt.length, bytes: corruptBytes, files: corrupt },
     orphanEdits: { count: copies.length, bytes: copyBytes, copies },

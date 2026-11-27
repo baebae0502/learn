@@ -1,0 +1,478 @@
+@layer screens {
+  /* The video reader (spec 6): the 44 px strip, the stage (reader.css), and the bar of our own controls under it. */
+  .video-stage {
+    cursor: default;
+  }
+  .video-stage:focus-visible {
+    outline: none;
+  }
+  /* The keyboard ring on the always-dark stage: the dark-surface ring on all four sides, inside, between a 1 px stage-dark line on each
+     side, so it keeps 3:1 against a light slide or the sidebar's edge. */
+  .video-stage:focus-visible::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    box-shadow:
+      inset 0 0 0 1px var(--video-stage),
+      inset 0 0 0 calc(1px + var(--focus-ring-width)) var(--image-focus-dark),
+      inset 0 0 0 calc(2px + var(--focus-ring-width)) var(--video-stage);
+  }
+  /* The reader toolbar's one menu is as wide as the others' (design-spec 7.3). */
+  .subtitles-menu .menu {
+    min-width: 232px; /* local: the reader menus' width (design-spec 7.3 mockup) */
+  }
+  .loading.on-stage {
+    color: oklch(85% 0.004 250); /* local: the always-dark stage */
+  }
+  .loading.on-stage .spinner {
+    border-color: oklch(100% 0 0 / 0.18); /* local: the always-dark stage */
+    border-top-color: var(--image-focus-dark);
+    border-right-color: var(--image-focus-dark);
+  }
+
+  /* The subtitle (spec 6.4): a box exactly over the drawn picture (SubtitleOverlay measures it), so its 6 % and its size follow the picture and
+     not the black bars. It never takes a press: the stage under it plays and pauses. */
+  .subtitle-box {
+    position: absolute;
+    z-index: 2;
+    container-type: size;
+    --cue-size: clamp(14px, 3.1cqh, 40px); /* local: spec 6.4 — the text is 3.1 % of the picture's height, 14 to 40 px */
+    pointer-events: none;
+    user-select: none;
+  }
+  .subtitle-box .subtitle {
+    position: absolute;
+    /* Auto margins centre it: with left: 50% the box could grow only to the remaining half, and the 78 % never applied. */
+    left: 0;
+    right: 0;
+    margin-inline: auto;
+    width: fit-content;
+    bottom: 6%;
+    max-width: 78%;
+    padding: 0.2em 0.6em 0.25em; /* local: the mockup's 4 / 12 / 5 px of a 22 px subtitle, kept in proportion to the text */
+    border-radius: var(--radius-sm);
+    background: var(--subtitle-bg);
+    color: var(--subtitle-fg);
+    font-family: var(--font-ui);
+    font-size: var(--cue-size);
+    font-weight: var(--weight-medium);
+    line-height: 1.45; /* local: spec 6.4 */
+    text-align: center;
+    white-space: pre-line;
+    word-break: keep-all;
+  }
+
+  .video-controls {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding: var(--space-8) var(--space-16);
+    background: var(--bg-window);
+    border-top: 1px solid var(--separator);
+  }
+  /* Before the first frame the bar is drawn and dimmed, the knob left out (design-spec 6: a passing state keeps its controls). */
+  .video-controls.is-disabled :is(.control-row, .scrubber) {
+    opacity: 0.45;
+  }
+  /* The row is dimmed once; a button of it is disabled too, and must not dim its glyph a second time (.45 × .4 would all but erase it). */
+  .video-controls.is-disabled :is(.icon-btn, .btn)[data-disabled] {
+    opacity: 1;
+  }
+  .video-controls.is-disabled .knob {
+    display: none;
+  }
+
+  .scrubber {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 16px; /* local: the spec's hit area */
+    cursor: default;
+    touch-action: none;
+  }
+  .scrubber:focus-visible {
+    outline: none;
+  }
+  .scrubber .track {
+    position: relative;
+    width: 100%;
+    height: 4px; /* local: the spec's track */
+    border-radius: 2px; /* local: half the track */
+    background: var(--bg-track);
+  }
+  .scrubber .buffered,
+  .scrubber .played {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: inherit;
+  }
+  .scrubber .buffered {
+    background: color-mix(in oklch, var(--text-tertiary) 45%, transparent);
+  }
+  .scrubber .played {
+    background: var(--meter);
+  }
+  .scrubber .hover-pos {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px; /* local: the pointer's hairline */
+    margin-left: -1px; /* local: centres the hairline */
+    border-radius: 1px; /* local: half the hairline */
+    background: var(--text-secondary);
+    pointer-events: none;
+  }
+  .scrubber .knob {
+    position: absolute;
+    z-index: 2;
+    top: 50%;
+    width: 12px; /* local: the spec's knob */
+    height: 12px; /* local: the spec's knob */
+    margin: -6px 0 0 -6px; /* local: centres the knob */
+    border-radius: 50%;
+    background: oklch(100% 0 0); /* local: a white knob on the track in both themes */
+    box-shadow: 0 0 0 0.5px oklch(0% 0 0 / 0.2), 0 1px 3px oklch(0% 0 0 / 0.3); /* local: the knob's own edge */
+  }
+  .scrubber.is-hover .track,
+  .scrubber.is-dragging .track {
+    height: 6px; /* local: the spec's track under the pointer */
+    border-radius: 3px; /* local: half the track */
+  }
+  .scrubber.is-dragging .knob {
+    width: 14px; /* local: the spec's dragged knob */
+    height: 14px; /* local: the spec's dragged knob */
+    margin: -7px 0 0 -7px; /* local: centres the knob */
+  }
+  .scrubber:focus-visible .knob {
+    box-shadow: 0 0 0 2px var(--bg-window), 0 0 0 4px var(--focus); /* local: the knob's ring, two-tone so it reads on the track */
+  }
+  .scrubber .hover-time {
+    position: absolute;
+    bottom: 18px; /* local: just above the 16 px hit area */
+    translate: -50% 0;
+    padding: 2px var(--space-8); /* local: the caption's pad */
+    border-radius: var(--radius-sm);
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-e1);
+    font: var(--type-caption);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  .control-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    height: 32px; /* local: the spec's row */
+  }
+  .control-row .spacer {
+    flex: 1 1 auto;
+  }
+  .control-row .time {
+    margin-left: var(--space-8);
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+  .control-row .time b {
+    color: var(--text-primary);
+    font-weight: var(--weight-medium);
+  }
+  /* The play glyph is the row's own weight: primary text, not the quiet secondary of the skips. */
+  .control-row [data-testid='video-play'] {
+    color: var(--text-primary);
+  }
+
+  .btn.speed-btn {
+    min-width: 44px; /* local: holds "1.75×" so the button's left edge stays put when the speed changes */
+    justify-content: center;
+    height: 24px; /* local: the mockup's speed button */
+    font-weight: var(--weight-semibold);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  .speed-menu .menu {
+    min-width: 0;
+    width: 112px; /* local: seven short rows */
+    font-variant-numeric: tabular-nums;
+  }
+
+  .volume {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+  }
+  .vbar,
+  .vol-pop .vtrack-slider {
+    display: flex;
+    align-items: center;
+  }
+  .vtrack-slider {
+    width: 64px; /* local: the mockup's bar */
+  }
+  .vtrack {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 16px; /* local: the hit area, as the scrubber's */
+  }
+  .vtrack::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 4px; /* local: the bar's track */
+    border-radius: 2px; /* local: half the track */
+    background: var(--bg-track);
+  }
+  .vtrack i {
+    position: absolute;
+    left: 0;
+    height: 4px; /* local: the bar's track */
+    border-radius: 2px; /* local: half the track */
+    background: var(--text-secondary);
+  }
+  .vthumb {
+    top: 50%;
+    width: 12px; /* local: as the scrubber's knob */
+    height: 12px; /* local: as the scrubber's knob */
+    border-radius: 50%;
+    background: oklch(100% 0 0); /* local: a white knob on the track in both themes */
+    box-shadow: 0 0 0 0.5px oklch(0% 0 0 / 0.2), 0 1px 3px oklch(0% 0 0 / 0.3); /* local: the knob's own edge */
+    opacity: 0;
+  }
+  .vtrack:hover .vthumb,
+  .vthumb[data-dragging] {
+    opacity: 1;
+  }
+  .vthumb[data-focus-visible] {
+    opacity: 1;
+    box-shadow: 0 0 0 2px var(--bg-window), 0 0 0 4px var(--focus); /* local: the knob's ring, two-tone so it reads on the track */
+  }
+  /* A folded bar floats over its button while the pointer or the focus is on the group (reader narrower than 560, or a row that would overflow). */
+  .vol-pop {
+    position: absolute;
+    z-index: 5;
+    bottom: calc(100% + var(--space-4));
+    left: 50%;
+    translate: -50% 0;
+    padding: var(--space-12);
+    border-radius: var(--radius-lg);
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-e1);
+  }
+  /* The volume is the row's last control but the full-screen button: the pop-up ends at its right edge instead of standing out past the reader's. */
+  .volume:nth-last-child(2) .vol-pop {
+    left: auto;
+    right: 0;
+    translate: none;
+  }
+  .vol-pop .vtrack-slider {
+    width: 80px; /* local: the bar's length in the pop-up */
+  }
+
+  /* ── The stage (spec 6.6) ──────────────────────────────────────────────────────────────────────────────────────────────── */
+  /* The tab strip goes (the sidebar and the item panel fold in the shell; the reader's strip goes below). */
+  :root[data-video-stage] .titlebar,
+  :root[data-video-stage] .video-reader .video-toolbar {
+    display: none;
+  }
+  /* The picture fills the window and never moves: the controls lie over its bottom instead of taking a row of their own. */
+  :root[data-video-stage] .video-reader {
+    position: relative;
+    --video-bar-h: calc(16px + var(--space-4) + 32px + 2 * var(--space-8)); /* local: scrubber, gap, row and padding of the bar; the overlay (spec 7.2) stands this far above the stage's bottom while the bar shows */
+  }
+  :root[data-video-stage] .video-reader .video-controls {
+    position: absolute;
+    inset: auto 0 0 0;
+    z-index: 4;
+    border-top: 0;
+    background: var(--video-chrome-bg);
+    color: var(--video-chrome-text);
+    /* A fixed dark surface in both themes: the controls read these in place of the theme's own. */
+    --text-primary: var(--video-chrome-text);
+    --text-secondary: var(--video-chrome-text2);
+    --text-tertiary: var(--video-chrome-text3);
+    --bg-track: var(--video-chrome-track);
+    --border: var(--video-chrome-border);
+    --fill-hover: var(--video-chrome-hover);
+    --fill-pressed: var(--video-chrome-pressed);
+    --bg-window: var(--video-chrome-gap);
+    --meter: var(--video-chrome-meter);
+    --focus: var(--image-focus-dark);
+    transition: opacity var(--duration-base) var(--ease-standard);
+  }
+  /* The scrim: the bar's dark fades out upward over the picture. */
+  :root[data-video-stage] .video-reader .video-controls::before {
+    content: '';
+    position: absolute;
+    inset: auto 0 100% 0;
+    height: 48px; /* local: the scrim's height */
+    background: linear-gradient(to top, var(--video-chrome-scrim), transparent);
+    pointer-events: none;
+  }
+  /* The bubble and the folded volume bar are surfaces of their own: dark like the bar, not the theme's raised surface. */
+  :root[data-video-stage] .video-reader :is(.hover-time, .vol-pop) {
+    background: var(--video-chrome-bg);
+    box-shadow: inset 0 0 0 1px var(--video-chrome-border);
+  }
+  /* While the bar shows the subtitle stands 16 above it (the bar and its scrim lie over the picture's bottom); idle, it comes back to 6 %. The
+     picture never moves. --pic-lb is the black bar under the picture, which already lifts it. */
+  :root[data-video-stage] .video-reader:not([data-idle]) .subtitle-box .subtitle {
+    bottom: max(6%, calc(var(--video-bar-h) + var(--space-16) - var(--pic-lb)));
+  }
+  /* Idle (a still pointer while it plays): the controls and the pointer go, the picture stays. The bar keeps its place in the tab order. */
+  :root[data-video-stage] .video-reader[data-idle] .video-controls {
+    opacity: 0;
+    pointer-events: none;
+  }
+  :root[data-video-stage] .video-reader[data-idle],
+  :root[data-video-stage] .video-reader[data-idle] * {
+    cursor: none;
+  }
+  /* The stage's ring is drawn over the bar and its scrim so all four sides keep their contrast, and goes with the controls while they rest;
+     any key brings both back (design-spec 8.3, the stage exception). */
+  :root[data-video-stage] .video-stage:focus-visible::after {
+    z-index: 5;
+    transition: opacity var(--duration-base) var(--ease-standard);
+  }
+  :root[data-video-stage] .video-reader[data-idle] .video-stage::after {
+    opacity: 0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :root[data-video-stage] .video-reader .video-controls,
+    :root[data-video-stage] .video-stage:focus-visible::after {
+      transition: none;
+    }
+  }
+
+  /* The transcript pane (spec 7, mockup .transcript): the head is one line of the headline role, the same place as the PDF tab's segment,
+     so the search field below does not move between the two. */
+  .nav-title {
+    display: flex;
+    align-items: center;
+    height: 28px; /* local: the segment's height, which this head stands in for */
+    padding: 0 var(--space-4);
+    font: var(--type-headline);
+  }
+  /* The pane changes its content while the video opens (the placeholder, then the list or the empty state); on a layer of its own that
+     repaint cannot reach the sidebar's top, whose launcher corners would otherwise be drawn over twice (layout B's pixel identity, seen
+     on Linux). A transform layer keeps its alpha, so the vibrancy behind the window shows as before: to be confirmed on a Mac run. The
+     bottom bar sits on the window's lower edge (the scroller's 12 px of room under a sidebar's last row is taken back). */
+  .reader-sidebar.is-transcript {
+    will-change: transform;
+    margin-bottom: calc(-1 * var(--space-12));
+  }
+  /* Secondary, not the mockup's tertiary: 12 px text keeps 4.5:1, as the find bar's count does. */
+  .nav-search .find-count {
+    flex: none;
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .transcript {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-gutter: stable; /* a classic bar's room at the end only: the rows keep the sidebar's 8–231 lines, as the outline's do */
+    position: relative;
+    outline: none;
+  }
+  .transcript-rows {
+    position: relative;
+    width: 100%;
+  }
+  .transcript-slot {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 0 var(--space-8);
+  }
+  .transcript.is-placeholder {
+    overflow: hidden;
+    scrollbar-gutter: auto; /* no bar to make room for: the placeholder bars start where the rows will */
+    padding: var(--space-4) var(--space-8) var(--space-8);
+  }
+  .cue {
+    /* Stacked: the time above the text, so the text has the sidebar's full width. */
+    display: flex;
+    flex-direction: column;
+    gap: 2px; /* local: the time sits close over its sentence */
+    padding: var(--space-8);
+    border-radius: var(--radius-md);
+    font: var(--type-paragraph);
+    cursor: default;
+    outline: none;
+  }
+  .cue .ts {
+    color: var(--text-tertiary);
+    font: var(--type-footnote);
+    font-variant-numeric: tabular-nums;
+  }
+  .cue .tx {
+    overflow-wrap: anywhere;
+    white-space: pre-line; /* a cue's own line breaks */
+  }
+  .cue.is-past .tx {
+    color: var(--text-secondary);
+  }
+  .cue.is-current {
+    background: var(--accent-soft);
+  }
+  .cue.is-current .ts {
+    color: var(--accent-text);
+    font-weight: var(--weight-semibold);
+  }
+  .cue mark {
+    background: var(--find-match);
+    color: inherit;
+    border-radius: 2px; /* local: a mark's hairline corner */
+  }
+  .cue mark.is-current {
+    background: var(--find-match-current);
+    box-shadow: 0 0 0 1.5px var(--accent); /* local: the current match's accent edge, as the PDF's current hit */
+  }
+  /* The keyboard cursor: a 2 px inset ring, on a filled row too (the accent fill alone would not tell it). */
+  .cue:focus-visible,
+  .cue.is-cursor {
+    box-shadow: inset 0 0 0 2px var(--focus);
+  }
+  .cue.ph {
+    gap: var(--space-6);
+  }
+  .cue.ph .ts,
+  .cue.ph .tx {
+    display: block;
+    height: 10px; /* local: a bar the height of a footnote's x-height */
+    border-radius: var(--radius-xs);
+    background: var(--bg-track);
+  }
+  .cue.ph .ts {
+    width: 36px; /* local: a time's width */
+  }
+  .cue.ph .tx {
+    width: 88%;
+    height: 12px; /* local: a bar the height of a paragraph's x-height */
+  }
+  .transcript-foot {
+    flex: none;
+    display: flex;
+    align-items: center;
+    height: 40px; /* local: the bar under the list */
+    padding: 0 var(--space-16) 0 var(--space-24);
+    border-top: 1px solid var(--separator);
+  }
+  /* Over the macOS vibrancy material the opaque --separator is the material's own grey (1.04:1 in dark, Mac all
+     45968030204); the translucent one keeps its ratio on any surface, as the tag selector's does (design-spec 3.1). */
+  :root[data-vibrancy='1'] .transcript-foot {
+    border-top-color: var(--separator-on-surface);
+  }
+}

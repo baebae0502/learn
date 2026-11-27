@@ -3,11 +3,11 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import {
-  TEXT_LIMITS, TUTOR_LIMITS, citeToken, newId, nowIso, type ImportQueueState, type JobProgress, type LibraryCheck, type ImportReport, type LearnEventMap, type StorageMode,
+  SUBTITLE_MIMES, TEXT_LIMITS, TUTOR_LIMITS, citeToken, newId, nowIso, type ImportQueueState, type JobProgress, type LibraryCheck, type ImportReport, type LearnEventMap, type StorageMode,
   type AgentId, type TagColorId,
 } from '@learn/domain';
 import {
-  SqliteError, type CollectionsRepository, type ConversationsRepository, type Db, type LibraryRepository, type TagsRepository, type TextRepository, type ToolReadInput,
+  SqliteError, type CollectionsRepository, type ConversationsRepository, type Db, type LibraryRepository, type SubtitlesRepository, type TagsRepository, type TextRepository, type ToolReadInput,
 } from '@learn/db';
 import { fsyncDir, fsyncFile, managedRelativePath, type ImportHooks, type Importer, type LibraryLayout } from '@learn/library';
 import type { BackupJob } from './jobs/backup-job';
@@ -18,6 +18,7 @@ import type { FirstIdleReport } from './first-idle';
 import type { AutoOutcome } from './library-check';
 import type { ExtractOutcome, TextExtractor } from './text/extractor';
 import { seedBodyText, type SeedBodyTextInput } from './text/seed-body-text';
+import { seedCues, type SeedCuesInput } from './text/seed-cues';
 import type { TextScheduler, TextSchedulerState } from './text/scheduler';
 import type { ExtractLimits } from './text/messages';
 import type { FakeMode } from './translation/fake';
@@ -476,6 +477,10 @@ export interface TutorHooksDeps {
 }
 
 export interface LearnTestHooks {
+  /** How many cue texts are stored for an item's subtitle files, or for one file content. */
+  cueTextCount(input: { itemId: string } | { sha256: string }): number;
+  /** The subtitle assets in the library: how many items link each, and whether its managed copy is on disk. */
+  subtitleAssets(): Array<{ id: string; sha256: string; links: number; file: boolean }>;
   /** Returns how many items were added. */
   seedItems(input: SeedItemsInput): number;
   /** Seed-only: the organise fixture over items that exist (E2E, one transaction). */
@@ -529,6 +534,8 @@ export interface LearnTestHooks {
   extractFile(input: { file: string; startPage?: number; limits?: Partial<ExtractLimits> }): Promise<{ outcome: ExtractOutcome; opened: number | null; batches: Array<{ from: number; texts: string[] }> }>;
   /** PDF items with their body text already stored: `docs` × `pages` pages of `chars` characters, finished jobs. */
   seedBodyText(input: SeedBodyTextInput): { itemIds: string[]; sha256: string[] };
+  /** Video items with a subtitle track of `cuesEach` cues each, written to the tables with no files. */
+  seedCues(input: SeedCuesInput): { itemIds: string[] };
   /** The body-text scheduler starts paused under E2E: 'resume' runs it after its usual delay, 'now' without the delay (the startup check is still waited for). */
   textExtraction(mode: 'pause' | 'resume' | 'now'): void;
   /** Resolves when no PDF outside the trash has a queued job and nothing runs. */
@@ -566,6 +573,14 @@ export interface LearnTestHooks {
   seedSessions(input: SeedSessionsInput): { conversationIds: string[] };
   /** The tool reads recorded on an answer, in order. */
   toolReads(messageId: string): Array<ToolReadInput & { seq: number }>;
+  /** The main window's video stage, its full screen, and whether a full-screen change is in flight (video-stage.ts). */
+  stageState(): StageHookState;
+}
+
+export interface StageHookState {
+  stage: boolean;
+  fullScreen: boolean;
+  pending: boolean;
 }
 
 /** Main's side of the body-text scheduler's first start (textState): what it waits on, as main saw it. */
@@ -627,6 +642,10 @@ export function installTestHooks(deps: {
   broadcast(name: 'libraryChanged', payload: LearnEventMap['libraryChanged']): void;
   /** The tutor (index.ts, once the library is open); absent in tests that do not use it. */
   tutor?: TutorHooksDeps;
+  /** The main window's stage (index.ts); absent in tests that do not use it. */
+  stage?: () => StageHookState;
+  /** The open library's subtitles (index.ts); absent in tests that do not use them. */
+  subtitles?: () => { db: Db; subtitles: Pick<SubtitlesRepository, 'cueTextCount'>; layout: LibraryLayout };
 }): void {
   // The IPC call counter (ipc/register.ts countCall): a test reads which channels a change called.
   (globalThis as { __learnIpcCalls?: Record<string, number> }).__learnIpcCalls = {};
@@ -669,11 +688,28 @@ export function installTestHooks(deps: {
     if (!deps.restore) throw new Error('restore hooks: no restore job');
     return deps.restore;
   };
+  const subtitlesOf = (hook: string): NonNullable<ReturnType<NonNullable<typeof deps.subtitles>>> => {
+    if (!deps.subtitles) throw new Error(`${hook}: no subtitles (the library is not open)`);
+    return deps.subtitles();
+  };
   const tutor = (hook: string): TutorHooksDeps => {
     if (!deps.tutor) throw new Error(`${hook}: no tutor (the library is not open)`);
     return deps.tutor;
   };
   (globalThis as { __learnTest?: LearnTestHooks }).__learnTest = {
+    cueTextCount: (input) => subtitlesOf('cueTextCount').subtitles.cueTextCount(input),
+    subtitleAssets() {
+      const { db, layout } = subtitlesOf('subtitleAssets');
+      const rows = db
+        .prepare(
+          `SELECT a.id, a.sha256, a.relative_path AS relativePath,
+                  (SELECT COUNT(*) FROM item_assets ia WHERE ia.asset_id = a.id) AS links
+           FROM assets a WHERE a.mime IN (?, ?) ORDER BY a.created_at, a.id`,
+        )
+        .all(...Object.values(SUBTITLE_MIMES)) as Array<{ id: string; sha256: string; relativePath: string | null; links: number }>;
+      // A linked row has no managed copy; subtitles are always managed, so the path is the library's.
+      return rows.map((r) => ({ id: r.id, sha256: r.sha256, links: r.links, file: r.relativePath !== null && fs.existsSync(path.join(layout.root, ...r.relativePath.split('/'))) }));
+    },
     seedItems(input) {
       const ids = seedItems(deps.repo(), input);
       deps.broadcast('libraryChanged', { reason: 'import' });
@@ -715,6 +751,12 @@ export function installTestHooks(deps: {
     seedBodyText(input) {
       if (!deps.seedFiles) throw new Error('seedBodyText: no library to seed');
       const out = seedBodyText(deps.seedFiles(), input);
+      deps.broadcast('libraryChanged', { reason: 'import' });
+      return out;
+    },
+    seedCues(input) {
+      if (!deps.seedFiles) throw new Error('seedCues: no library to seed');
+      const out = seedCues(deps.seedFiles(), input);
       deps.broadcast('libraryChanged', { reason: 'import' });
       return out;
     },
@@ -851,5 +893,9 @@ export function installTestHooks(deps: {
     tutorFailAgents: (n) => tutor('tutorFailAgents').service.failNextAgents(n),
     seedSessions: (input) => tutor('seedSessions').seed(input),
     toolReads: (messageId) => tutor('toolReads').sessions().toolReads(messageId),
+    stageState() {
+      if (!deps.stage) throw new Error('stageState: no stage to read');
+      return deps.stage();
+    },
   };
 }

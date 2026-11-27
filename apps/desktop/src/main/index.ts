@@ -23,8 +23,10 @@ import { broadcast, onBroadcast, sendEvent } from './events';
 import { runFirstIdle, type FirstIdleReport } from './first-idle';
 import { registerAllIpc } from './ipc/all';
 import { revealBackupFolder, revealRestoredFolder } from './ipc/backup';
-import { IMPORT_FILTERS } from './ipc/library';
+import { IMPORT_FILTERS, SUBTITLE_FILTERS } from './ipc/library';
+import { attachAndAnnounce } from './ipc/subtitles';
 import { endPositionNotices } from './ipc/reader';
+import { removeFilesAfter } from './ipc/trash';
 import { createHandle, type IpcDeps } from './ipc/register';
 import { createBackupJob } from './jobs/backup-job';
 import { createRestoreJob } from './jobs/restore-job';
@@ -59,7 +61,8 @@ import { createGoogleWebEngine } from './translation/google-web';
 import { createTranslationNetIntercept } from './translation/net-intercept';
 import { createTranslationService } from './translation/service';
 import { applyChromeTheme, shouldUseVibrancy, type ChromeOptions } from './window-options';
-import { isSheetOpen, resyncAllWindowStates, sheetClosed, sheetShown } from './window-state';
+import { attachStageController, rememberStageFullScreen, stageControllerOf, stageFullScreenAtLaunch, traceDisplayMode } from './video-stage';
+import { isSheetOpen, resyncAllWindowStates, resyncWindowState, sheetClosed, sheetShown } from './window-state';
 import { windowUrl } from './window-url';
 import { createTutorCall } from './tutor/call';
 import { createAgentDetector, loginShellPath, run as runProgram } from './tutor/agents/detect';
@@ -154,11 +157,18 @@ let autoCheck: AutoOutcome | 'pending' = 'pending';
 let firstIdle: FirstIdleReport | null = null;
 
 function openMainWindow(): BrowserWindow {
+  // A launch after one that quit on the stage makes its window without that full screen (video-stage.ts stageFullScreenAtLaunch).
+  const stageAtLaunch = stageFullScreenAtLaunch(ctx?.settings);
   const win = createMainWindow({
     preload: path.join(here, '../preload/main.cjs'),
     url: windowUrl(rendererBase, 'main', urlOptions),
     chrome: chrome(),
+    restoreDisplayMode: stageAtLaunch.restoreDisplayMode,
   });
+  stageAtLaunch.made();
+  if (isE2E(app.isPackaged, process.env)) traceDisplayMode(win, stageAtLaunch.restoreDisplayMode, (line) => void process.stderr.write(line));
+  // Every full-screen change of ours goes through the window's stage controller, one at a time (spec 6.6, 9.1).
+  attachStageController(win, () => resyncWindowState(win), { remember: (on) => rememberStageFullScreen(ctx?.settings, on) });
   // The macOS 전체 화면 item says what it will do (전체 화면 시작 / 종료).
   win.on('enter-full-screen', refreshFullScreenItem);
   win.on('leave-full-screen', refreshFullScreenItem);
@@ -208,6 +218,7 @@ const activation = createActivateGate({
   // R-22: only the main window counts. With just the settings window left (macOS keeps the app running), a dock click
   // still opens a main window.
   windowCount: () => (mainWindow && !mainWindow.isDestroyed() ? 1 : 0),
+  warn: (line) => console.warn(line),
 });
 
 /** The command context before the main window's renderer reports, and after it closed or crashed: nothing runs. */
@@ -262,7 +273,8 @@ function installAppMenu(): void {
         if (!mainWindow || mainWindow.isDestroyed()) return;
         const fullscreen = mainWindow.isFullScreen();
         demoShortcut('Ctrl+Cmd+F', FULL_SCREEN.stateLabels[fullscreen ? 'fullscreen' : 'windowed']);
-        mainWindow.setFullScreen(!fullscreen);
+        // Through the stage controller: it waits for a change in flight, and leaving full screen ends the video stage.
+        stageControllerOf(mainWindow)?.toggleWindow();
       },
     }),
   );
@@ -498,6 +510,7 @@ if (!app.requestSingleInstanceLock()) {
         return filed.length;
       },
       announce: (itemIds) => broadcast('libraryChanged', { reason: 'import', itemIds }),
+      attachSubtitles: (itemId, paths) => attachAndAnnounce(getContext(), itemId, paths),
     });
     // Body text (spec 5.1): one file at a time while the work line is free, from the window's first idle on.
     if (ctx) {
@@ -631,8 +644,9 @@ if (!app.requestSingleInstanceLock()) {
       announce: announceAvailability,
       relinked: (itemIds) => broadcast('libraryChanged', { reason: 'relink', itemIds }),
       homeDir: app.getPath('home'),
-      pickFile: async (owner, words) => {
-        const res = await asSheet(owner, () => dialog.showOpenDialog(owner, { ...words, properties: ['openFile'], filters: IMPORT_FILTERS }));
+      pickFile: async (owner, words, accept) => {
+        const filters = accept === 'subtitles' ? SUBTITLE_FILTERS : IMPORT_FILTERS;
+        const res = await asSheet(owner, () => dialog.showOpenDialog(owner, { ...words, properties: ['openFile'], filters }));
         return res.canceled ? null : (res.filePaths[0] ?? null);
       },
       reveal: (file) => shell.showItemInFolder(file),
@@ -860,6 +874,16 @@ if (!app.requestSingleInstanceLock()) {
           const c = getContext();
           return { db: c.db, repo: c.repo, layout: c.layout };
         },
+        subtitles: () => {
+          const c = getContext();
+          return { db: c.db, subtitles: c.subtitles, layout: c.layout };
+        },
+        stage: () => {
+          const win = liveMainWindow();
+          const stage = win ? stageControllerOf(win) : undefined;
+          if (!win || !stage) throw new Error('stageState: no main window');
+          return { stage: stage.stage(), fullScreen: win.isFullScreen(), pending: stage.pending() };
+        },
         check: {
           state: () => ({ check: ctx?.check ?? null, auto: autoCheck }),
           request: async () => {
@@ -877,10 +901,13 @@ if (!app.requestSingleInstanceLock()) {
     // P-18: the library check runs once the window exists, in the background: the first paint never waits for the disk.
     if (ctx) {
       const service = tutor;
+      const opened = ctx;
       void startLibraryCheck(ctx, {
         announce: announceAvailability,
         requestAuto: requestAutoCheck,
         onChecked: () => text?.startupChecked(),
+        // The startup sweep of unlinked subtitle copies: files go after its commit, behind the purges' own.
+        removeFiles: (assets) => removeFilesAfter(opened, assets),
         // Answers a quit cut off become interrupted; the sessions deleted before this run go, with their work folders.
         ...(service ? { tutor: { runStartedAt: RUN_STARTED_AT, purged: (ids: string[]) => void service.removeWorkFolders(ids) } } : {}),
         gate: {

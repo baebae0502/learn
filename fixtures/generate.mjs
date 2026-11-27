@@ -407,4 +407,47 @@ if (!need('sample-hevc.mp4')) {
 } else {
   console.warn('libx265 encoder not available — skipping sample-hevc.mp4');
 }
+// ---- subtitles: the committed files (fixtures/static/subtitles) are copied beside lecture-60s.mp4, which they pair with ----
+if (need('lecture-60s.mp4')) {
+  ffmpeg([
+    '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000', '-t', '60',
+    '-c:v', 'libx264', '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-g', '60', '-b:v', '400k', '-c:a', 'aac', '-b:a', '64k', '-movflags', '+faststart',
+    path.join(out, 'lecture-60s.mp4'),
+  ]);
+}
+for (const name of ['lecture-60s.ko.srt', 'lecture-60s.en.vtt', 'broken.srt', 'notes.ko.srt', 'cp949.srt']) {
+  if (need(name)) fs.copyFileSync(path.join(here, 'static', 'subtitles', name), path.join(out, name));
+}
+const koSrt = () => fs.readFileSync(path.join(here, 'static', 'subtitles', 'lecture-60s.ko.srt'));
+if (need('utf8-bom.srt')) fs.writeFileSync(path.join(out, 'utf8-bom.srt'), Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), koSrt()]));
+if (need('utf16le.srt')) fs.writeFileSync(path.join(out, 'utf16le.srt'), Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(koSrt().toString('utf8'), 'utf16le')]));
+if (need('utf16be.srt')) {
+  const body = Buffer.from(koSrt().toString('utf8'), 'utf16le');
+  body.swap16();
+  fs.writeFileSync(path.join(out, 'utf16be.srt'), Buffer.concat([Buffer.from([0xfe, 0xff]), body]));
+}
+const srtTime = (ms) => {
+  const p = (n, w) => String(n).padStart(w, '0');
+  return `${p(Math.floor(ms / 3_600_000), 2)}:${p(Math.floor(ms / 60_000) % 60, 2)}:${p(Math.floor(ms / 1000) % 60, 2)},${p(ms % 1000, 3)}`;
+};
+/** `count` cues, `step` ms apart and `length` ms long, the text of each from `textOf(n)`. */
+const srtOf = (count, step, length, textOf) => {
+  const parts = [];
+  for (let n = 1; n <= count; n++) parts.push(`${n}\n${srtTime((n - 1) * step)} --> ${srtTime((n - 1) * step + length)}\n${textOf(n)}\n`);
+  return parts.join('\n');
+};
+if (need('long-2000.srt')) {
+  const text = (n) => {
+    const s = `${n}번째 문장: 세포막의 운반 단백질은 농도 기울기를 거슬러 물질을 옮깁니다.`;
+    return n % 10 === 0 ? `${n}번째 문장:\n세포막의 운반 단백질은 농도 기울기를 거슬러 물질을 옮깁니다.` : s;
+  };
+  fs.writeFileSync(path.join(out, 'long-2000.srt'), srtOf(2000, 1500, 1200, text));
+}
+if (need('limit-20000.srt')) fs.writeFileSync(path.join(out, 'limit-20000.srt'), srtOf(20_000, 100, 80, (n) => `문장 ${n}`));
+if (need('too-many.srt')) fs.writeFileSync(path.join(out, 'too-many.srt'), srtOf(20_001, 100, 80, (n) => `문장 ${n}`));
+if (need('too-large.srt')) {
+  const unit = srtOf(2000, 1500, 1200, (n) => `${n}번째 문장: 세포막의 운반 단백질은 농도 기울기를 거슬러 물질을 옮깁니다.`) + '\n';
+  const copies = Math.ceil((5 * 1024 * 1024 + 1) / Buffer.byteLength(unit));
+  fs.writeFileSync(path.join(out, 'too-large.srt'), unit.repeat(copies));
+}
 console.log(`fixtures written to ${out}`);

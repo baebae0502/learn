@@ -17,6 +17,9 @@
  * - `learn:dnd:drop`: the drop's handler began (rows onto a collection, a tag onto rows);
  * - `learn:dnd:filed`: the memberships or tags are in the cache — the sidebar's counts (`nav-collection-<id> .count`) draw next;
  * - `learn:dnd:preview` (a measure): building the drag image of a row drag.
+ * The video transcript (M8a spec 14; perfMarkLatest, one each):
+ * - `learn:transcript:search`: the debounce ended and the search over the cues began (TranscriptPane);
+ * - `learn:transcript:painted`: the frame that paints the matches it found has begun (usePaintMark).
  * The tutor (T1a spec 15 "보내기 → 첫 답 글 그리기"; perfMarkLatest, one each):
  * - `learn:tutor:send`: the composer's send passed its checks (useSend.ts);
  * - `learn:tutor:first-text-paint`: the frame that paints the first text of the answer that came in has begun (Bubble.tsx).
@@ -38,6 +41,8 @@ export type PerfMark =
   | 'palette:painted'
   | 'dnd:drop'
   | 'dnd:filed'
+  | 'transcript:search'
+  | 'transcript:painted'
   | 'tutor:send'
   | 'tutor:first-text-paint'
   | `toast:${string}`;

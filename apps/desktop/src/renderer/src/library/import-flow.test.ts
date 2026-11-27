@@ -4,7 +4,7 @@ import { LIST_REFRESH_WAIT_MS, failureLines, importToast, settledWithin } from '
 
 const UNSUPPORTED = '지원하지 않는 형식입니다. 지금은 PDF와 동영상(MP4 · MOV · WebM)을 가져올 수 있습니다.';
 const report = (over: Partial<ImportReport> = {}): ImportReport => ({
-  imported: 0, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: 0, cancelled: false, mode: 'managed', collectionId: null, untouched: 0, ...over,
+  imported: 0, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: 0, cancelled: false, mode: 'managed', collectionId: null, untouched: 0, subtitles: { attached: 0, failed: [] }, ...over,
 });
 const into = { name: '학회 준비' };
 
@@ -41,6 +41,32 @@ describe('importToast: the result of a run, from main\'s report (spec 3.3, 3.7)'
   it('says nothing for nothing (failures have their own toast)', () => {
     expect(importToast(report(), into)).toBeNull();
     expect(importToast(report({ failed: [{ name: 'a', message: 'x' }], requested: 1 }), null)).toBeNull();
+  });
+});
+
+describe('importToast: subtitles that came in with the videos (spec 5.2)', () => {
+  it('adds " · 자막 N개" to the success sentence when subtitles were attached', () => {
+    expect(importToast(report({ imported: 2, requested: 2, subtitles: { attached: 3, failed: [] } }), null)).toEqual({ kind: 'success', title: '자료 2개를 가져왔습니다\u00a0· 자막 3개', testId: 'import-done' });
+    expect(importToast(report({ imported: 1, filed: 1, requested: 1, subtitles: { attached: 2, failed: [] } }), into)?.title).toBe('‘학회 준비’\u2060에 자료 1개를 가져왔습니다\u00a0· 자막 2개');
+  });
+  it('says nothing about subtitles when none were attached', () => {
+    expect(importToast(report({ imported: 1, requested: 1 }), null)?.title).toBe('자료 1개를 가져왔습니다');
+  });
+});
+
+describe('failureLines with subtitle failures', () => {
+  const sub = (name: string, reason: 'unpaired' | 'not-subtitle' | 'no-cues') => ({ name, reason });
+  it('puts a subtitle failure in as a name + reason row, after the files', () => {
+    expect(failureLines([{ name: 'a.txt', message: '지원하지 않는 형식입니다.' }], 3, [sub('notes.ko.srt', 'unpaired')]).lines).toEqual([
+      { name: 'a.txt', cause: '지원하지 않는 형식입니다.' },
+      { name: 'notes.ko.srt', cause: '자막\u00a0파일은 동영상에 붙입니다' },
+    ]);
+  });
+  it('gives the common hint once for unpaired files only', () => {
+    const hint = '동영상 탭에 끌어\u00a0놓거나 자막 메뉴의 ‘자막\u00a0파일\u00a0추가…’\u2060로 붙이세요.';
+    expect(failureLines([], 3, [sub('a.srt', 'unpaired'), sub('b.srt', 'unpaired')]).hints).toEqual([hint]);
+    expect(failureLines([], 3, [sub('c.pdf', 'not-subtitle')]).hints).toEqual([]);
+    expect(failureLines([], 3, [sub('a.srt', 'no-cues')]).hints).toEqual(['SRT\u00a0· VTT 형식인지 확인하세요.']);
   });
 });
 

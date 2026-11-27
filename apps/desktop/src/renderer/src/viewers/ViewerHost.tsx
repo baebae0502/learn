@@ -17,7 +17,7 @@ import { PdfReader } from './pdf/PdfReader';
 import { type NoPages } from './pdf/readerStore';
 import { ReaderScopeProvider, readerScopes, useReaderScope, useReaderShown } from './readerScope';
 import { ImageReader } from './image/ImageReader';
-import { VideoViewer } from './VideoViewer';
+import { VideoReader } from './video/VideoReader';
 import { useTabKind } from '../shell/useTabItem';
 
 /** One tab's reader: the document's scope shown to everything the reader mounts; `active` says whether the tab has the screen. */
@@ -90,18 +90,22 @@ function Viewer({ itemId }: { itemId: string }) {
   // The kind as far as anything knows it: the fresh read, the list's row, or the kind the tab was saved with (a trashed item is in no list).
   const tabKind = useTabKind(itemId);
   const kind = item.data?.type ?? cachedType ?? tabKind;
-  // What the reader's sidebar says about the pages: a picture has none, in every state of its tab (ahead of the trash); else gone
-  // with the trash, or nothing to show here (a video, a lost or missing file).
+  // What the reader's sidebar says about the pages: a picture has none, in every state of its tab (ahead of the trash); else gone with the
+  // trash, then a video that is lost or missing (a playable one has its transcript pane; the reader says when the file cannot be played), or nothing to show here (a lost or missing file).
   const noPages: NoPages | null =
     kind === 'image'
       ? 'image'
       : trashed !== 'no'
         ? 'trashed'
-        : !item.isFetchedAfterMount
-          ? null
-          : readerLost(item) || !item.data || item.data.availability === 'missing' || item.data.type !== 'pdf'
-            ? 'none'
-            : null;
+        : kind === 'video'
+          ? item.isFetchedAfterMount && (readerLost(item) || !item.data || item.data.availability === 'missing')
+            ? 'noVideo'
+            : null
+          : !item.isFetchedAfterMount
+            ? null
+            : readerLost(item) || !item.data || item.data.availability === 'missing' || item.data.type !== 'pdf'
+              ? 'none'
+              : null;
   useEffect(() => {
     scope.reader.getState().setNoPages('host', noPages);
     return () => scope.reader.getState().setNoPages('host', null);
@@ -142,7 +146,7 @@ function Viewer({ itemId }: { itemId: string }) {
     case 'image':
       return <ImageReader key={item.data.id} item={item.data} />;
     case 'video':
-      return <VideoViewer key={item.data.id} item={item.data} />;
+      return <VideoReader key={item.data.id} item={item.data} />;
   }
 }
 
@@ -151,7 +155,15 @@ function Viewer({ itemId }: { itemId: string }) {
  * the reader that follows, with no controls in it (nothing to press yet). Unknown kind: nothing.
  */
 function ReaderFrame({ type }: { type: LibraryItem['type'] | undefined }) {
-  if (type === 'video') return <div className="video-stage" aria-hidden="true" />;
+  if (type === 'video') {
+    return (
+      <div className="reader video-reader" aria-hidden="true">
+        <div className="reader-toolbar" />
+        <div className="video-stage" />
+        <div className="video-controls is-disabled" />
+      </div>
+    );
+  }
   if (type === 'pdf' || type === 'image') {
     return (
       <div className="reader" aria-hidden="true">

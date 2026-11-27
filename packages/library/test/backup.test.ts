@@ -3,7 +3,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RESTORE_COPY, newId, nowIso } from '@learn/domain';
-import { CollectionsRepository, LATEST_SCHEMA_VERSION, LibraryRepository, migrate, openDatabase, type Db } from '@learn/db';
+import { CollectionsRepository, LATEST_SCHEMA_VERSION, LibraryRepository, SubtitlesRepository, migrate, openDatabase, type Db } from '@learn/db';
 import { Importer, createBackup, datedFolderName, ensureLayout, libraryLayout, managedRelativePath, resolveAssetPath, readBackupManifest, restoreBackup, sha256File, type BackupProgress, type RestoreProgress } from '../src/index';
 import { cleanupTemp, tempDir, writeMp4, writePdf } from './helpers';
 
@@ -55,16 +55,34 @@ async function rehash(dir: string): Promise<void> {
 }
 
 describe('backup and restore (AC15 — files part)', () => {
+  it('counts subtitle tracks in the manifest and the restored database', async () => {
+    const { layout, db, repo } = await populated();
+    const video = db.prepare(`SELECT id FROM items WHERE type = 'video'`).pluck().get() as string;
+    const now = new Date().toISOString();
+    const sha = '9'.repeat(64);
+    new SubtitlesRepository(db).attach({
+      itemId: video,
+      asset: { id: newId(), sha256: sha, storageMode: 'managed', relativePath: managedRelativePath(sha), externalPath: null, originalName: 's.vtt', mime: 'text/vtt', size: 9, availability: 'available', createdAt: now, checkedAt: now },
+      assetIsNew: true, revision: { id: 'sub-r', createdAt: now }, language: 'ko', cues: [{ startMs: 0, endMs: 1, text: 'a' }], createdAt: now,
+    });
+    const dest = path.join(tempDir('bk'), 'backup-s');
+    const { manifest } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: false });
+    expect(manifest.counts.subtitleTracks).toBe(1);
+    const result = await restoreBackup({ backupDir: dest, targetRoot: path.join(tempDir('restore'), 'Library') });
+    expect(result.counts.subtitleTracks).toBe(1);
+    expect(result.countsMatch).toBe(true);
+  });
+
   it('restores into an empty profile with matching hashes and counts', async () => {
     const { layout, db, repo } = await populated();
     const dest = path.join(tempDir('bk'), 'backup-1');
     const { manifest } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
-    expect(manifest).toMatchObject({ format: 'learn-backup', formatVersion: 1, schemaVersion: LATEST_SCHEMA_VERSION, counts: { items: 3, assets: 3, revisions: 3, collections: 0, collectionItems: 0, tags: 0, itemTags: 0, readingPositions: 0, conversations: 0, messages: 0, messageSources: 0 } });
+    expect(manifest).toMatchObject({ format: 'learn-backup', formatVersion: 1, schemaVersion: LATEST_SCHEMA_VERSION, counts: { items: 3, assets: 3, revisions: 3, collections: 0, collectionItems: 0, tags: 0, itemTags: 0, readingPositions: 0, conversations: 0, messages: 0, messageSources: 0, subtitleTracks: 0 } });
     expect(manifest.assets.filter((a) => a.included)).toHaveLength(2); // linked is reference-only
 
     const target = path.join(tempDir('restore'), 'Library');
     const result = await restoreBackup({ backupDir: dest, targetRoot: target });
-    expect(result).toEqual({ verifiedAssets: 2, missingAssets: [], hashMismatches: [], recordMismatches: [], counts: { items: 3, assets: 3, revisions: 3, collections: 0, collectionItems: 0, tags: 0, itemTags: 0, readingPositions: 0, trashedItems: 0, trashedCollections: 0, conversations: 0, messages: 0, messageSources: 0 }, countsMatch: true, backupCreatedAt: manifest.createdAt, managedFiles: 2, problemItems: [] });
+    expect(result).toEqual({ verifiedAssets: 2, missingAssets: [], hashMismatches: [], recordMismatches: [], counts: { items: 3, assets: 3, revisions: 3, collections: 0, collectionItems: 0, tags: 0, itemTags: 0, readingPositions: 0, trashedItems: 0, trashedCollections: 0, conversations: 0, messages: 0, messageSources: 0, subtitleTracks: 0 }, countsMatch: true, backupCreatedAt: manifest.createdAt, managedFiles: 2, problemItems: [] });
 
     const rdb = openDatabase(libraryLayout(target).dbFile);
     dbs.push(rdb);

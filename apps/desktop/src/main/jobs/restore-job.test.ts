@@ -385,7 +385,7 @@ describe('the restore on the work line (spec 9.1, P-20)', () => {
 
 describe('restoreSheet: the result sheet\'s facts (spec 9.3)', () => {
   const counts = (over: Partial<LibraryCounts> = {}): LibraryCounts => ({
-    items: 128, assets: 140, revisions: 140, collections: 9, collectionItems: 30, tags: 14, itemTags: 40, readingPositions: 12, trashedItems: 7, trashedCollections: 2, conversations: 0, messages: 0, messageSources: 0, ...over,
+    items: 128, assets: 140, revisions: 140, collections: 9, collectionItems: 30, tags: 14, itemTags: 40, readingPositions: 12, trashedItems: 7, trashedCollections: 2, conversations: 0, messages: 0, messageSources: 0, subtitleTracks: 0, ...over,
   });
   const result = (over: Partial<RestoreResult> = {}): RestoreResult => ({
     verifiedAssets: 128, missingAssets: [], hashMismatches: [], recordMismatches: [], counts: counts(), countsMatch: true,

@@ -1,5 +1,6 @@
-import { MARK_END, MARK_START, type BodyTextState } from '@learn/domain';
+import { MARK_END, MARK_START, type BodyTextState, type TimeMatch } from '@learn/domain';
 import { t } from '../strings';
+import { formatClock } from '../viewers/video/videoTime';
 
 /**
  * Where a PDF's body index stands, as the file section's 본문 검색 line and the 본문 일치 section say it (spec 5.8): every
@@ -45,7 +46,7 @@ export interface SnippetPart {
 }
 
 /**
- * A search:pages snippet in parts, the marked ones between U+E000 and U+E001: the screen draws each part as text (a mark
+ * A search:matches snippet in parts, the marked ones between U+E000 and U+E001: the screen draws each part as text (a mark
  * as <mark>), so nothing in a PDF's text is ever read as HTML. Marks that do not pair up mark nothing: the text alone.
  */
 export function snippetParts(snippet: string): SnippetPart[] {
@@ -78,3 +79,32 @@ const unmarked = (snippet: string): SnippetPart[] => {
   const text = snippet.replaceAll(MARK_START, '').replaceAll(MARK_END, '');
   return text === '' ? [] : [{ text, mark: false }];
 };
+
+/** A video's match as a row of 본문 일치: the clock (with the track's name when the video has several) and the snippet in parts. */
+export interface TimeRowView {
+  /** Two tracks matching at one time are two rows, so the time alone is no key. */
+  key: string;
+  startMs: number;
+  track: string | null;
+  label: string;
+  clock: string;
+  /** What the screen calls the track, when the video has several and this one is still attached. */
+  trackName: string | null;
+  parts: SnippetPart[];
+  name: string;
+}
+
+/**
+ * The rows of a video's matches. The clocks take the shape of the video's length when it is known (h:mm:ss for an hour or more, as the
+ * player's clock does), else of the longest start in the list; `names` maps a track's asset to what the screen calls it.
+ */
+export function timeRows(matches: ReadonlyArray<Pick<TimeMatch, 'startMs' | 'snippet' | 'track'>>, names: ReadonlyMap<string, string>, durationMs?: number): TimeRowView[] {
+  const length = durationMs ?? matches.reduce((max, m) => Math.max(max, m.startMs), 0);
+  return matches.map((m, i) => {
+    const parts = snippetParts(m.snippet);
+    const clock = formatClock(m.startMs, length);
+    const trackName = m.track === null ? null : (names.get(m.track) ?? null);
+    const label = t.inspector.matches.time(clock, trackName);
+    return { key: String(i), startMs: m.startMs, track: m.track, label, clock, trackName, parts, name: t.inspector.matches.timeRowName(label, parts.map((part) => part.text).join('')) };
+  });
+}

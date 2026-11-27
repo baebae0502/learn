@@ -4,7 +4,7 @@ import {
   type CheckEntry, type CheckFailure, type CheckFix, type CheckMode, type CheckRow, type CheckRowKind, type ImportReport, type LibraryCheck, type LibraryCheckPayload,
   type SheetAction,
 } from '@learn/domain';
-import type { LibraryRepository } from '@learn/db';
+import type { LibraryRepository, PurgedAsset } from '@learn/db';
 import {
   assetKeyFile, checkLibrary, cleanStaging, cleanUnreferenced, corruptCopies, editedCopyFile, fileTitle, orphanEditedCopies, refreshLinkedAvailability, relinkAsset,
   removeImportedEditedCopy,
@@ -22,7 +22,7 @@ export const AUTO_POLL_MS = 500;
 /** P-26: two names, then 외 N개. */
 export const ENTRY_NAMES = 2;
 
-export type CheckContext = Pick<LibraryContext, 'layout' | 'repo' | 'importer' | 'settings' | 'conversations'> & { check: LibraryCheck | null };
+export type CheckContext = Pick<LibraryContext, 'layout' | 'repo' | 'importer' | 'settings' | 'conversations' | 'subtitles'> & { check: LibraryCheck | null };
 
 const managedState = (repo: LibraryRepository) => new Map(repo.assetsByMode('managed').map((a) => [a.id, a.availability] as const));
 const itemsOf = (repo: LibraryRepository, assetIds: readonly string[]) => [...new Set(assetIds.flatMap((id) => repo.itemIdsForAsset(id)))];
@@ -39,7 +39,7 @@ export interface TutorStartup {
  * found missing or back are announced (libraryChanged{availability}) — the linked ones before the folder is read, so the
  * table is right as soon as it can be. The result is the context's newest check.
  */
-export async function runCheck(ctx: CheckContext, announce: (itemIds: string[]) => void, opts: { startup?: boolean; tutor?: TutorStartup } = {}): Promise<LibraryCheck> {
+export async function runCheck(ctx: CheckContext, announce: (itemIds: string[]) => void, opts: { startup?: boolean; tutor?: TutorStartup; removeFiles?(assets: PurgedAsset[]): Promise<void> | void } = {}): Promise<LibraryCheck> {
   // Before any await: the first sessions:get must see answers a quit cut off as failed, even when the disk is slow to stat.
   if (opts.startup && opts.tutor) {
     try {
@@ -49,8 +49,20 @@ export async function runCheck(ctx: CheckContext, announce: (itemIds: string[]) 
       console.warn(`[check] the tutor's sessions were not repaired: ${toLearnError(e).code}`);
     }
   }
+  // Same place and reason: the rows go now, before the first await; the files follow the commit (the caller removes them).
+  let swept: Promise<void> | void = undefined;
+  if (opts.startup) {
+    try {
+      const orphans = ctx.subtitles.sweepOrphans();
+      if (orphans.length > 0) swept = opts.removeFiles?.(orphans);
+    } catch (e) {
+      console.warn(`[check] the unlinked subtitles were not swept: ${toLearnError(e).code}`);
+    }
+  }
   const linked = itemsOf(ctx.repo, await refreshLinkedAvailability(ctx.layout, ctx.repo));
   if (linked.length > 0) announce(linked);
+  // A swept copy still on the disk has no row any more: read before it went, the folder would show it as an unused copy.
+  await swept;
   const before = managedState(ctx.repo);
   const check = await checkLibrary(ctx.layout, ctx.repo, { interruptJobs: opts.startup === true, stagingInUse: ctx.importer.stagingInUse() });
   const moved = [...managedState(ctx.repo)].filter(([id, availability]) => before.get(id) !== availability).map(([id]) => id);
@@ -98,6 +110,8 @@ export interface StartCheckDeps {
   onChecked?(): void;
   /** The tutor's startup repair (P-8): runs with the first check only. */
   tutor?: TutorStartup;
+  /** The files of the unlinked subtitle assets the startup sweep removed (after its commit); the check reads the folder once they are gone. */
+  removeFiles?(assets: PurgedAsset[]): Promise<void> | void;
 }
 
 /**
@@ -109,7 +123,7 @@ export async function startLibraryCheck(ctx: CheckContext, deps: StartCheckDeps)
   markPerf('checkStart');
   let check: LibraryCheck;
   try {
-    check = await runCheck(ctx, deps.announce, { startup: true, ...(deps.tutor ? { tutor: deps.tutor } : {}) });
+    check = await runCheck(ctx, deps.announce, { startup: true, ...(deps.tutor ? { tutor: deps.tutor } : {}), ...(deps.removeFiles ? { removeFiles: deps.removeFiles } : {}) });
   } finally {
     deps.onChecked?.();
   }
@@ -141,11 +155,25 @@ function itemEntries(repo: LibraryRepository, itemIds: readonly string[], withPa
     .map((item) => ({ itemId: item.id, label: item.title, path: withPath ? (repo.getAsset(item.assetId)?.externalPath ?? null) : null }));
 }
 
+/** A lost managed copy per line, under its item's title: one that is not the item's own file (a video's subtitle) names its asset. */
+function copyEntries(repo: LibraryRepository, copies: LibraryCheck['missingManaged']['copies']): CheckEntry[] {
+  const items = new Map(repo.getItems([...new Set(copies.map((c) => c.itemId))]).map((item) => [item.id, item] as const));
+  return copies
+    .flatMap((c) => {
+      const item = items.get(c.itemId);
+      return item ? [{ item, assetId: c.assetId }] : [];
+    })
+    // The item's own file first, then its other copies.
+    .sort((a, b) => byTitle(a.item, b.item) || Number(a.assetId !== a.item.assetId) - Number(b.assetId !== b.item.assetId))
+    .slice(0, ENTRY_NAMES)
+    .map(({ item, assetId }) => ({ itemId: item.id, label: item.title, path: null, ...(assetId !== item.assetId ? { assetId } : {}) }));
+}
+
 /** A corrupt copy's item, by the sha256 in its name: the title the user knows it by, or nothing. */
 function corruptEntries(repo: LibraryRepository, files: readonly string[]): CheckEntry[] {
   const sha = /^corrupt-([0-9a-f]{64})-/.exec(files[0] ?? '')?.[1];
   if (sha === undefined) return [];
-  const itemId = repo.findAssetsBySha(sha).flatMap((a) => repo.itemIdsForAsset(a.id))[0];
+  const itemId = repo.findAssetsBySha(sha).flatMap((a) => [...repo.itemIdsForAsset(a.id, 'original'), ...repo.itemIdsForAsset(a.id, 'subtitle')])[0];
   const title = itemId === undefined ? undefined : repo.getItem(itemId)?.title;
   return title === undefined ? [] : [{ itemId: null, label: title, path: null }];
 }
@@ -171,7 +199,7 @@ export function checkPayload(check: LibraryCheck, repo: LibraryRepository, input
     orphanEdits: { count: check.orphanEdits.count, bytes: check.orphanEdits.bytes },
   };
   const entries = (kind: CheckRowKind): CheckEntry[] => {
-    if (kind === 'missingManaged') return itemEntries(repo, check.missingManaged.itemIds, false);
+    if (kind === 'missingManaged') return copyEntries(repo, check.missingManaged.copies);
     if (kind === 'missingLinked') return itemEntries(repo, check.missingLinked.itemIds, true);
     if (kind === 'corrupt') return corruptEntries(repo, check.corrupt.files);
     if (kind === 'orphanEdits') return check.orphanEdits.copies.slice(0, 1).map((c) => ({ itemId: null, label: c.name, path: null }));
@@ -218,8 +246,11 @@ export interface CheckSheetsDeps {
   /** libraryChanged{relink} for the items on a file 다시 연결… pointed again. */
   relinked(itemIds: string[]): void;
   homeDir: string;
-  /** An open panel on `owner` (the check sheet: a sheet on the sheet on macOS, Q-8g); null when cancelled. */
-  pickFile(owner: BrowserWindow, words: PickWords): Promise<string | null>;
+  /**
+   * An open panel on `owner` (the check sheet: a sheet on the sheet on macOS, Q-8g); null when cancelled. `accept`: the import's
+   * kinds, or SRT and VTT for a video's subtitle copy.
+   */
+  pickFile(owner: BrowserWindow, words: PickWords, accept: 'import' | 'subtitles'): Promise<string | null>;
   reveal(file: string): void;
   /** A check sheet is shown: the startup's automatic one is not wanted any more. */
   stopAuto(): void;
@@ -292,14 +323,16 @@ export function createCheckSheets(deps: CheckSheetsDeps): CheckSheets {
         }
         case 'relink': {
           const item = ctx.repo.getItem(action.itemId);
-          const asset = item ? ctx.repo.getAsset(item.assetId) : undefined;
-          if (!item || !asset) throw new LearnError('NOT_FOUND', mainStrings.itemFile.noItem);
+          // A line that names another asset of the item is one of its subtitles' copies, and only a subtitle of that item.
+          const subtitle = item !== undefined && action.assetId !== undefined && action.assetId !== item.assetId;
+          const asset = !item ? undefined : subtitle ? ctx.repo.getAsset(action.assetId!) : ctx.repo.getAsset(item.assetId);
+          if (!item || !asset || (subtitle && !ctx.repo.itemIdsForAsset(asset.id, 'subtitle').includes(item.id))) throw new LearnError('NOT_FOUND', mainStrings.itemFile.noItem);
           const linked = asset.storageMode === 'linked';
-          const picked = await deps.pickFile(sheet.window, {
-            title: mainStrings.openPanels.relink,
-            message: linked ? mainStrings.openPanels.relinkMessage : words.restoreMessage,
-            buttonLabel: mainStrings.openPanels.relinkButton,
-          });
+          const picked = await deps.pickFile(
+            sheet.window,
+            { title: mainStrings.openPanels.relink, message: linked ? mainStrings.openPanels.relinkMessage : words.restoreMessage, buttonLabel: mainStrings.openPanels.relinkButton },
+            subtitle ? 'subtitles' : 'import',
+          );
           if (picked === null) return prev;
           if (linked) await relinkAsset(ctx.repo, asset.id, picked);
           else await ctx.importer.restoreCopy(picked, asset.id);

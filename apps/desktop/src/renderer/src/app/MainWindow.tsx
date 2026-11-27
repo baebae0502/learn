@@ -11,7 +11,7 @@ import { splitTrashSelection, trashSelectionCount, withTrashTargets } from '../t
 import { leaveTrashView, useInTrash, useLeaveEmptyTrash, useTrash } from '../trash/useTrashSource';
 import { useReportContext } from '../commands/useReportContext';
 import { useMenuCommands } from '../commands/useMenuCommands';
-import { keys, useItems, useLibrarySync, usePrefs, useSessionsSync } from '../data/queries';
+import { keys, useItems, useLibrarySync, usePrefs, useSessionsSync, useSubtitlesSync } from '../data/queries';
 import { queryClient } from '../data/query-client';
 import { useBusyScreen } from '../library/busyScreen';
 import { visibleColumns } from '../library/columns';
@@ -47,6 +47,7 @@ import { askInSheet } from '../ui/sheetAsk';
 import { useApplyTheme } from '../settings/theme';
 import { useApplyPrefs } from '../settings/useApplyPrefs';
 import { DemoOverlay } from '../shell/DemoOverlay';
+import { SubtitleDropOverlay } from '../shell/SubtitleDropOverlay';
 import { DropOverlay } from '../shell/DropOverlay';
 import { Launcher } from '../shell/Launcher';
 import { focusPane } from '../shell/panes';
@@ -92,6 +93,10 @@ import { countRender } from '../ui/renderCount';
 import { Toasts, showToast } from '../ui/toasts';
 import { ReaderSidebar } from '../viewers/pdf/ReaderSidebar';
 import { readerActions } from '../viewers/pdf/readerActions';
+import { videoActions } from '../viewers/video/videoActions';
+import { useVideoSettings } from '../viewers/video/useVideoSettings';
+import { useVideo } from '../viewers/video/videoStore';
+import { useVideoStage } from '../shell/videoStage';
 import { useReader, type PendingJump } from '../viewers/pdf/readerStore';
 import { canGoBack, canGoForward } from '../viewers/pdf/history';
 import { reopenSelection, useSelection } from '../translation/useSelectionText';
@@ -122,6 +127,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   useWindowState();
   useLibrarySync();
   useSessionsSync();
+  useSubtitlesSync();
   useBodyProgressSync();
   const scopeReady = useRestoreView();
   usePanePersistence();
@@ -391,6 +397,14 @@ export function MainWindow(_props: { info: AppInfo }) {
   const pdfOpen = useReader((s) => s.pdf?.ready === true);
   // A picture drawn in the shown reader tab: its zoom, fits and turns are on only then (the store is the shown tab's).
   const imageDrawn = useReader((s) => s.image?.status === 'shown');
+  // A video with its first frame in the shown reader tab: the video commands (K J L ← → , . ⇧, ⇧. M) are on only then; its play and mute
+  // state name the toggles. The mute is the remembered setting.
+  const videoReady = useVideo((s) => s.status === 'ready');
+  const videoPlaying = useVideo((s) => s.playing);
+  const videoMuted = useVideoSettings().muted;
+  const videoStage = useVideoStage((s) => s.on);
+  const videoCaptions = useVideo((s) => s.trackId !== null);
+  const videoCaptionsOn = useVideo((s) => s.trackId !== null && s.captionsOn);
   const pdfScroll = useReader((s) => s.pdf?.scroll);
   const historyBack = useReader((s) => canGoBack(s.history));
   const historyForward = useReader((s) => canGoForward(s.history));
@@ -449,10 +463,10 @@ export function MainWindow(_props: { info: AppInfo }) {
   }, []);
   /**
    * A 본문 일치 row (spec 5.8): item.open's way — an open 정보 편집 is asked first, then the tab rules. The reader of the item's tab
-   * is told the page and the query before the tab shows, so a new reader is placed there and one already placed jumps. A
+   * is told the page or time and the query before the tab shows, so a new reader is placed there and one already placed jumps. A
    * refused edit leaves nothing behind.
    */
-  const openAtPage = useCallback((itemId: string, at: PendingJump) => afterEditing(() => {
+  const openAt = useCallback((itemId: string, at: PendingJump) => afterEditing(() => {
     readerScopes.get(itemId).reader.getState().setPendingJump(at);
     useShell.getState().openTabs([itemId]);
   }), []);
@@ -482,6 +496,8 @@ export function MainWindow(_props: { info: AppInfo }) {
     held,
     ...(pdfOpen ? { pdfOpen: true } : {}),
     ...(imageDrawn && viewKind === 'reader' ? { imageOpen: true } : {}),
+    // Named by the stage too (전체 화면으로 보기 / 끝내기): reported as true or false while a video is open, and as true alone when it is not.
+    ...(videoReady && viewKind === 'reader' ? { videoOpen: true, videoPlaying, videoMuted, videoStage, videoCaptions, videoCaptionsOn } : videoStage ? { videoStage: true } : {}),
     ...(pdfOpen && pdfScroll ? { pdfScroll } : {}),
     ...(pdfOpen && historyBack ? { historyBack: true } : {}),
     ...(pdfOpen && historyForward ? { historyForward: true } : {}),
@@ -547,7 +563,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     clearTagFilter: () => useLibrary.getState().clearTagFilter(),
     back: () => afterEditing(() => selectTab('library')),
     openItems: (itemIds, opts) => openItems(itemIds, opts?.background === true),
-    openAtPage,
+    openAt,
     closeTab: (itemId) => {
       const shell = useShell.getState();
       const id = itemId ?? shell.tabs.active;
@@ -623,6 +639,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     openSettings: () => void unwrap(api().ui.openSettings()).catch(actionFailed),
     setTextSize,
     ...readerActions,
+    ...videoActions,
     translateSelection: reopenSelection,
     focusPane,
     focusSearch: focusQuickSearch,
@@ -632,7 +649,8 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, pdfOpen, imageDrawn, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, inspectorMode, tutorConsented, tutorHasMessages, tutorStreaming, sessionFocused, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAtPage, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, pdfOpen, imageDrawn, videoReady, videoPlaying, videoMuted, videoStage, videoCaptions, videoCaptionsOn, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, inspectorMode, tutorConsented, tutorHasMessages, tutorStreaming, sessionFocused, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAt, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  useStageLeaves(videoStage, videoReady && viewKind === 'reader' ? (view.kind === 'reader' ? view.itemId : null) : null);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);
@@ -713,6 +731,12 @@ export function MainWindow(_props: { info: AppInfo }) {
   // nothing holds the window. The overlay, the rows, the chips and the sidebar all follow it.
   const dndOpen = view.kind === 'library' && !blocked && !held;
   useEffect(() => setDndGate(dndOpen), [dndOpen]);
+  // The second gate (spec 5.3): subtitle files on a shown, playable video tab. PDF and picture tabs take no drop.
+  const subsDropOpen = view.kind === 'reader' && videoReady && !blocked && !held;
+  const onSubtitleDrop = useCallback((paths: string[], unresolved: number) => {
+    if (unresolved > 0) showToast({ kind: 'error', title: t.toast.dropNoPathTitle(unresolved), body: t.toast.dropNoPathBody(commandMention(commandById('file.importManaged'), currentPlatform())), testId: 'drop-failed' });
+    if (paths.length > 0) useVideo.getState().handle?.attachPaths(paths);
+  }, []);
   useEffect(() => installDndEvents(), []);
   const libraryBar = (place: 'toolbar' | 'head') => (
     <LibraryToolbar
@@ -761,7 +785,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     <CommandProvider env={env}>
       <ScopeViewProvider view={scopeView}>
       <Shell
-        sidebar={view.kind === 'reader' ? <ReaderSidebar key={view.itemId} /> : <LibrarySidebar onFilesDrop={onDrop} />}
+        sidebar={view.kind === 'reader' ? <ReaderSidebar key={view.itemId} video={readerKind === 'video'} /> : <LibrarySidebar onFilesDrop={onDrop} />}
         sidebarFoot={showsTable ? <TagSelector /> : undefined}
         launcher={<Launcher />}
         toolbar={toolbar}
@@ -772,6 +796,7 @@ export function MainWindow(_props: { info: AppInfo }) {
             <Palette />
             {/* Finder → window while the library shows and nothing holds the window; a file drag closes the palette. */}
             <DropOverlay enabled={dndOpen} onDrop={onDrop} intoName={intoRef.current?.name} />
+            <SubtitleDropOverlay enabled={subsDropOpen} onDrop={onSubtitleDrop} />
             <Toasts />
             {/* Demo recordings only (main sets demo=1 for LEARN_DEMO_OVERLAY=1 in an unpackaged build). */}
             {readWindowParams(location.search).demo && <DemoOverlay />}
@@ -807,4 +832,22 @@ function ImportQueueMarker() {
   const sending = useJobProgress((s) => s.sending);
   const settling = useJobProgress((s) => s.settling > 0);
   return <div data-testid="import-queue" data-state={state} data-sending={sending} data-settling={settling ? 'true' : undefined} hidden />;
+}
+
+/**
+ * The stage belongs to the video that was shown when it began: when the shown tab stops being that video (another tab, the library,
+ * the tab closed or trashed) or the video can no longer play, the stage is asked to end. Main answers with the window state, as always.
+ * `shownVideo`: the item of the shown tab while it is a video that plays, else null.
+ */
+function useStageLeaves(stage: boolean, shownVideo: string | null): void {
+  const stageVideo = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (!stage) {
+      stageVideo.current = undefined;
+      return;
+    }
+    if (stageVideo.current === undefined) stageVideo.current = shownVideo;
+    if (shownVideo !== null && shownVideo === stageVideo.current) return;
+    void unwrap(api().ui.stage({ action: 'exit' })).catch((e: unknown) => console.warn('[video] leaving the stage failed', e));
+  }, [stage, shownVideo]);
 }

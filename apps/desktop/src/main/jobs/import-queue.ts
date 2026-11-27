@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import {
-  IDLE_IMPORT_STATE, LearnError, absolutePathSchema, toLearnError,
-  type DuplicateCard, type DuplicateChoice, type ImportOutcome, type ImportQueueState, type ImportReport, type StorageMode,
+  IDLE_IMPORT_STATE, LearnError, absolutePathSchema, pairSubtitles, toLearnError,
+  type AttachResult, type DuplicateCard, type DuplicateChoice, type ImportOutcome, type ImportQueueState, type ImportReport, type StorageMode,
 } from '@learn/domain';
 import { displayFileName, type ImportOptions } from '@learn/library';
 import { mainStrings } from '../strings';
@@ -60,6 +60,8 @@ export interface ImportQueueDeps {
   fileExisting(collectionId: string, itemIds: readonly string[]): number;
   /** libraryChanged{import} for items the run added. */
   announce(itemIds: string[]): void;
+  /** Attaches subtitle files to a video's item (announcing the change); rejects when nothing could be attached. */
+  attachSubtitles(itemId: string, paths: readonly string[]): Promise<AttachResult>;
   /** A file's size in bytes as it is put in; 0 when it cannot be read (it fails later, with the reason). */
   stat?(file: string): Promise<number>;
   progressMs?: number;
@@ -85,7 +87,7 @@ export const PROGRESS_MS = 100;
 export const ANNOUNCE_MS = 1000;
 const STAT_CONCURRENCY = 16;
 
-type RunReport = Pick<ImportReport, 'imported' | 'filed' | 'filedExisting' | 'failed' | 'openItemId'>;
+type RunReport = Pick<ImportReport, 'imported' | 'filed' | 'filedExisting' | 'failed' | 'openItemId' | 'subtitles'>;
 
 /** What the queue does from idle to idle: one progress toast, one report. */
 interface Run {
@@ -121,6 +123,8 @@ interface Entry {
   sized: Promise<void>;
   batch: ImportBatch;
   run: Run;
+  /** The subtitle files put in with this video, attached once its item is known. */
+  subtitles: string[];
   /** Imported again once because the item it matched had gone: a second time it is left out, not asked about. */
   retried: boolean;
 }
@@ -158,7 +162,7 @@ const only = <T>(values: ReadonlySet<T>): T | null => (values.size === 1 ? (valu
 const statSize = (file: string): Promise<number> => fs.stat(file).then((s) => (s.isFile() ? s.size : 0), () => 0);
 const newRun = (): Run => ({
   total: 0, done: 0, bytesTotal: 0, bytesFinished: 0,
-  report: { imported: 0, filed: 0, filedExisting: 0, failed: [], openItemId: null },
+  report: { imported: 0, filed: 0, filedExisting: 0, failed: [], openItemId: null, subtitles: { attached: 0, failed: [] } },
   modes: new Set(), collections: new Set(), duplicates: [], sticky: null, skipped: new Map(), openIn: null, shownName: null,
   abort: new AbortController(), cancelled: false, finished: false, open: new Map(),
 });
@@ -245,14 +249,23 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
       callSettled(batch);
       return active?.total ?? 0;
     }
+    // Subtitle files never reach the importer: they follow their video, which sniffing would not tell from a stray text.
+    const { rest, subtitlesOf, unpaired } = pairSubtitles(batch.paths);
     const run = (active ??= newRun());
-    run.open.set(batch, batch.paths.length);
+    for (const p of unpaired) run.report.subtitles.failed.push({ name: displayFileName(p), reason: 'unpaired' });
     run.modes.add(batch.mode);
     run.collections.add(batch.collectionId);
+    if (rest.length === 0) {
+      callSettled(batch);
+      if (job === null) startJob();
+      progress.request();
+      return run.total;
+    }
+    run.open.set(batch, rest.length);
     const resolvers: Array<() => void> = [];
-    const entries = batch.paths.map(
+    const entries = rest.map(
       (p): Entry => ({
-        path: p, name: displayFileName(p), size: 0, read: 0, credited: 0, batch, run, retried: false,
+        path: p, name: displayFileName(p), size: 0, read: 0, credited: 0, batch, run, retried: false, subtitles: subtitlesOf.get(p) ?? [],
         sized: new Promise<void>((resolve) => resolvers.push(resolve)),
       }),
     );
@@ -331,6 +344,27 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
     }
   }
 
+  /** The video's subtitles onto its item; a rejection leaves them unattached without stopping the run. */
+  async function attachSubtitles(entry: Entry, itemId: string): Promise<void> {
+    const paths = entry.subtitles;
+    if (paths.length === 0) return;
+    entry.subtitles = [];
+    const sub = entry.run.report.subtitles;
+    try {
+      const result = await deps.attachSubtitles(itemId, paths);
+      sub.attached += result.added.length;
+      sub.failed.push(...result.failed);
+    } catch (e) {
+      warn(`[import] attaching subtitles failed: ${toLearnError(e).code}`);
+      for (const p of paths) sub.failed.push({ name: displayFileName(p), reason: 'io' });
+    }
+  }
+  /** A video that did not come in leaves its subtitles with nothing to attach to. */
+  function dropSubtitles(entry: Entry): void {
+    for (const p of entry.subtitles) entry.run.report.subtitles.failed.push({ name: displayFileName(p), reason: 'video-failed' });
+    entry.subtitles = [];
+  }
+
   async function take(entry: Entry, outcome: ImportOutcome): Promise<void> {
     const report = entry.run.report;
     if (outcome.status === 'imported') {
@@ -345,8 +379,10 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
           warn(`[import] the step after a commit failed: ${toLearnError(e).code}`);
         }
       }
+      await attachSubtitles(entry, outcome.item.id);
     } else if (outcome.status === 'failed' && outcome.code !== 'CANCELLED') {
       report.failed.push({ name: entry.name, message: outcome.message });
+      dropSubtitles(entry);
     }
   }
 
@@ -410,6 +446,7 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
       if (existing === null) {
         // The item it matched left the library meanwhile (the trash): the file is no longer its duplicate.
         if (entry.retried) {
+          dropSubtitles(entry);
           credit(entry, entry.size);
           run.done++;
           fileOver(entry);
@@ -435,17 +472,21 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
         if (answer.applyToRest && run.duplicates.length > 0) run.sticky = choice === 'open' ? 'skip' : choice;
         if (choice === 'open') run.openIn = answer.askedOn;
       }
-      if (choice === 'open') run.report.openItemId = dup.existingItemId;
-      else if (choice === 'add') {
+      if (choice === 'open') {
+        run.report.openItemId = dup.existingItemId;
+        await attachSubtitles(entry, dup.existingItemId);
+      } else if (choice === 'add') {
         const outcome = await importOnce(entry, laneSignal, { allowDuplicate: true });
         await take(entry, outcome);
         // An add stopped by 취소 is left untouched, as a file stopped before its duplicate check is.
         if (outcome.status === 'failed' && outcome.code === 'CANCELLED') return;
-      }
-      else if (batch.collectionId !== null) {
-        const ids = run.skipped.get(batch.collectionId) ?? [];
-        ids.push(dup.existingItemId);
-        run.skipped.set(batch.collectionId, ids);
+      } else {
+        if (batch.collectionId !== null) {
+          const ids = run.skipped.get(batch.collectionId) ?? [];
+          ids.push(dup.existingItemId);
+          run.skipped.set(batch.collectionId, ids);
+        }
+        await attachSubtitles(entry, dup.existingItemId);
       }
       credit(entry, entry.size);
       run.done++;
@@ -477,6 +518,7 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
     const report: ImportReport = {
       ...run.report,
       failed: [...run.report.failed],
+      subtitles: { attached: run.report.subtitles.attached, failed: [...run.report.subtitles.failed] },
       requested: run.total,
       cancelled: run.cancelled,
       mode: only(run.modes),

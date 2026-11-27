@@ -1,7 +1,7 @@
 // Which mockup renders exist. Shared by scripts/render-mockups.mjs (Linux, xvfb) and
 // tests/evidence/mockups.evidence.ts (macOS runner, real SF fonts).
 
-/** @typedef {{ name: string, page: string, query: Record<string, string>, group: 'base' | 'variant' | 'tutor' | 'm6' | 'm7a' | 'm7b', label: string }} Render */
+/** @typedef {{ name: string, page: string, query: Record<string, string>, group: 'base' | 'variant' | 'tutor' | 'm6' | 'm7a' | 'm7b' | 'm7c' | 'm8a', label: string }} Render */
 
 export const SCREENS = [
   ['library', '라이브러리'],
@@ -202,6 +202,68 @@ export const VARIANTS = [
     ['library-empty', { m: '7c', w: '1024' }, 'm7c-formats-w1024', '⑧ 첫 실행 · 창 1024에서도 지원 형식 한 줄'],
     ['library-empty', { m: '7c', state: 'drop' }, 'm7c-drop', '⑧ 드롭 오버레이 · 파일 3개(PDF 1 · 이미지 2)'],
   ].flatMap(([screen, query, suffix, label]) => THEMES.map((t) => ({ ...variant(screen, t, 'B', query, suffix, label), group: /** @type {const} */ ('m7c') }))),
+  // M8a (docs/superpowers/specs/2026-11-23-m8a-video-subtitles-design.md §13): layout B, both themes. `--only m8a` renders these.
+  // reader-video: ① the toolbar (자막 ▾ only), the 대본 pane, the controls (playing, paused, scrubber hover and drag, 1.25×, muted,
+  // one and two subtitle lines), ② the 자막 and speed menus, ③ the pane's states, ④ the drop overlay and the toasts, ⑤ stage mode,
+  // ⑥ narrow windows, the unplayable notice, opening. library: ⑦ the item panel's 자막 line and time matches, the scope copy,
+  // the no-results addition, the drop summary and the unpaired-subtitle toast.
+  ...[
+    ['reader-video', { m: '8a' }, 'm8a', '① 영상 리더 · 재생 중 · 지금 문장 · 자막 한 줄 · 도구 막대는 자막 ▾만'],
+    ['reader-video', { m: '8a', play: 'paused' }, 'm8a-paused', '① 일시정지(play 아이콘)'],
+    ['reader-video', { m: '8a', hover: '1' }, 'm8a-hover', '① 스크러버 호버 · 시간 말풍선 18:20'],
+    ['reader-video', { m: '8a', hover: 'far' }, 'm8a-hover-far', '① 스크러버 호버 · 재생 위치와 다른 자리(32:20)'],
+    ['reader-video', { m: '8a', drag: '1' }, 'm8a-drag', '① 스크러버 끌기 · 트랙 6 · 손잡이 14'],
+    ['reader-video', { m: '8a', speed: '1.25' }, 'm8a-speed', '① 속도 1.25×'],
+    ['reader-video', { m: '8a', muted: '1' }, 'm8a-muted', '① 음소거(volume-x)'],
+    ['reader-video', { m: '8a', sub: 'two' }, 'm8a-sub-two', '① 겹친 문장 두 개(한 자막 트랙) · 대본도 둘 다 지금 문장'],
+    ['reader-video', { m: '8a', play: 'paused', hover: '1', speed: '1.25', muted: '1', sub: 'two' }, 'm8a-combined', '① 일시정지 · 호버 · 1.25× · 음소거 · 겹친 문장 두 개'],
+    ['reader-video', { m: '8a', track: 'en' }, 'm8a-track-en', '① 영어 트랙을 켠 모습'],
+    ['reader-video', { m: '8a', tip: 'play' }, 'm8a-tip-play', '① 재생 단추 툴팁 · 재생 K · 스페이스'],
+    ['reader-video', { m: '8a', menu: 'subtitles' }, 'm8a-menu-subtitles', '② 자막 ▾ · 한국어 ✓ · 영어 · 끄기 C · 파일 추가 · 제거'],
+    ['reader-video', { m: '8a', menu: 'speed' }, 'm8a-menu-speed', '② 속도 ▾ · 0.5× … 2× · 1.25× ✓'],
+    ['reader-video', { m: '8a', menu: 'subtitles', tracks: '0' }, 'm8a-menu-subtitles-none', '② 트랙 없음 · 자막 파일 추가… 한 줄'],
+    ['reader-video', { m: '8a', state: 'match' }, 'm8a-match', '③ 대본 검색 일치 · 칼슘 펌프 2개'],
+    ['reader-video', { m: '8a', state: 'nomatch' }, 'm8a-nomatch', '③ 대본 검색 결과 없음'],
+    ['reader-video', { m: '8a', state: 'nosubs' }, 'm8a-nosubs', '③ 자막 없음 · 자막 단추 비활성'],
+    ['reader-video', { m: '8a', state: 'nosubs', tip: 'captions' }, 'm8a-nosubs-tip', '③ 자막 없음 · 비활성 단추의 이유 툴팁'],
+    ['reader-video', { m: '8a', follow: 'off' }, 'm8a-follow-off', '③ 현재 위치 따라가기 꺼짐'],
+    ['reader-video', { m: '8a', cursor: '1' }, 'm8a-cursor', '③ 키보드 포커스 행'],
+    ['reader-video', { m: '8a', cue: 'long' }, 'm8a-cue-long', '③ 세 줄이 넘는 긴 문장'],
+    ['reader-video', { m: '8a', drop: 'subs' }, 'm8a-drop', '④ 영상 탭 끌어 놓기 오버레이 · 자막으로 붙이기'],
+    ['reader-video', { m: '8a', full: '1' }, 'm8a-full', '⑤ 영상 전체 화면(무대 모드) · 컨트롤 보임'],
+    ['reader-video', { m: '8a', full: '1', idle: '1' }, 'm8a-full-idle', '⑤ 영상 전체 화면 · 컨트롤·포인터 숨김 · 자막이 내려옴'],
+    ['reader-video', { m: '8a', w: '1024' }, 'm8a-w1024', '⑥ 창 1024×768'],
+    ['reader-video', { m: '8a', w: '960' }, 'm8a-w960', '⑥ 창 960×640'],
+    ['reader-video', { m: '8a', w: '960', volume: 'hover' }, 'm8a-w960-volume', '⑥ 음량 막대 접힘(보호 장치 — 접힌 모양을 보이려고 강제) · 호버하면 단추 위로 뜸'],
+    ['reader-video', { m: '8a', state: 'unplayable', w: '1024' }, 'm8a-unplayable-w1024', '⑥ 재생 불가 안내 · 창 1024(리더 784)'],
+    ['reader-video', { m: '8a', state: 'opening' }, 'm8a-opening', '⑥ 여는 중 · 어두운 무대 · 컨트롤 비활성'],
+    ['reader-video', { m: '8a', captions: 'off' }, 'm8a-captions-off', '① 자막 끔(C) · 자막 끔 단추 · 오버레이 없음 · 대본은 마지막 트랙'],
+    ['reader-video', { m: '8a', captions: 'off', menu: 'subtitles' }, 'm8a-captions-off-menu', '② 자막 끔 · 끄기 ✓ · 이 자막 제거 꺼짐'],
+    ['reader-video', { m: '8a', state: 'match', wrap: '1' }, 'm8a-match-wrap', '③ 대본 검색 · 처음부터 · 1 / 2'],
+    ['reader-video', { m: '8a', focus: 'stage' }, 'm8a-focus-stage', '③ 키보드 포커스 · 무대(안쪽 링, 어두운 면용 색)'],
+    ['reader-video', { m: '8a', focus: 'scrubber' }, 'm8a-focus-scrubber', '③ 키보드 포커스 · 스크러버(손잡이 링 + 시간 말풍선)'],
+    ['reader-video', { m: '8a', focus: 'controls' }, 'm8a-focus-controls', '③ 키보드 포커스 · 컨트롤 단추(안쪽 링)'],
+    ['reader-video', { m: '8a', cue: 'long', at: '18:29' }, 'm8a-cue-long-overlay', '③ 긴 문장이 지금 문장일 때 · 오버레이 줄 수'],
+    ['reader-video', { m: '8a', toast: 'duplicate' }, 'm8a-toast-duplicate', '④ 토스트 · 이미 붙어 있는 자막입니다(정보)'],
+    ...['attached', 'attach-failed', 'removed'].flatMap((k) =>
+      ['stage-top', 'controls'].map((at) => ['reader-video', { m: '8a', toast: k, toastAt: at }, `m8a-toast-${k === 'attach-failed' ? 'failed' : k}-${at}`, `④ 토스트(소유자 결정: 자리 ${at === 'controls' ? '컨트롤 위 오른쪽' : '무대 오른쪽 위 · 추천'}) · ${k}`]),
+    ),
+    ['reader-video', { m: '8a', state: 'opening', slow: '1' }, 'm8a-opening-slow', '⑥ 여는 중 · 300ms를 넘음 · 스피너'],
+    ['reader-video', { m: '8a', w: '960', sidebar: '360' }, 'm8a-w960-sidebar360', '⑥ 닿을 수 있는 가장 좁은 리더(창 960 + 사이드바 360 = 600)'],
+    ['reader-video', { m: '8a', state: 'unplayable', stage: '360' }, 'm8a-unplayable-stage360', '⑥ 재생 불가 안내 · 더 좁은 무대 360(실제 창에는 못 미치는 폭) · 글과 단추 둘이 그래도 잘리지 않음'],
+    ['reader-video', { m: '8a', state: 'unplayable', stage: '440' }, 'm8a-unplayable-stage440', '⑥ 재생 불가 안내 · 좁은 무대 440(실제 창에는 못 미치는 폭) · 글과 단추 둘이 잘리지 않음'],
+    ['library', { m: '8a' }, 'm8a-library', '⑦ 동영상 항목 패널 · 자막 한국어 · 영어'],
+    ['library', { m: '8a', panel: 'video-subs' }, 'm8a-panel-video-subs', '⑦ 항목 패널 파일 절 · 자막 · 한국어 · 영어'],
+    ['library', { m: '8a', panel: 'video-subs-many' }, 'm8a-panel-video-subs-many', '⑦ 항목 패널 · 한국어 · 영어 외 2개'],
+    ['library', { m: '8a', matches: 'time' }, 'm8a-matches-time', '⑦ 본문 일치 · 문장 3개 · 시간 행'],
+    ['library', { m: '8a', matches: 'time2' }, 'm8a-matches-time2', '⑦ 본문 일치 · 트랙 둘 · 18:20 · 영어'],
+    ['library', { m: '8a', matches: 'time-many' }, 'm8a-matches-time-many', '⑦ 본문 일치 · 문장 34개 중 20행'],
+    ['library', { m: '8a', matches: 'time-many', scroll: 'end' }, 'm8a-matches-time-many-end', '⑦ 본문 일치 · 외 14문장(끝까지 스크롤)'],
+    ['library', { m: '8a', search: 'scope-menu' }, 'm8a-scope-menu', '⑦ 검색 범위 메뉴 · PDF 본문·자막 포함'],
+    ['library', { m: '8a', state: 'noresults', scope: 'fulltext' }, 'm8a-noresults-fulltext', '⑦ 결과 없음 · …·PDF 본문·자막'],
+    ['library', { m: '8a', state: 'drop' }, 'm8a-drop-summary', '⑦ 드롭 오버레이 · 파일 3개(동영상 1 · 자막 2)'],
+    ['library', { m: '8a', toast: 'unpaired' }, 'm8a-toast-unpaired', '⑦ 짝 없는 자막의 가져오기 실패 토스트'],
+  ].flatMap(([screen, query, suffix, label]) => THEMES.map((t) => ({ ...variant(screen, t, 'B', query, suffix, label), group: /** @type {const} */ ('m8a') }))),
 ];
 
 /**

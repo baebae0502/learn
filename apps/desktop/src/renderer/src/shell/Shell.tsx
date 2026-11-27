@@ -7,6 +7,7 @@ import { inspectorModeNow, useInspectorMode } from './inspectorMode';
 import { SidebarToggle } from './SidebarToggle';
 import { useKeepFocusOnInspectorFold } from './useInspector';
 import { keepFocusAcross, useKeepFocusAcrossFold } from './useSidebar';
+import { useVideoStage } from './videoStage';
 import { useViewportWidth } from './useViewportWidth';
 
 /**
@@ -40,8 +41,10 @@ export function Shell(props: { sidebar: ReactNode; sidebarFoot?: ReactNode; laun
   const panes = { sidebar, inspector, tutorWidth };
   // In the tutor mode a slot shown on demand pushes the sidebar away (spec 8.10): the sidebar's fold reads the slot too.
   const present = props.inspector !== undefined;
-  const hidden = sidebarHiddenIn(panes, viewportWidth, contentMin, mode, present);
-  const inspectorHidden = hiddenPanes(panes, viewportWidth, present, contentMin, mode).inspector;
+  // The video stage (spec 6.6) folds both panes without touching the user's choice: they come back at their widths when it ends.
+  const stage = useVideoStage((s) => s.on);
+  const hidden = stage || sidebarHiddenIn(panes, viewportWidth, contentMin, mode, present);
+  const inspectorHidden = stage || hiddenPanes(panes, viewportWidth, present, contentMin, mode).inspector;
   const setInspectorPresent = useShell((s) => s.setInspectorPresent);
   useLayoutEffect(() => setInspectorPresent(present), [present, setInspectorPresent]);
   const slotWidth = slotWidthFor(mode, panes, viewportWidth, contentMin);

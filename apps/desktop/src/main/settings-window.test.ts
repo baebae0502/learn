@@ -205,7 +205,7 @@ describe('the ⌘, settings window (design-spec 6 설정 창)', () => {
     const w = host().open() as unknown as FakeWindow;
     w.focused = 1;
     w.emit('focus');
-    expect(w.webContents.send).toHaveBeenCalledWith(EventChannels.windowState, { fullscreen: false, focused: true, sheetOpen: false, main: true });
+    expect(w.webContents.send).toHaveBeenCalledWith(EventChannels.windowState, { fullscreen: false, focused: true, sheetOpen: false, main: true, stage: false });
   });
 });
 

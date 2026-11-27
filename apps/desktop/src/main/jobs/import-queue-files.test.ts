@@ -36,6 +36,7 @@ function library() {
     },
     fileExisting: (collectionId, itemIds) => new CollectionsRepository(db).addItemsChanged(collectionId, itemIds).length,
     announce: () => {},
+    attachSubtitles: async () => ({ added: [], already: [], failed: [] }),
     warn: () => {},
   };
   return { layout, db, repo, importer, deps };

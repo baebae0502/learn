@@ -8,6 +8,7 @@ import { registerReaderIpc } from './reader';
 import { registerSearchIpc } from './search';
 import type { Handle, IpcDeps } from './register';
 import { registerSessionsIpc } from './sessions';
+import { registerSubtitlesIpc } from './subtitles';
 import { registerSettingsIpc } from './settings';
 import { registerSheetIpc } from './sheet';
 import { registerTrashIpc } from './trash';
@@ -16,7 +17,7 @@ import { registerTutorIpc } from './tutor';
 import { registerUiIpc } from './ui';
 
 /** Every IPC module. all.test.ts checks that together they register exactly the channels in `Channels`. */
-const MODULES = [registerAppIpc, registerLibraryIpc, registerOrganizeIpc, registerSettingsIpc, registerReaderIpc, registerSearchIpc, registerUiIpc, registerSheetIpc, registerTrashIpc, registerEditedCopiesIpc, registerCheckIpc, registerBackupIpc, registerTranslationIpc, registerTutorIpc, registerSessionsIpc] as const;
+const MODULES = [registerAppIpc, registerLibraryIpc, registerOrganizeIpc, registerSettingsIpc, registerReaderIpc, registerSearchIpc, registerUiIpc, registerSheetIpc, registerTrashIpc, registerEditedCopiesIpc, registerCheckIpc, registerBackupIpc, registerTranslationIpc, registerTutorIpc, registerSessionsIpc, registerSubtitlesIpc] as const;
 
 export function registerAllIpc(handle: Handle, deps: IpcDeps): void {
   for (const register of MODULES) register(handle, deps);

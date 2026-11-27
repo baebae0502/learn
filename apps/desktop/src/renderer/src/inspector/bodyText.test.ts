@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MARK_END, MARK_START } from '@learn/domain';
-import { bodyLineFor, bodyStateLine, matchesView, snippetParts } from './bodyText';
+import { bodyLineFor, bodyStateLine, matchesView, snippetParts, timeRows } from './bodyText';
 
 describe('the body index state line (spec 5.8, 11: the file section\'s 본문 검색 and the 본문 일치 section)', () => {
   it('says each state that is not done, in the spec\'s words', () => {
@@ -89,5 +89,37 @@ describe('a snippet\'s marked parts (U+E000 … U+E001 → <mark>, never HTML)',
       { text: '<b>', mark: false },
       { text: '<i>', mark: true },
     ]);
+  });
+});
+
+describe('timeRows: a video\'s matches as rows (spec 8.2)', () => {
+  const names = new Map([['asset-ko', '한국어'], ['asset-en', '영어']]);
+  it('one track: the clock and the snippet, no track name', () => {
+    const [row] = timeRows([{ startMs: 19_400, snippet: `${MARK_START}칼슘${MARK_END} 펌프`, track: null }], names);
+    expect(row).toMatchObject({ startMs: 19_400, label: '0:19', track: null, name: '0:19, 칼슘 펌프' });
+    expect(row!.parts).toEqual([{ text: '칼슘', mark: true }, { text: ' 펌프', mark: false }]);
+  });
+  it('several tracks: the track\'s name follows the clock, two tracks at one time are two rows', () => {
+    const rows = timeRows(
+      [
+        { startMs: 23_000, snippet: 'ATP', track: 'asset-ko' },
+        { startMs: 23_000, snippet: 'ATP', track: 'asset-en' },
+      ],
+      names,
+    );
+    expect(rows.map((r) => r.label)).toEqual(['0:23\u00a0· 한국어', '0:23\u00a0· 영어']);
+    expect(new Set(rows.map((r) => r.key)).size).toBe(2);
+    expect(rows[1]!.name).toBe('0:23\u00a0· 영어, ATP');
+  });
+  it('a track the list does not know (just removed) shows the clock alone', () => {
+    expect(timeRows([{ startMs: 5_000, snippet: 'x', track: 'asset-gone' }], names)[0]!.label).toBe('0:05');
+  });
+  it('the video\'s length sets the clocks\' shape, as the player\'s: a long video\'s early rows read 0:05:00 too', () => {
+    expect(timeRows([{ startMs: 300_000, snippet: 'a', track: null }], names, 4_500_000)[0]!.label).toBe('0:05:00');
+    expect(timeRows([{ startMs: 300_000, snippet: 'a', track: null }], names, 90_000)[0]!.label).toBe('5:00');
+    expect(timeRows([{ startMs: 3_900_000, snippet: 'a', track: 'asset-en' }], names, 4_000_000)[0]).toMatchObject({ clock: '1:05:00', trackName: '영어', label: '1:05:00\u00a0· 영어' });
+  });
+  it('an hour in the list puts every clock in h:mm:ss when the length is not known, so the column keeps one shape', () => {
+    expect(timeRows([{ startMs: 65_000, snippet: 'a', track: null }, { startMs: 3_725_000, snippet: 'b', track: null }], names).map((r) => r.label)).toEqual(['0:01:05', '1:02:05']);
   });
 });

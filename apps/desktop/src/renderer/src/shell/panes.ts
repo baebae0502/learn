@@ -4,10 +4,10 @@ const PANES = ['sidebar', 'content', 'inspector', 'toasts'] as const;
 /**
  * Where F6 lands in a pane: its first control that does something and can take the focus now. A control disabled with
  * a reason (ui/disabledReason.tsx) stays a Tab stop for its tooltip, but F6 goes past it (이전 쪽 on page 1); the
- * player is a control (the video reader); a hidden one (the player behind the codec notice) is passed over.
+ * video reader's stage takes the focus (tabindex 0), and one that is not drawn (the notice has no stage to focus) is passed over.
  */
 const FOCUSABLE =
-  'button:not([disabled]):not([aria-disabled="true"]), [href], input:not([disabled]), select:not([disabled]), video[controls], [tabindex="0"]:not([aria-disabled="true"]), [role="option"]';
+  'button:not([disabled]):not([aria-disabled="true"]), [href], input:not([disabled]), select:not([disabled]), [tabindex="0"]:not([aria-disabled="true"]), [role="option"]';
 
 /**
  * A grid (the library table, and the sidebar's tree) is one stop with a roving focus: F6 lands on its stop row (tabindex 0: the cursor, or the

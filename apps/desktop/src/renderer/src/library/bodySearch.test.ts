@@ -92,10 +92,10 @@ describe('emptyNote (what no results could not search yet)', () => {
 });
 
 describe('searchEmptyBody', () => {
-  it('ends the field list with ·PDF 본문 only when the body was searched', () => {
-    expect(t.library.searchEmptyBody('분자생물학', 0, true)).toBe('‘분자생물학’⁠의 제목⁠·저자⁠·태그⁠·출판사⁠·원래 이름⁠·초록⁠·메모⁠·PDF 본문에서 찾았습니다.');
+  it('ends the field list with ·PDF 본문·자막 only when the body was searched', () => {
+    expect(t.library.searchEmptyBody('분자생물학', 0, true)).toBe('‘분자생물학’⁠의 제목⁠·저자⁠·태그⁠·출판사⁠·원래 이름⁠·초록⁠·메모⁠·PDF 본문⁠·자막에서 찾았습니다.');
     expect(t.library.searchEmptyBody(null, 0, false)).toBe('제목⁠·저자⁠·태그⁠·출판사⁠·원래 이름⁠·초록⁠·메모에서 찾았습니다.');
-    expect(t.library.searchEmptyBody(null, 2, true)).toBe('제목⁠·저자⁠·태그⁠·출판사⁠·원래 이름⁠·초록⁠·메모⁠·PDF 본문에서 찾았습니다. 고른 태그 2개로 거른 결과입니다.');
+    expect(t.library.searchEmptyBody(null, 2, true)).toBe('제목⁠·저자⁠·태그⁠·출판사⁠·원래 이름⁠·초록⁠·메모⁠·PDF 본문⁠·자막에서 찾았습니다. 고른 태그 2개로 거른 결과입니다.');
   });
 });
 

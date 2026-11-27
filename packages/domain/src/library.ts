@@ -1,4 +1,5 @@
 import type { BodyTextState } from './body-search';
+import type { AttachFailure } from './subtitles';
 import type { ErrorCode } from './errors';
 import type { ItemMetadata } from './metadata';
 import type { TagColorId } from './tag-colors';
@@ -178,6 +179,8 @@ export interface ImportReport {
   collectionId: string | null;
   /** Files 취소 left untouched: not started, gathered as duplicates and not asked, or the one stopped mid-way. 0 for a run that was not stopped. */
   untouched: number;
+  /** The subtitle files put in with the run's videos: how many were attached, and the ones that were not (by file name). */
+  subtitles: { attached: number; failed: AttachFailure[] };
 }
 
 /** The import queue as its progress toast shows it. `current` is a file name, never a path. */
@@ -215,8 +218,11 @@ export interface LibraryCheck {
   staging: { count: number; bytes: number };
   /** Files under assets/ that no asset row holds, as `assets/<xx>/<name>` keys in order. */
   unreferenced: { keys: string[]; bytes: number };
-  /** Live items whose managed copy is gone. */
-  missingManaged: { itemIds: string[] };
+  /**
+   * Live items whose managed copy is gone (an item once per lost copy), and each lost copy with the item it is reported under: a
+   * video's subtitle copy is reported with the video, and its fix restores that copy, not the video's.
+   */
+  missingManaged: { itemIds: string[]; copies: Array<{ itemId: string; assetId: string }> };
   /** Live items whose linked original was not found: shown, never a reason to open the sheet by itself (spec 7.1). */
   missingLinked: { itemIds: string[] };
   /** Damaged copies the importer set aside in staging/ (`corrupt-<sha256>-<id>`), by name. The app never removes them. */

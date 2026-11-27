@@ -36,3 +36,7 @@ two-frames.gif 24 16 Undefined
 ```
 
 (`two-frames.gif` prints once per frame.) The pictures are gradients and a test pattern made here, so they carry no third-party work.
+
+## subtitles/
+
+Subtitle files for the reader's parser and the video reader (SRT, VTT, a CP949 copy, a file with no cues). Written by this repository; see `fixtures/static/subtitles/README.md`. `pnpm fixtures` copies them into `generated/` beside `lecture-60s.mp4`.

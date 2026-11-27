@@ -65,11 +65,15 @@ export interface PdfViewHandle {
 /** How long flashPage outlines its page. */
 export const CITE_FLASH_MS = 1500;
 
-/** A page to show once the reader is placed (a 본문 일치 row, spec 5.8), and what its find bar then searches for (one word of the query). */
-export interface PendingJump {
-  pageIndex: number;
-  query: string;
-}
+/**
+ * Where a 본문 일치 row sends the reader once it is placed, and what its search then looks for. A PDF goes to a page, its find bar on one word
+ * of the query (it finds a phrase); a video goes to a sentence's start with the query as typed (the reader narrows it to a word when that
+ * sentence does not hold it whole, timeJump), its transcript search filled, in `track` (the subtitle's
+ * asset when the video has several, else null: the one shown).
+ */
+export type PendingJump =
+  | { kind: 'page'; pageIndex: number; query: string }
+  | { kind: 'time'; startMs: number; query: string; track: string | null };
 
 /**
  * Whether a reader keeps the page a 본문 일치 row left it: not once its document cannot be opened or shown, so a later open of
@@ -79,8 +83,8 @@ export const keepsPendingJump = (open: 'opening' | 'ready' | 'password' | 'faile
 
 export const INITIAL_PDF: PdfState = { ready: false, sized: false, placed: false, pageNumber: 1, pagesCount: 0, scale: 1, zoom: 'auto', rotation: 0, scroll: 'vertical', spread: 'none' };
 
-/** Why the sidebar has no pages to list: the item is in the trash, asks for a password, has nothing to show, or is a picture. */
-export type NoPages = 'trashed' | 'locked' | 'none' | 'image';
+/** Why the sidebar has no pages to list: the item is in the trash, asks for a password, has nothing to show, is a picture, or is a video that cannot be shown. */
+export type NoPages = 'trashed' | 'locked' | 'none' | 'image' | 'noVideo';
 
 /** The image reader's state: what its toolbar shows and what the commands need (a picture drawn is `shown`). */
 export interface ImageState {

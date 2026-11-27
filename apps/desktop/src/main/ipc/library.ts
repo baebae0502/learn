@@ -20,13 +20,25 @@ export const IMPORT_FILTERS: OpenDialogOptions['filters'] = [
   { name: mainStrings.importFilters.all, extensions: ['*'] },
 ];
 
+/** A video's subtitle files (자막 파일 추가…, the library check's 다시 연결… of a lost subtitle copy). */
+export const SUBTITLE_FILTERS: OpenDialogOptions['filters'] = [
+  { name: mainStrings.importFilters.subtitles, extensions: ['srt', 'vtt'] },
+  { name: mainStrings.importFilters.all, extensions: ['*'] },
+];
+
+/** 파일 가져오기…'s filters: the media, and the subtitle files that come in with their videos. */
+export const IMPORT_PICK_FILTERS: OpenDialogOptions['filters'] = [
+  { name: mainStrings.importFilters.media, extensions: ['pdf', 'mp4', 'm4v', 'mov', 'webm', 'mkv', 'png', 'jpg', 'jpeg', 'webp', 'gif', 'avif', 'srt', 'vtt'] },
+  { name: mainStrings.importFilters.all, extensions: ['*'] },
+];
+
 /**
  * The open panel, hung on the asking window as a sheet (macOS) through windows.asSheet, like the settings window's
  * dialogs: the window stays main but is not key under it (no rings, no tooltips, 전체 화면 waits), and is re-read once
  * it is key again (follow-up D: before, the main window kept its rings under its own ⌘O panel). Without a window the
  * panel stands alone, as before.
  */
-async function showOpen(deps: IpcDeps, event: IpcMainInvokeEvent, options: OpenDialogOptions): Promise<string[]> {
+export async function showOpen(deps: IpcDeps, event: IpcMainInvokeEvent, options: OpenDialogOptions): Promise<string[]> {
   const win = BrowserWindow.fromWebContents(event.sender);
   const res = win ? await deps.windows.asSheet(win, () => dialog.showOpenDialog(win, options)) : await dialog.showOpenDialog(options);
   return res.canceled ? [] : res.filePaths;
@@ -60,7 +72,7 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
   // picked). What becomes of them comes as import:progress and import:finished.
   handle(Channels.library.pickAndImport, pickAndImportInput, async (input, event) => {
     deps.getContext(); // no library (the fatal screen): refused before any panel opens
-    const paths = await showOpen(deps, event, { title: words.import, message: input.mode === 'linked' ? words.linkMessage : words.importMessage, buttonLabel: input.mode === 'linked' ? words.linkButton : words.importButton, properties: ['openFile', 'multiSelections'], filters: IMPORT_FILTERS });
+    const paths = await showOpen(deps, event, { title: words.import, message: input.mode === 'linked' ? words.linkMessage : words.importMessage, buttonLabel: input.mode === 'linked' ? words.linkButton : words.importButton, properties: ['openFile', 'multiSelections'], filters: IMPORT_PICK_FILTERS });
     return { queued: paths.length === 0 ? 0 : deps.imports.enqueue(batchOf(paths, input, event.sender.id)) };
   });
 

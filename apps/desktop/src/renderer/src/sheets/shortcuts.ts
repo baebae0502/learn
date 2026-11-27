@@ -1,4 +1,4 @@
-import { COMMANDS, acceleratorKeys, acceleratorLabel, commandLabel, keySpecKeys, tagSlot, type CommandId } from '@learn/domain';
+import { COMMANDS, NO_LIBRARY_VIEW, acceleratorKeys, acceleratorLabel, commandLabel, isCommandAvailable, keySpecKeys, tagSlot, type CommandContextState, type CommandId } from '@learn/domain';
 import { t } from '../strings';
 
 export interface ShortcutRow {
@@ -22,7 +22,7 @@ export interface ShortcutGroup {
  * Groups by a command's first context; the selected item's commands follow the library's (design-spec 7.4 ⇧⌘R). 정리 holds
  * the collection and tag commands whatever their context (M5 spec 9.3), then the colour keys.
  */
-const ORDER = ['app', 'library', 'item', 'organize', 'tabs', 'viewer'] as const;
+const ORDER = ['app', 'library', 'item', 'organize', 'tabs', 'viewer', 'video'] as const;
 const groupOf = (c: (typeof COMMANDS)[number], view?: 'library' | 'viewer'): (typeof ORDER)[number] =>
   /^(collection|tags?)\./.test(c.id)
     ? 'organize'
@@ -100,6 +100,10 @@ const PAIRS: readonly PairSpec[] = [
   pair('reader.findNext', 'reader.findPrevious', () => t.sheets.pairs.find),
   pair('reader.rotateCw', 'reader.rotateCcw', () => t.sheets.pairs.rotate),
   pair('reader.showThumbnails', 'reader.showOutline', () => t.sheets.pairs.nav),
+  pair('video.back10', 'video.forward10', () => t.sheets.pairs.skip10),
+  pair('video.back5', 'video.forward5', () => t.sheets.pairs.skip5),
+  pair('video.frameBack', 'video.frameForward', () => t.sheets.pairs.frame),
+  pair('video.slower', 'video.faster', () => t.sheets.pairs.speed),
   pair('nav.historyBack', 'nav.historyForward', () => t.sheets.pairs.history),
   // ⌃⌘1 / ⌃⌘2 is one line of the design-spec 7.4 table: the two modes of the reader's right panel.
   pair('view.inspectorInfo', 'view.inspectorTutor', () => t.sheets.pairs.inspectorModes),
@@ -121,20 +125,34 @@ function pairRow(p: PairSpec, platform: string, view?: 'library' | 'viewer'): Sh
   return { label: p.label(view), keys, pairKeys: second.keys, spoken: `${spokenA} / ${second.spoken}` };
 }
 
+/** What a video reader reports while a video plays or waits: the commands the reader's list keeps for it are the ones this says yes to. */
+const VIDEO_READER: CommandContextState = { view: 'viewer', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW, videoOpen: true, videoCaptions: true };
+/** A row of the reader group that a video reader cannot use (the PDF's and the picture's own keys): left out of its sheet. */
+const unusableInVideo = (c: (typeof COMMANDS)[number]): boolean => !isCommandAvailable(c.id, VIDEO_READER);
+
 /**
  * The ⌘/ sheet: every registry shortcut by its first context (labelled as the menus label it), the system's 전체 화면
  * after the app rows, then the palette and dialog keys. `view`: ⌘F ⌘+ ⌘− ⌘0 are named as that view's menu names them, and from
  * the reader they are listed under 리더 (moved from 라이브러리, not repeated).
  */
-export function shortcutGroups(platform: string, view?: 'library' | 'viewer'): ShortcutGroup[] {
+export function shortcutGroups(platform: string, shown?: 'library' | 'viewer' | 'video'): ShortcutGroup[] {
+  // A video's reader is a viewer whose list also holds the video's keys.
+  const view = shown === 'video' ? 'viewer' : shown;
   const groups = ORDER.map((ctx) => ({
     title: t.sheets.groups[ctx],
-    rows: COMMANDS.filter((c) => groupOf(c, view) === ctx)
+    // The video's keys are listed from a video's reader only: a PDF's or the library's sheet has no use for them, and they would lengthen it.
+    // Opened from a reader, the list holds that reader's keys: a video's shows 동영상 and not the PDF's and the picture's; theirs not 동영상.
+    rows: COMMANDS.filter((c) => groupOf(c, view) === ctx && (ctx !== 'video' || shown === 'video') && !(ctx === 'viewer' && shown === 'video' && unusableInVideo(c)))
       .sort((a, b) => sheetRank(a.id) - sheetRank(b.id)) // stable: the rest keep the registry order
       .flatMap((c): ShortcutRow[] => {
         const stands = PAIR_BY_ANCHOR.get(c.id);
         if (stands) return [pairRow(stands, platform, view)];
         if (PAIR_TAKEN.has(c.id) || (c.accelerator === undefined && c.key === undefined) || tagSlot(c.id) !== null || c.menu?.hidden) return [];
+        // Two keys that each do it (K and Space) are one row, "K · 스페이스", drawn apart like the palette's ↑ ↓.
+        if (c.alsoKey) {
+          const both = [...keySpecKeys(c.key!, platform), ...keySpecKeys(c.alsoKey, platform)];
+          return [{ label: commandLabel(c, platform), keys: both, spoken: both.join(' · '), alternatives: true }];
+        }
         const keys = c.accelerator ? acceleratorKeys(c.accelerator, platform) : keySpecKeys(c.key!, platform);
         // A single key is spoken like an accelerator: ⇧F6 on macOS, Shift+F6 elsewhere.
         const spoken = c.accelerator ? acceleratorLabel(c.accelerator, platform) : keys.join(platform === 'darwin' ? '' : '+');

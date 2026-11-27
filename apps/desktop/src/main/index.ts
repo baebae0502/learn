@@ -61,7 +61,7 @@ import { createGoogleWebEngine } from './translation/google-web';
 import { createTranslationNetIntercept } from './translation/net-intercept';
 import { createTranslationService } from './translation/service';
 import { applyChromeTheme, shouldUseVibrancy, type ChromeOptions } from './window-options';
-import { attachStageController, stageControllerOf } from './video-stage';
+import { attachStageController, rememberStageFullScreen, stageControllerOf, stageFullScreenAtLaunch, traceDisplayMode } from './video-stage';
 import { isSheetOpen, resyncAllWindowStates, resyncWindowState, sheetClosed, sheetShown } from './window-state';
 import { windowUrl } from './window-url';
 import { createTutorCall } from './tutor/call';
@@ -156,33 +156,19 @@ let autoCheck: AutoOutcome | 'pending' = 'pending';
 /** The main window's newest first idle, step by step (E2E's textState reads it); null before the first. */
 let firstIdle: FirstIdleReport | null = null;
 
-/** The library setting that says the main window's full screen is the video stage's (video-stage.ts; ADR-0007, main writes it). */
-const STAGE_FULL_SCREEN = 'ui.stageFullScreen';
-
 function openMainWindow(): BrowserWindow {
+  // A launch after one that quit on the stage makes its window without that full screen (video-stage.ts stageFullScreenAtLaunch).
+  const stageAtLaunch = stageFullScreenAtLaunch(ctx?.settings);
   const win = createMainWindow({
     preload: path.join(here, '../preload/main.cjs'),
     url: windowUrl(rendererBase, 'main', urlOptions),
     chrome: chrome(),
+    restoreDisplayMode: stageAtLaunch.restoreDisplayMode,
   });
-  // Every full-screen change of ours goes through the window's stage controller, one at a time (spec 6.6, 9.1). The window comes back
-  // in the display mode it was quit in: a full screen the stage left behind is left once.
-  let restoredForStage = false;
-  try {
-    restoredForStage = ctx?.settings.get(STAGE_FULL_SCREEN) === true;
-  } catch (e) {
-    console.warn(`[stage] the stage's full screen was not read: ${toLearnError(e).code}`);
-  }
-  attachStageController(win, () => resyncWindowState(win), {
-    restoredForStage,
-    remember: (on) => {
-      try {
-        ctx?.settings.set(STAGE_FULL_SCREEN, on);
-      } catch (e) {
-        console.warn(`[stage] the stage's full screen was not recorded: ${toLearnError(e).code}`);
-      }
-    },
-  });
+  stageAtLaunch.made();
+  if (isE2E(app.isPackaged, process.env)) traceDisplayMode(win, stageAtLaunch.restoreDisplayMode, (line) => void process.stderr.write(line));
+  // Every full-screen change of ours goes through the window's stage controller, one at a time (spec 6.6, 9.1).
+  attachStageController(win, () => resyncWindowState(win), { remember: (on) => rememberStageFullScreen(ctx?.settings, on) });
   // The macOS 전체 화면 item says what it will do (전체 화면 시작 / 종료).
   win.on('enter-full-screen', refreshFullScreenItem);
   win.on('leave-full-screen', refreshFullScreenItem);

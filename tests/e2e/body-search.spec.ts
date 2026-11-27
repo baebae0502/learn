@@ -33,7 +33,9 @@ import {
   textHold,
   textIdle,
   textJobs,
+  stubOpenDialog,
   trashItems,
+  videoReady,
 } from './helpers';
 
 const pdf = (name: string) => path.join(FIXTURES, name);
@@ -1034,6 +1036,78 @@ test('a video in the trash is not found by its subtitles, and once deleted for g
     const purged = await page.evaluate((itemIds) => window.learn.library.purge({ itemIds, collectionIds: [] }), [video.id]);
     expect(purged.ok).toBe(true);
     await expect.poll(() => cueTextCount(app, { sha256 })).toBe(0);
+  } finally {
+    await app.close();
+  }
+});
+
+/** 자막 ▾ on the open video, its open panel answering with `files`: the reader's own way to attach. */
+async function addSubtitlesOnTab(app: ElectronApplication, page: Page, files: string[]): Promise<void> {
+  await stubOpenDialog(app, files);
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await page.getByTestId('subtitles-menu').click();
+  await page.getByTestId('subtitle-add').click();
+  await expect(page.getByTestId('subtitle-attached')).toBeVisible();
+}
+
+test('a subtitle attached on the video tab is searched at once: the same query typed again finds the video, and 본문 일치 lists its sentences', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const [video] = await importPaths(page, [pdf('lecture-60s.mp4')]);
+    await chooseScope(page, '정보와 본문');
+    await field(page).fill('칼슘 펌프');
+    // The body has answered (no video has the words yet): the answer the window keeps for this query.
+    await expect(page.getByTestId('search-empty').locator('.pe-text')).toContainText('PDF 본문⁠·자막에서 찾았습니다.');
+    await field(page).fill('');
+    await openItem(page, video!.title);
+    await videoReady(page);
+    await addSubtitlesOnTab(app, page, [KO]);
+
+    await libraryTab(page).click();
+    await field(page).fill('칼슘 펌프');
+    await expect(rowByTitle(page, video!.title)).toBeVisible();
+    await showItemPanel(app, page);
+    await selectRows(page, [video!.title]);
+    await expect(matches(page).getByTestId('matches-count')).toHaveText('문장 2개');
+    await expect.poll(() => timeRowTimes(page)).toEqual([19_000, 34_500]);
+  } finally {
+    await app.close();
+  }
+});
+
+test('이 자막 제거 takes its sentences out of the same query typed again: 본문 일치 has no time rows; the restore brings them back', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const video = await subtitleLibrary(page, [KO]);
+    // Its title holds the query too: the row stays in the table by its metadata, and the panel shows what the body says of it.
+    const titled = await seedMetadata(page, video.id, { creators: [] }, '칼슘 펌프 강의');
+    const listed = await page.evaluate((id) => window.learn.subtitles.list({ itemId: id }), video.id);
+    if (!listed.ok) throw new Error('subtitles.list failed');
+    const [track] = listed.data.tracks;
+    await chooseScope(page, '정보와 본문');
+    await panelFor(app, page, '칼슘 펌프', titled.title);
+    await expect.poll(() => timeRowTimes(page)).toEqual([19_000, 34_500]); // the positive control: the rows the removal must take
+    await field(page).fill('');
+    await openItem(page, titled.title);
+    await videoReady(page);
+    await expect(page.getByTestId('subtitles-menu')).toHaveText('한국어');
+    await page.getByTestId('subtitles-menu').click();
+    await page.getByRole('menuitem', { name: '이 자막 제거' }).click();
+    await expect(page.getByTestId('subtitle-removed')).toBeVisible();
+
+    await libraryTab(page).click();
+    await field(page).fill('칼슘 펌프');
+    await expect(rowByTitle(page, titled.title)).toBeVisible();
+    await selectRows(page, [titled.title]);
+    await expect(page.getByTestId('inspector-head').locator('h2')).toHaveText(titled.title);
+    await expect(matches(page)).toHaveCount(0);
+
+    // The undo's route, while the library shows the query's answer without the sentences.
+    const back = await page.evaluate((input) => window.learn.subtitles.restore(input), { itemId: video.id, assetId: track!.assetId, position: track!.position, language: track!.language });
+    expect(back.ok).toBe(true);
+    await field(page).fill('');
+    await field(page).fill('칼슘 펌프');
+    await expect.poll(() => timeRowTimes(page)).toEqual([19_000, 34_500]);
   } finally {
     await app.close();
   }

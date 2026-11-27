@@ -8,16 +8,24 @@ import type { Handle, IpcDeps } from './register';
 
 const NOTHING_PICKED: AttachResult = { added: [], already: [], failed: [] };
 
+/**
+ * A video's tracks changed. The body search answers from their cues too, so it is told as a PDF's extracted text is
+ * (libraryChanged{text}): a query typed again is read again rather than answered from the cache.
+ */
+function announce(itemId: string): void {
+  broadcast('subtitles:changed', { itemId });
+  broadcast('libraryChanged', { reason: 'text', itemIds: [itemId] });
+}
+
 /** The attach every route shares, announced only when a track was really added (a refused or already attached file changes nothing). */
 export async function attachAndAnnounce(ctx: Pick<LibraryContext, 'repo' | 'subtitles' | 'importer'>, itemId: string, paths: readonly string[]): Promise<AttachResult> {
   const result = await attachSubtitleFiles({ repo: ctx.repo, subtitles: ctx.subtitles, importer: ctx.importer }, itemId, paths);
-  if (result.added.length > 0) broadcast('subtitles:changed', { itemId });
+  if (result.added.length > 0) announce(itemId);
   return result;
 }
 
 /** A video's subtitles (spec 5, 11): reads, the attach through the file panel or by path, remove and restore. Each change is announced once its rows are committed. */
 export function registerSubtitlesIpc(handle: Handle, deps: IpcDeps): void {
-  const announce = (itemId: string): void => broadcast('subtitles:changed', { itemId });
   const attach = (itemId: string, paths: readonly string[]): Promise<AttachResult> => attachAndAnnounce(deps.getContext(), itemId, paths);
 
   handle(Channels.subtitles.list, subtitlesItemInput, ({ itemId }) => ({ tracks: deps.getContext().subtitles.list(itemId) }));

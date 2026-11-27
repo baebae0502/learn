@@ -44,6 +44,8 @@ async function data<T>(channel: string, raw?: unknown): Promise<T> {
   return r.data as T;
 }
 const notices = () => sent.filter(([ch]) => ch === 'evt:subtitles-changed').map(([, p]) => p);
+/** What the body search hears: the library's own notice, as a PDF's extraction sends it. */
+const bodyNotices = () => sent.filter(([ch]) => ch === 'evt:library-changed').map(([, p]) => p);
 
 beforeEach(() => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-subipc-'));
@@ -82,6 +84,7 @@ describe('subtitles:* (spec 11)', () => {
     expect(r.added.map((t) => t.language)).toEqual(['ko']);
     expect(r.failed).toEqual([{ name: 'broken.srt', reason: 'no-cues' }]);
     expect(notices()).toEqual([{ itemId }]);
+    expect(bodyNotices()).toEqual([{ reason: 'text', itemIds: [itemId] }]);
     const { tracks } = await data<{ tracks: Array<{ assetId: string }> }>('subtitles:list', { itemId });
     expect(tracks).toHaveLength(1);
     const { cues } = await data<{ cues: Array<{ text: string }> }>('subtitles:cues', { itemId, assetId: tracks[0]!.assetId });
@@ -92,6 +95,7 @@ describe('subtitles:* (spec 11)', () => {
     const itemId = video();
     await data('subtitles:attach', { itemId, paths: [path.join(STATIC, 'broken.srt')] });
     expect(notices()).toEqual([]);
+    expect(bodyNotices()).toEqual([]);
   });
 
   it('asks for a relative path or an unknown key with VALIDATION_FAILED', async () => {
@@ -126,9 +130,12 @@ describe('subtitles:* (spec 11)', () => {
     const removed = await data<{ position: number; language: string | null }>('subtitles:remove', { itemId, assetId: ko.assetId });
     expect(removed).toEqual({ position: 0, language: 'ko' });
     expect(notices()).toEqual([{ itemId }]);
+    // The body search answers from the cues: a cached answer for the same query is read again (spec 8.2).
+    expect(bodyNotices()).toEqual([{ reason: 'text', itemIds: [itemId] }]);
     const back = await data<{ position: number; language: string }>('subtitles:restore', { itemId, assetId: ko.assetId, ...removed });
     expect(back).toMatchObject({ position: 0, language: 'ko' });
     expect(notices()).toEqual([{ itemId }, { itemId }]);
+    expect(bodyNotices()).toEqual([{ reason: 'text', itemIds: [itemId] }, { reason: 'text', itemIds: [itemId] }]);
     expect(en.assetId).not.toBe(ko.assetId);
   });
 });

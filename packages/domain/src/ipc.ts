@@ -238,7 +238,7 @@ export type SheetResultInput = z.input<typeof sheetResultInput>;
 /** An open sheet's own action (P-17): the library check's, by row; 다시 연결… names the item, never a path. */
 export const sheetActionSchema = z.union([
   z.object({ kind: z.literal('libraryCheck'), act: z.enum(CHECK_ACTS) }).strict(),
-  z.object({ kind: z.literal('libraryCheck'), act: z.literal('relink'), itemId: z.uuid() }).strict(),
+  z.object({ kind: z.literal('libraryCheck'), act: z.literal('relink'), itemId: z.uuid(), assetId: z.uuid().optional() }).strict(),
   z.object({ kind: z.literal('libraryCheck'), act: z.literal('cleanUnreferenced'), keys: z.array(z.string().min(1).max(512)).max(100_000) }).strict(),
   z.object({ kind: z.literal('backupDone'), act: z.literal('reveal') }).strict(),
   z.object({ kind: z.literal('restoreDone'), act: z.literal('reveal') }).strict(),

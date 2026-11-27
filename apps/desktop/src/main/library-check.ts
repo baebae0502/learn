@@ -155,6 +155,20 @@ function itemEntries(repo: LibraryRepository, itemIds: readonly string[], withPa
     .map((item) => ({ itemId: item.id, label: item.title, path: withPath ? (repo.getAsset(item.assetId)?.externalPath ?? null) : null }));
 }
 
+/** A lost managed copy per line, under its item's title: one that is not the item's own file (a video's subtitle) names its asset. */
+function copyEntries(repo: LibraryRepository, copies: LibraryCheck['missingManaged']['copies']): CheckEntry[] {
+  const items = new Map(repo.getItems([...new Set(copies.map((c) => c.itemId))]).map((item) => [item.id, item] as const));
+  return copies
+    .flatMap((c) => {
+      const item = items.get(c.itemId);
+      return item ? [{ item, assetId: c.assetId }] : [];
+    })
+    // The item's own file first, then its other copies.
+    .sort((a, b) => byTitle(a.item, b.item) || Number(a.assetId !== a.item.assetId) - Number(b.assetId !== b.item.assetId))
+    .slice(0, ENTRY_NAMES)
+    .map(({ item, assetId }) => ({ itemId: item.id, label: item.title, path: null, ...(assetId !== item.assetId ? { assetId } : {}) }));
+}
+
 /** A corrupt copy's item, by the sha256 in its name: the title the user knows it by, or nothing. */
 function corruptEntries(repo: LibraryRepository, files: readonly string[]): CheckEntry[] {
   const sha = /^corrupt-([0-9a-f]{64})-/.exec(files[0] ?? '')?.[1];
@@ -185,7 +199,7 @@ export function checkPayload(check: LibraryCheck, repo: LibraryRepository, input
     orphanEdits: { count: check.orphanEdits.count, bytes: check.orphanEdits.bytes },
   };
   const entries = (kind: CheckRowKind): CheckEntry[] => {
-    if (kind === 'missingManaged') return itemEntries(repo, check.missingManaged.itemIds, false);
+    if (kind === 'missingManaged') return copyEntries(repo, check.missingManaged.copies);
     if (kind === 'missingLinked') return itemEntries(repo, check.missingLinked.itemIds, true);
     if (kind === 'corrupt') return corruptEntries(repo, check.corrupt.files);
     if (kind === 'orphanEdits') return check.orphanEdits.copies.slice(0, 1).map((c) => ({ itemId: null, label: c.name, path: null }));
@@ -232,8 +246,11 @@ export interface CheckSheetsDeps {
   /** libraryChanged{relink} for the items on a file 다시 연결… pointed again. */
   relinked(itemIds: string[]): void;
   homeDir: string;
-  /** An open panel on `owner` (the check sheet: a sheet on the sheet on macOS, Q-8g); null when cancelled. */
-  pickFile(owner: BrowserWindow, words: PickWords): Promise<string | null>;
+  /**
+   * An open panel on `owner` (the check sheet: a sheet on the sheet on macOS, Q-8g); null when cancelled. `accept`: the import's
+   * kinds, or SRT and VTT for a video's subtitle copy.
+   */
+  pickFile(owner: BrowserWindow, words: PickWords, accept: 'import' | 'subtitles'): Promise<string | null>;
   reveal(file: string): void;
   /** A check sheet is shown: the startup's automatic one is not wanted any more. */
   stopAuto(): void;
@@ -306,14 +323,16 @@ export function createCheckSheets(deps: CheckSheetsDeps): CheckSheets {
         }
         case 'relink': {
           const item = ctx.repo.getItem(action.itemId);
-          const asset = item ? ctx.repo.getAsset(item.assetId) : undefined;
-          if (!item || !asset) throw new LearnError('NOT_FOUND', mainStrings.itemFile.noItem);
+          // A line that names another asset of the item is one of its subtitles' copies, and only a subtitle of that item.
+          const subtitle = item !== undefined && action.assetId !== undefined && action.assetId !== item.assetId;
+          const asset = !item ? undefined : subtitle ? ctx.repo.getAsset(action.assetId!) : ctx.repo.getAsset(item.assetId);
+          if (!item || !asset || (subtitle && !ctx.repo.itemIdsForAsset(asset.id, 'subtitle').includes(item.id))) throw new LearnError('NOT_FOUND', mainStrings.itemFile.noItem);
           const linked = asset.storageMode === 'linked';
-          const picked = await deps.pickFile(sheet.window, {
-            title: mainStrings.openPanels.relink,
-            message: linked ? mainStrings.openPanels.relinkMessage : words.restoreMessage,
-            buttonLabel: mainStrings.openPanels.relinkButton,
-          });
+          const picked = await deps.pickFile(
+            sheet.window,
+            { title: mainStrings.openPanels.relink, message: linked ? mainStrings.openPanels.relinkMessage : words.restoreMessage, buttonLabel: mainStrings.openPanels.relinkButton },
+            subtitle ? 'subtitles' : 'import',
+          );
           if (picked === null) return prev;
           if (linked) await relinkAsset(ctx.repo, asset.id, picked);
           else await ctx.importer.restoreCopy(picked, asset.id);

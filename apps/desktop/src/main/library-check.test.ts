@@ -118,7 +118,7 @@ const rowOf = (p: LibraryCheckPayload, kind: string) => p.rows.find((r) => r.kin
 
 describe('the automatic sheet\'s rules (spec 7.1)', () => {
   const check = (over: Partial<LibraryCheck>): LibraryCheck => ({
-    checkedAt: '2026-10-31T00:00:00.000Z', items: 1, staging: { count: 0, bytes: 0 }, unreferenced: { keys: [], bytes: 0 }, missingManaged: { itemIds: [] },
+    checkedAt: '2026-10-31T00:00:00.000Z', items: 1, staging: { count: 0, bytes: 0 }, unreferenced: { keys: [], bytes: 0 }, missingManaged: { itemIds: [], copies: [] },
     missingLinked: { itemIds: [] }, corrupt: { count: 0, bytes: 0, files: [] }, orphanEdits: { count: 0, bytes: 0, copies: [] }, fingerprint: 'f'.repeat(64), actionable: false, ...over,
   });
   it('is due for something to act on whose list was not the last one shown', () => {
@@ -451,6 +451,40 @@ describe('the check sheet (spec 7.1–7.2, P-17, P-26)', () => {
     p = await relink(linked.id);
     expect(rowOf(p, 'missingLinked')).toMatchObject({ state: 'done', fix: 'relinked' });
     expect(ctx.repo.getAsset(linked.assetId)).toMatchObject({ externalPath: moved, availability: 'available' });
+  });
+  it('다시 연결… of a video\'s lost subtitle copy: its line names the subtitle\'s asset, the panel takes SRT and VTT, the same bytes only, and that copy is back', async () => {
+    const ctx = await library();
+    const video = await add(ctx, mp4(temp('src'), 'v.mp4', 'v'));
+    const other = await add(ctx, mp4(temp('src'), 'w.mp4', 'w'));
+    const dir = temp('sub');
+    const srt = path.join(dir, 'v.ko.srt');
+    fs.writeFileSync(srt, '1\n00:00:01,000 --> 00:00:02,000\n안녕\n');
+    const wrong = path.join(dir, 'w.ko.srt');
+    fs.writeFileSync(wrong, '1\n00:00:01,000 --> 00:00:02,000\n다른 문장\n');
+    const track = (await attachSubtitleFiles(ctx, video.id, [srt])).added[0]!;
+    const sub = ctx.repo.getAsset(track.assetId)!;
+    fs.rmSync(resolveAssetPath(ctx.layout, sub));
+    let answer: string | null = wrong;
+    const accepts: string[] = [];
+    const h = sheets(ctx, { pickFile: async (_owner, _words, accept) => { accepts.push(accept); return answer; } });
+    let p = await shown(h);
+    // Reported with the video's title (spec 4.3); the line carries the copy its button restores.
+    expect(rowOf(p, 'missingManaged')).toMatchObject({ state: 'todo', count: 1, entries: [{ itemId: video.id, label: video.title, path: null, assetId: sub.id }] });
+    const relink = (itemId: string) => act(h, p, { kind: 'libraryCheck', act: 'relink', itemId, assetId: sub.id });
+    await expect(relink(video.id)).rejects.toMatchObject({ code: 'HASH_MISMATCH' });
+    await expect(relink(other.id)).rejects.toMatchObject({ code: 'NOT_FOUND' }); // not that video's subtitle
+    answer = srt;
+    p = await relink(video.id);
+    expect(accepts).toEqual(['subtitles', 'subtitles']);
+    expect(fs.readFileSync(resolveAssetPath(ctx.layout, sub)).equals(fs.readFileSync(srt))).toBe(true);
+    expect(ctx.repo.getAsset(sub.id)).toMatchObject({ availability: 'available' });
+    expect(ctx.repo.getAsset(video.assetId)).toMatchObject({ availability: 'available' });
+    expect(rowOf(p, 'missingManaged')).toMatchObject({ state: 'done', fix: 'relinked' });
+    expect(h.relinked).toEqual([[video.id]]);
+    // The next check has nothing left to say about it.
+    const next = await runCheck(ctx, () => {});
+    expect(next.missingManaged.itemIds).toEqual([]);
+    expect(next.actionable).toBe(false);
   });
   it('Finder에서 보기 shows the first corrupt copy and the first orphan edited copy, and changes nothing', async () => {
     const ctx = await library();

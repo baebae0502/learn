@@ -31,16 +31,25 @@ describe('the check sheet\'s rows (spec 7.2, approved mockups recovery and recov
     expect(v.buttons).toEqual([]);
     expect(v.meta).toBeNull();
     expect(v.entries).toEqual([
-      { key: A, label: '분자생물학 5장 · 막 수송', path: null, pathTitle: null, relinkItemId: A },
-      { key: B, label: 'Second Messengers at a Glance', path: null, pathTitle: null, relinkItemId: B },
+      { key: A, label: '분자생물학 5장 · 막 수송', path: null, pathTitle: null, relinkItemId: A, relinkAssetId: null },
+      { key: B, label: 'Second Messengers at a Glance', path: null, pathTitle: null, relinkItemId: B, relinkAssetId: null },
     ]);
     expect(v.more).toBe(2);
+  });
+
+  it('사본이 사라진 자료: a video\'s lost subtitle copy is a line of its own under the video\'s title, and its 다시 연결… restores that copy', () => {
+    const SUB = '5c1d8e2a-3b4f-4a6c-9d7e-8f0a1b2c3d4e';
+    const v = checkRowView(todo({ kind: 'missingManaged', count: 2, entries: [{ itemId: A, label: '강의 1', path: null }, { itemId: A, label: '강의 1', path: null, assetId: SUB }] }), HOME, 'darwin');
+    expect(v.entries).toEqual([
+      { key: A, label: '강의 1', path: null, pathTitle: null, relinkItemId: A, relinkAssetId: null },
+      { key: SUB, label: '강의 1', path: null, pathTitle: null, relinkItemId: A, relinkAssetId: SUB },
+    ]);
   });
 
   it('외부 연결: the title, and under it the path home-relative with the whole path as its tooltip', () => {
     const v = checkRowView(todo({ kind: 'missingLinked', entries: [{ itemId: A, label: 'Calcium Signaling Revisited', path: `${HOME}/Downloads/papers/calcium-signaling.pdf` }] }), HOME, 'darwin');
     expect([v.title, v.text]).toEqual(['원본을 찾을 수 없는 외부 연결 1개', '파일을 옮겼다면 새 위치를 지정하세요.']);
-    expect(v.entries).toEqual([{ key: A, label: 'Calcium Signaling Revisited', path: '~/Downloads/papers/calcium-signaling.pdf', pathTitle: `${HOME}/Downloads/papers/calcium-signaling.pdf`, relinkItemId: A }]);
+    expect(v.entries).toEqual([{ key: A, label: 'Calcium Signaling Revisited', path: '~/Downloads/papers/calcium-signaling.pdf', pathTitle: `${HOME}/Downloads/papers/calcium-signaling.pdf`, relinkItemId: A, relinkAssetId: null }]);
     expect(v.more).toBe(0);
   });
 

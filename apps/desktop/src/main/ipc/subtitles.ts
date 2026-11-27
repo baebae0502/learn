@@ -2,8 +2,7 @@ import { Channels, nowIso, subtitlesAttachInput, subtitlesItemInput, subtitlesRe
 import { attachSubtitleFiles } from '@learn/library';
 import { broadcast } from '../events';
 import type { LibraryContext } from '../library-context';
-import { mainStrings } from '../strings';
-import { showOpen } from './library';
+import { SUBTITLE_FILTERS, showOpen } from './library';
 import type { Handle, IpcDeps } from './register';
 
 const NOTHING_PICKED: AttachResult = { added: [], already: [], failed: [] };
@@ -34,10 +33,7 @@ export function registerSubtitlesIpc(handle: Handle, deps: IpcDeps): void {
 
   handle(Channels.subtitles.pick, subtitlesItemInput, async ({ itemId }, event) => {
     deps.getContext(); // no library (the fatal screen): refused before any panel opens
-    const paths = await showOpen(deps, event, {
-      properties: ['openFile', 'multiSelections'],
-      filters: [{ name: mainStrings.importFilters.subtitles, extensions: ['srt', 'vtt'] }, { name: mainStrings.importFilters.all, extensions: ['*'] }],
-    });
+    const paths = await showOpen(deps, event, { properties: ['openFile', 'multiSelections'], filters: SUBTITLE_FILTERS });
     return paths.length === 0 ? NOTHING_PICKED : attach(itemId, paths);
   });
 

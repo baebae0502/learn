@@ -17,6 +17,8 @@ export interface CheckEntryView {
   pathTitle: string | null;
   /** The item this line's 다시 연결… acts on; null for a line with no button. */
   relinkItemId: string | null;
+  /** The copy it restores when that is not the item's own file (a video's subtitle); null for the item's own. */
+  relinkAssetId: string | null;
 }
 export interface CheckRowView {
   kind: CheckRowKind;
@@ -73,11 +75,12 @@ export function checkRowView(row: CheckRow, homeDir: string, platform: string): 
   const items = row.kind === 'missingManaged' || row.kind === 'missingLinked';
   const entries: CheckEntryView[] = items
     ? row.entries.map((e) => ({
-        key: e.itemId ?? e.label,
+        key: e.assetId ?? e.itemId ?? e.label,
         label: e.label,
         path: e.path === null ? null : homeRelative(e.path, homeDir),
         pathTitle: e.path,
         relinkItemId: e.itemId,
+        relinkAssetId: e.assetId ?? null,
       }))
     : [];
   return {

@@ -20,6 +20,12 @@ export const IMPORT_FILTERS: OpenDialogOptions['filters'] = [
   { name: mainStrings.importFilters.all, extensions: ['*'] },
 ];
 
+/** A video's subtitle files (자막 파일 추가…, the library check's 다시 연결… of a lost subtitle copy). */
+export const SUBTITLE_FILTERS: OpenDialogOptions['filters'] = [
+  { name: mainStrings.importFilters.subtitles, extensions: ['srt', 'vtt'] },
+  { name: mainStrings.importFilters.all, extensions: ['*'] },
+];
+
 /** 파일 가져오기…'s filters: the media, and the subtitle files that come in with their videos. */
 export const IMPORT_PICK_FILTERS: OpenDialogOptions['filters'] = [
   { name: mainStrings.importFilters.media, extensions: ['pdf', 'mp4', 'm4v', 'mov', 'webm', 'mkv', 'png', 'jpg', 'jpeg', 'webp', 'gif', 'avif', 'srt', 'vtt'] },

@@ -23,7 +23,7 @@ import { broadcast, onBroadcast, sendEvent } from './events';
 import { runFirstIdle, type FirstIdleReport } from './first-idle';
 import { registerAllIpc } from './ipc/all';
 import { revealBackupFolder, revealRestoredFolder } from './ipc/backup';
-import { IMPORT_FILTERS } from './ipc/library';
+import { IMPORT_FILTERS, SUBTITLE_FILTERS } from './ipc/library';
 import { attachAndAnnounce } from './ipc/subtitles';
 import { endPositionNotices } from './ipc/reader';
 import { removeFilesAfter } from './ipc/trash';
@@ -638,8 +638,9 @@ if (!app.requestSingleInstanceLock()) {
       announce: announceAvailability,
       relinked: (itemIds) => broadcast('libraryChanged', { reason: 'relink', itemIds }),
       homeDir: app.getPath('home'),
-      pickFile: async (owner, words) => {
-        const res = await asSheet(owner, () => dialog.showOpenDialog(owner, { ...words, properties: ['openFile'], filters: IMPORT_FILTERS }));
+      pickFile: async (owner, words, accept) => {
+        const filters = accept === 'subtitles' ? SUBTITLE_FILTERS : IMPORT_FILTERS;
+        const res = await asSheet(owner, () => dialog.showOpenDialog(owner, { ...words, properties: ['openFile'], filters }));
         return res.canceled ? null : (res.filePaths[0] ?? null);
       },
       reveal: (file) => shell.showItemInFolder(file),

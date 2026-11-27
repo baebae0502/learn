@@ -1,5 +1,5 @@
 import { bodyQueryWords, MARK_END, MARK_START, newId, nowIso, type Cue } from '@learn/domain';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CUE_WALK_MAX, LibraryRepository, SubtitlesRepository, cueItemIds, cueLikeChunks, cueMatches, type AssetRow, type Db } from '../src/index';
 import { freshDb, seedItem } from './fixtures';
 
@@ -165,5 +165,18 @@ describe('cueMatches', () => {
     new LibraryRepository(db).trash([a]);
     expect(cueMatches(db, a, bodyQueryWords('칼슘'))).toEqual({ matches: [], total: 0 });
     expect(cueMatches(db, seedItem(db).itemId, bodyQueryWords('칼슘'))).toEqual({ matches: [], total: 0 });
+  });
+
+  it('a video with no matching cue answers empty without the snippet statement, while another video has the word', () => {
+    const a = video();
+    const b = video();
+    track(a, ['세포막 구조']);
+    track(b, ['인지질 이중층']);
+    const words = bodyQueryWords('인지질');
+    expect(cueMatches(db, b, words).total).toBe(1); // positive control: the word is indexed and the snippet statement runs for b
+    const prepare = vi.spyOn(db, 'prepare');
+    expect(cueMatches(db, a, words)).toEqual({ matches: [], total: 0 });
+    expect(prepare.mock.calls.filter(([sql]) => String(sql).includes('snippet(')), 'the snippet statement was prepared').toEqual([]);
+    prepare.mockRestore();
   });
 });

@@ -120,7 +120,7 @@ const M7C_COMMANDS: readonly CommandId[] = ['reader.imageBackgroundLight', 'read
 
 /**
  * The video reader's keys (M8a spec 10): no menu item (a bare letter is never a menu accelerator), so the menu loop never reaches them. A block
- * of their own opens a video and runs each one from the palette, which lists them with their keys (esc, 전체 화면 끝내기, is not in the palette: it runs from its key on the stage); Task 12 adds its own.
+ * of their own opens a video and runs each one from the palette, which lists them with their keys (esc, 전체 화면 끝내기, is not in the palette: it runs from its key on the stage).
  */
 const M8A_COMMANDS: readonly CommandId[] = [
   'video.playPause', 'video.back10', 'video.forward10', 'video.back5', 'video.forward5', 'video.frameBack', 'video.frameForward', 'video.slower', 'video.faster', 'video.toggleMute',

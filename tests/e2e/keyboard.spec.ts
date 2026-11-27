@@ -9,7 +9,7 @@ import {
   FIXTURES, addToCollection, closeSheet, createCollection, distinctPdfs, drag, dropSource, enabledMenuCommands, expectWindow, holdCopies, holdOpenDialog, holdSaveDialog, importFiles, importPause, importPaths, importResume, importWaiting, launch, libraryTab, mainWindow, readerTab, runMenuAccelerator,
   makeTags, menuItemEnabled, openItem, organizeSnapshot, releaseCopies, releaseOpenDialog, releaseSaveDialog, rowAt, rowByTitle, runMenuCommand, selectRows, sheetReleased, showItemPanel,
   specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, tagChip, trashItems, translationFake, treeRow, waitImportIdle,
-  selectInPage, textExtraction, textIdle, imageState, quiet,
+  selectInPage, textExtraction, textIdle, imageState, quiet, videoReady,
 } from './helpers';
 import { consentAndChoose } from './tutor-helpers';
 
@@ -963,6 +963,65 @@ test('the video reader: axe (Learn draws the subtitles itself, so video-caption 
     await page.keyboard.press('F6'); // sidebar
     await page.keyboard.press('F6'); // content: the stage
     expect(await focusedTestId(page)).toBe('video-stage');
+  } finally {
+    await app.close();
+  }
+});
+
+const LECTURE_MP4 = path.join(FIXTURES, 'lecture-60s.mp4');
+const LECTURE_KO = path.join(FIXTURES, 'lecture-60s.ko.srt');
+const LECTURE_EN = path.join(FIXTURES, 'lecture-60s.en.vtt');
+
+test('the video reader by keyboard: F6 to the stage, Tab through the controls in order, on to the transcript, ↓ and ↩ on a sentence go to its time; axe at each state', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const [item] = await importPaths(page, [LECTURE_MP4]);
+    await openItem(page, 'lecture-60s');
+    await videoReady(page);
+    const state = async () => (await page.evaluate(() => window.__learnVideo!.state()))!;
+    // No subtitles: the transcript's empty state and the menu with only 자막 파일 추가….
+    await expect(page.getByTestId('transcript-empty')).toBeVisible();
+    await expectNoSeriousA11y(page, 'video reader, no subtitles');
+    await page.getByTestId('subtitles-menu').click();
+    await expect(page.getByRole('menu')).toBeVisible();
+    await expectNoSeriousA11y(page, 'video reader, the 자막 menu with no track');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('menu')).toHaveCount(0);
+
+    const attached = await page.evaluate((input) => window.learn.subtitles.attach(input), { itemId: item!.id, paths: [LECTURE_KO, LECTURE_EN] });
+    expect(attached.ok).toBe(true);
+    await expect(page.getByTestId('subtitles-menu')).toHaveText('한국어');
+    const tracks = await page.evaluate((id) => window.learn.subtitles.list({ itemId: id }).then((r) => (r.ok ? r.data.tracks : [])), item!.id);
+    const cues = await page.evaluate((input) => window.learn.subtitles.cues(input).then((r) => (r.ok ? r.data.cues : [])), { itemId: item!.id, assetId: tracks[0]!.assetId });
+    await expectNoSeriousA11y(page, 'video reader, subtitles and the transcript');
+
+    // F6: sidebar, then the stage. Tab: the scrubber, the controls in their order (the speed button is the fifth stop), and on past
+    // them into the transcript's search field, its switch and the list.
+    await page.keyboard.press('F6');
+    await page.keyboard.press('F6');
+    expect(await focusedTestId(page)).toBe('video-stage');
+    const order: string[] = [];
+    for (let i = 0; i < 30; i++) {
+      await page.keyboard.press('Tab');
+      const id = await focusedTestId(page);
+      if (id === null || order.at(-1) === id) continue;
+      order.push(id);
+      if (id === 'cue-row') break;
+    }
+    expect(order.slice(0, 5)).toEqual(['video-scrubber', 'video-back10', 'video-play', 'video-forward10', 'video-speed']);
+    expect(order.indexOf('transcript-search'), 'the search field comes after the controls').toBeGreaterThan(4);
+    expect(order.at(-1)).toBe('cue-row');
+    expect(await inPane(page), 'the transcript is the sidebar\'s: Tab left the content pane for it').toBe('sidebar');
+    await expectNoSeriousA11y(page, 'video reader, the keyboard in the transcript list');
+
+    // ↓ moves the cursor one sentence down, ↩ goes there (paused stays paused).
+    const first = Number(await page.evaluate(() => document.activeElement?.getAttribute('data-index')));
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-index'))).toBe(String(first + 1));
+    await page.keyboard.press('Enter');
+    await expect.poll(async () => Math.abs((await state()).timeMs - cues[first + 1]!.startMs)).toBeLessThanOrEqual(80);
+    expect((await state()).paused).toBe(true);
+    await expect(page.locator(`[data-testid="cue-row"][data-index="${first + 1}"]`)).toBeFocused();
   } finally {
     await app.close();
   }

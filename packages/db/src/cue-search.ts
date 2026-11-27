@@ -92,6 +92,8 @@ export function cueMatches(db: Db, itemId: string, words: BodyWords): { matches:
     // One statement for the chosen cues: an aux function asked with `rowid = ?` beside MATCH answered another cue's text (two tracks with the
     // same start gave the second one the first one's sentence), and a rowid list does not.
     const ids = chosen.map((r) => r.id);
+    // Without rows the statement below would hold `rowid IN ()` and match the whole library's index for nothing.
+    if (ids.length === 0) return { matches: [], total: 0 };
     const shown = new Map<number, string>();
     const marked = db
       .prepare(

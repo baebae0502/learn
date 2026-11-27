@@ -12,7 +12,7 @@ import type { LearnPdfProbe } from '../../../apps/desktop/src/renderer/src/viewe
 import {
   FIXTURES, addToCollection, assignTag, backupPause, backupResume, backupWaiting, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, drag, dropSource, expectWindow, holdCopies, holdJob, imageState, importFiles as importFilesNow, importPause, importPaths as importNow, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, requestLibraryCheck, rowAt, recordedPopups, restorePause, restoreResume, restoreWaiting, rowByTitle, runMenuCommand, seedLibrary, selectInPage, translationFake, seedMetadata, selectRows,
   makeTags, setTagColor, specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubSaveDialog, tagChip, textExtraction, trashItems, treeRow, waitForSheet, waitImportIdle, type Session,
-  backFromReader, runMenuAccelerator, seedSessions, tutorFakeScript, tutorKillAgent, tutorNetwork, tutorProcesses,
+  backFromReader, runMenuAccelerator, seedSessions, stageState, tutorFakeScript, tutorKillAgent, tutorNetwork, tutorProcesses,
 } from '../helpers';
 import { READER_100, askViaApi, attachPassage, consentAndChoose, holdAnswerAfter, installFakeAgents, nextFakeScript, turnEnded } from '../tutor-helpers';
 import { THEMES, TOUR_VIDEO_BYTES, bodyIndexDone, closeReaderTabs, fixedSizeCopy, importStarting, launchTour, readEndedImports, setTheme, shoot } from './tour';
@@ -2995,5 +2995,195 @@ test('T1a narrow windows: the tutor narrowed at 1040, folded at 980, and shown a
     await shootBoth(page, 'tutor-narrow-960');
   } finally {
     await app.close();
+  }
+});
+
+// M8a (spec 13 ①–⑥): the video reader v2 in light and dark. The picture of the video itself is encoded by the machine's ffmpeg (Debian and
+// Ubuntu differ), so the video element is hidden while a picture is taken: its box, the sentence drawn over it, the controls and the
+// transcript stay compared. A playing video's scrubber and clock move, so they are masked there.
+const VIDEO_OFF = '[data-testid="video"] { visibility: hidden !important; }';
+const LECTURE_KO = path.join(FIXTURES, 'lecture-60s.ko.srt');
+const LECTURE_EN = path.join(FIXTURES, 'lecture-60s.en.vtt');
+const seekVideo = (page: Page, ms: number) => page.evaluate((m) => void (document.querySelector<HTMLVideoElement>('[data-testid="video"]')!.currentTime = m / 1000), ms);
+const videoAtTime = (page: Page, ms: number) => expect.poll(async () => Math.abs(((await page.evaluate(() => window.__learnVideo!.state()))?.timeMs ?? -1e9) - ms)).toBeLessThan(300);
+const videoNow = (page: Page) => page.evaluate(() => window.__learnVideo!.state());
+
+test('M8a video reader: no subtitles, a sentence while it plays, 자막 ▾ and 속도 ▾ open, the transcript search, the keyboard\'s row', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  const s = await launchTour(home, { HOME: home });
+  const page = s.page;
+  const style = VIDEO_OFF;
+  const field = page.getByTestId('transcript-search').getByRole('searchbox');
+  try {
+    const lecture = fixedSizeCopy(path.join(FIXTURES, 'lecture-60s.mp4'), home, TOUR_VIDEO_BYTES.h264);
+    const [item] = await importPaths(page, [lecture]);
+    await openItem(page, 'lecture-60s');
+    await expect.poll(async () => (await videoNow(page))?.status).toBe('ready');
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await shoot(page, `m8a-video-nosubs-${theme}`, { style });
+      await page.getByTestId('subtitles-menu').click();
+      await expect(page.getByRole('menu')).toBeVisible();
+      await shoot(page, `m8a-video-menu-none-${theme}`, { style });
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('menu')).toHaveCount(0);
+    }
+    const attached = await page.evaluate((input) => window.learn.subtitles.attach(input), { itemId: item!.id, paths: [LECTURE_KO, LECTURE_EN] });
+    expect(attached.ok).toBe(true);
+    await expect(page.getByTestId('subtitles-menu')).toHaveText('한국어');
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      // Playing from 0.5 s: the first sentence lasts long enough that the picture is taken inside it, whatever the load.
+      await seekVideo(page, 500);
+      await videoAtTime(page, 500);
+      await page.getByTestId('video-stage').focus();
+      await page.keyboard.press('k');
+      await expect.poll(async () => (await videoNow(page))?.paused).toBe(false);
+      await expect.poll(async () => (await videoNow(page))?.cueText ?? '').toContain('세포막');
+      await shoot(page, `m8a-video-playing-${theme}`, { style, mask: [page.getByTestId('video-scrubber'), page.getByTestId('video-time')] });
+      await page.keyboard.press('k');
+      await expect.poll(async () => (await videoNow(page))?.paused).toBe(true);
+
+      await seekVideo(page, 1000);
+      await videoAtTime(page, 1000);
+      await page.getByTestId('subtitles-menu').click();
+      await expect(page.getByRole('menu')).toBeVisible();
+      await shoot(page, `m8a-video-menu-subtitles-${theme}`, { style });
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('menu')).toHaveCount(0);
+      await page.getByTestId('video-speed').click();
+      await expect(page.getByRole('menu', { name: '재생 속도' })).toBeVisible();
+      await shoot(page, `m8a-video-menu-speed-${theme}`, { style });
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('menu', { name: '재생 속도' })).toHaveCount(0);
+
+      await field.fill('칼슘 펌프');
+      await expect(page.getByTestId('transcript-count')).toHaveText('2개');
+      await shoot(page, `m8a-video-transcript-match-${theme}`, { style });
+      await field.fill('없는말');
+      await expect(page.getByTestId('transcript-empty')).toBeVisible();
+      await shoot(page, `m8a-video-transcript-nomatch-${theme}`, { style });
+      await field.fill('');
+      await field.press('Escape');
+
+      // The keyboard's row, two below the one that is current: the pointer rests before the keys and stays for the picture.
+      await seekVideo(page, 12_000);
+      await videoAtTime(page, 12_000);
+      await page.mouse.move(1439, 899);
+      await page.locator('[data-testid="cue-row"][data-index="3"]').focus();
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.press('ArrowDown');
+      await expect(page.locator('[data-testid="cue-row"]:focus')).toHaveCount(1);
+      await shoot(page, `m8a-video-transcript-cursor-${theme}`, { style, keepPointer: true });
+      await page.evaluate(() => void (document.activeElement as HTMLElement | null)?.blur());
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('M8a video reader: the stage mode, the 1024 window, and the video that cannot be played in it', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  const s = await launchTour(home, { HOME: home });
+  const { app, page } = s;
+  const style = VIDEO_OFF;
+  try {
+    const lecture = fixedSizeCopy(path.join(FIXTURES, 'lecture-60s.mp4'), home, TOUR_VIDEO_BYTES.h264);
+    const unplayable = fixedSizeCopy(path.join(FIXTURES, 'sample-mpeg4part2.mp4'), home, TOUR_VIDEO_BYTES.mpeg4);
+    const [item] = await importPaths(page, [lecture, unplayable]);
+    const attached = await page.evaluate((input) => window.learn.subtitles.attach(input), { itemId: item!.id, paths: [LECTURE_KO] });
+    expect(attached.ok).toBe(true);
+    await openItem(page, 'lecture-60s');
+    await expect.poll(async () => (await videoNow(page))?.status).toBe('ready');
+    const size = (w: number, h: number) => mainWindow(app).then((win) => win.evaluate((x, [cw, ch]) => x.setContentSize(cw!, ch!), [w, h] as const));
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await seekVideo(page, 4000);
+      await videoAtTime(page, 4000);
+      await page.getByTestId('video-fullscreen').click();
+      await expect.poll(() => stageState(app)).toMatchObject({ stage: true, fullScreen: true, pending: false });
+      await page.mouse.move(700, 300);
+      await expect.poll(async () => (await videoNow(page))?.cueText ?? '').toContain('인지질');
+      // The stage fills the screen the run has; the pointer rests inside it, on the bar.
+      await shoot(page, `m8a-video-stage-${theme}`, { style, keepPointer: true });
+      await page.getByTestId('video-stage').focus();
+      await page.keyboard.press('Escape');
+      await expect.poll(() => stageState(app)).toMatchObject({ stage: false, fullScreen: false, pending: false });
+      await expect.poll(() => page.evaluate(() => [innerWidth, innerHeight].join('x'))).toBe('1440x900');
+    }
+    await size(1024, 768);
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(1024);
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await seekVideo(page, 1000);
+      await videoAtTime(page, 1000);
+      await shoot(page, `m8a-video-w1024-${theme}`, { style });
+    }
+    await page.locator('[data-testid="tab"][data-item-id="library"]').click();
+    await openItem(page, 'sample-mpeg4part2');
+    await expect(page.getByTestId('video-error')).toBeVisible();
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await shoot(page, `m8a-video-unplayable-w1024-${theme}`);
+    }
+  } finally {
+    await app.close();
+  }
+});
+
+test('M8a library: a video\'s 자막 line and the time rows of its 본문 일치, with two subtitles and with one; the scope menu naming subtitles', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  const s = await launchTour(home, { HOME: home });
+  const page = s.page;
+  const field = page.getByTestId('search-field').locator('input');
+  const dates = () => [page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(page)];
+  const matches = page.getByTestId('matches-section');
+  try {
+    const dir = path.join(home, 'two');
+    fs.mkdirSync(dir, { recursive: true });
+    const lecture = fixedSizeCopy(path.join(FIXTURES, 'lecture-60s.mp4'), home, TOUR_VIDEO_BYTES.h264);
+    const second = fixedSizeCopy(path.join(FIXTURES, 'lecture-60s.mp4'), dir, TOUR_VIDEO_BYTES.h264);
+    const renamed = path.join(dir, '분자생물학 강의 02.mp4');
+    fs.renameSync(second, renamed);
+    fs.appendFileSync(renamed, '2'); // other bytes, or the import asks about a duplicate
+    const [one, two] = await importPaths(page, [lecture, renamed]);
+    const attach = async (itemId: string, paths: string[]) => {
+      const r = await page.evaluate((input) => window.learn.subtitles.attach(input), { itemId, paths });
+      expect(r.ok).toBe(true);
+    };
+    await attach(one!.id, [LECTURE_KO]);
+    const cue = (text: string) => `1\n01:05:12,000 --> 01:05:15,000\n${text}\n`;
+    const ko2 = path.join(dir, 'b.ko.srt');
+    const pt2 = path.join(dir, 'b.pt-BR.srt');
+    fs.writeFileSync(ko2, cue('ATP 없이는 칼슘 펌프가 칼슘 이온을 세포 밖으로 내보내지 못합니다.'));
+    fs.writeFileSync(pt2, cue('ATP: a bomba de cálcio leva os íons de cálcio para fora da célula.'));
+    await attach(two!.id, [ko2, pt2]);
+    await chooseScope(page, '정보와 본문');
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await field.fill('');
+      await rowByTitle(page, 'lecture-60s').click();
+      await expect(page.locator('[data-testid="file-row"][data-field="subtitles"]')).toBeVisible();
+      await shoot(page, `m8a-panel-subtitles-${theme}`, { mask: dates() });
+      await field.fill('칼슘 펌프');
+      await rowByTitle(page, 'lecture-60s').click();
+      await expect(matches.getByTestId('matches-count')).toHaveText('문장 2개');
+      await shoot(page, `m8a-panel-time-rows-${theme}`, { mask: dates() });
+      await field.fill('ATP');
+      await rowByTitle(page, '분자생물학 강의 02').click();
+      await expect(matches.getByTestId('matches-count')).toHaveText('문장 2개');
+      await shoot(page, `m8a-panel-time-rows-two-${theme}`, { mask: dates() });
+      await field.fill('');
+    }
+    await scopeButton(page).click();
+    await expect(scopeMenu(page)).toBeVisible();
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await shoot(page, `m8a-scope-menu-${theme}`, { mask: dates() });
+    }
+    await page.keyboard.press('Escape');
+    await chooseScope(page, '정보');
+  } finally {
+    await s.app.close();
   }
 });
